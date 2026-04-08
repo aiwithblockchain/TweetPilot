@@ -1,0 +1,29 @@
+{
+  "name": "tweetpilot",
+  "productName": "TweetPilot",
+  "version": "0.1.0",
+  "description": "A local desktop control panel for Twitter operations, AI access, and browser extension orchestration.",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "start": "electron .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "4.7.0",
+    "electron": "^38.3.0",
+    "typescript": "^5.9.3",
+    "vite": "6.4.2",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  }
+}
