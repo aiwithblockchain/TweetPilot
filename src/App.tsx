@@ -1,36 +1,48 @@
+import { useState } from 'react';
+import Navigation from './components/Navigation';
+import RuntimePanel from './components/RuntimePanel';
+import DashboardView from './features/shell/DashboardView';
+
+const navigationItems = [
+  { id: 'dashboard', label: 'Dashboard', active: true },
+  { id: 'workspace', label: 'Customer Workspace' },
+  { id: 'accounts', label: 'Accounts' },
+  { id: 'instances', label: 'Instances' },
+  { id: 'channels', label: 'Execution Channels' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'extensions', label: 'Extensions' },
+];
+
 export default function App() {
+  const [currentView, setCurrentView] = useState('dashboard');
+
+  const handleNavigate = (id: string) => {
+    setCurrentView(id);
+  };
+
+  const activeItems = navigationItems.map((item) => ({
+    ...item,
+    active: item.id === currentView,
+  }));
+
   return (
     <div className="shell">
       <aside className="sidebar">
         <div>
           <h1>TweetPilot</h1>
-          <p className="muted">Platform initialization successful.</p>
+          <p className="muted">Platform control center for Twitter operations.</p>
         </div>
 
-        <div className="panel compact">
-          <p className="panel-title">Runtime</p>
-          <div className="kv">
-            <span>Platform</span>
-            <strong>{window.tweetOps.runtime.platform}</strong>
-          </div>
-          <div className="kv">
-            <span>App</span>
-            <strong>{window.tweetOps.appName}</strong>
-          </div>
-        </div>
+        <Navigation items={activeItems} onNavigate={handleNavigate} />
+
+        <RuntimePanel
+          platform={window.tweetOps.runtime.platform}
+          appName={window.tweetOps.appName}
+        />
       </aside>
 
-      <main className="main">
-        <section className="hero">
-          <div>
-            <h2>Platform Host Ready</h2>
-            <p className="muted">
-              The Electron host and preload API are initialized. Business features will be added in
-              subsequent task cards.
-            </p>
-          </div>
-        </section>
-      </main>
+      <DashboardView currentView={currentView} />
     </div>
   );
 }

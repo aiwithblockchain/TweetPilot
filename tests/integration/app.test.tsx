@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import App from '../../src/App';
 
 describe('App Integration', () => {
@@ -21,14 +21,28 @@ describe('App Integration', () => {
     expect(appNameElements.length).toBeGreaterThan(0);
   });
 
-  it('should render basic shell structure', () => {
+  it('should render main navigation with all key entries', () => {
     const { container } = render(<App />);
-    const shell = container.querySelector('.shell');
-    expect(shell).toBeInTheDocument();
+    const nav = container.querySelector('.nav') as HTMLElement;
+    expect(nav).toBeInTheDocument();
+
+    // Core platform entries
+    expect(within(nav).getByText('Dashboard')).toBeInTheDocument();
+    expect(within(nav).getByText('Customer Workspace')).toBeInTheDocument();
+    expect(within(nav).getByText('Accounts')).toBeInTheDocument();
+    expect(within(nav).getByText('Instances')).toBeInTheDocument();
+    expect(within(nav).getByText('Execution Channels')).toBeInTheDocument();
+
+    // Mount points for future features
+    expect(within(nav).getByText('Tasks')).toBeInTheDocument();
+    expect(within(nav).getByText('Reports')).toBeInTheDocument();
+    expect(within(nav).getByText('Extensions')).toBeInTheDocument();
   });
 
-  it('should display platform host ready message', () => {
-    render(<App />);
-    expect(screen.getByText('Platform Host Ready')).toBeInTheDocument();
+  it('should render dashboard view by default', () => {
+    const { container } = render(<App />);
+    const nav = container.querySelector('.nav') as HTMLElement;
+    const dashboardButton = within(nav).getByText('Dashboard');
+    expect(dashboardButton).toHaveClass('is-active');
   });
 });
