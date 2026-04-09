@@ -1,6 +1,8 @@
-import { app, BrowserWindow, shell } from 'electron';
+import * as electron from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const { app, BrowserWindow, shell } = electron;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

@@ -10,6 +10,11 @@ export default defineConfig({
   use: {
     trace: 'on-first-retry',
   },
+  webServer: {
+    command: 'npx http-server dist -p 8765 -c-1',
+    port: 8765,
+    reuseExistingServer: !process.env.CI,
+  },
   projects: [
     {
       name: 'electron',
