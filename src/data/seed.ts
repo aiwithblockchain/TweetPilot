@@ -1,0 +1,47 @@
+import type { PlatformState } from '../domain/types';
+
+// Seed data for initial platform state
+// This will be replaced by real data sources in subsequent task cards
+export const seedPlatformState: PlatformState = {
+  workspaces: [
+    {
+      id: 'ws-001',
+      name: 'Default Workspace',
+      description: 'Primary customer workspace',
+    },
+  ],
+  accounts: [
+    {
+      id: 'acc-001',
+      workspaceId: 'ws-001',
+      handle: '@tweetpilot_demo',
+      displayName: 'TweetPilot Demo',
+      status: 'active',
+    },
+  ],
+  instances: [
+    {
+      id: 'inst-001',
+      name: 'Local Instance 1',
+      accountId: 'acc-001',
+      status: 'online',
+      capabilities: ['read', 'write', 'monitor'],
+    },
+  ],
+  channels: [
+    {
+      id: 'ch-001',
+      name: 'Local Bridge',
+      type: 'local-bridge',
+      accountId: 'acc-001',
+      status: 'available',
+    },
+    {
+      id: 'ch-002',
+      name: 'X Official API',
+      type: 'x-api',
+      accountId: 'acc-001',
+      status: 'unavailable',
+    },
+  ],
+};
