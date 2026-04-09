@@ -1,6 +1,13 @@
 import { contextBridge } from 'electron';
 
-const api = {
+export interface TweetOpsAPI {
+  appName: string;
+  runtime: {
+    platform: NodeJS.Platform;
+  };
+}
+
+const api: TweetOpsAPI = {
   appName: 'TweetPilot',
   runtime: {
     platform: process.platform,
