@@ -1,4 +1,6 @@
 import { platformState } from '../../data/platformState';
+import StatusOverview from './StatusOverview';
+import MountPoint from '../../components/MountPoint';
 
 type DashboardViewProps = {
   currentView: string;
@@ -18,6 +20,8 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 
   const renderContent = () => {
     switch (currentView) {
+      case 'dashboard':
+        return null; // Dashboard content is rendered directly in the hero section
       case 'workspace': {
         const workspaces = platformState.getWorkspaces();
         return (
@@ -75,6 +79,18 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
           </div>
         );
       }
+      case 'tasks':
+      case 'reports':
+      case 'extensions':
+        return (
+          <div className="panel">
+            <p className="panel-title">{viewTitles[currentView]}</p>
+            <MountPoint
+              title={viewTitles[currentView]}
+              description={`${viewTitles[currentView]} functionality will be implemented in subsequent task cards.`}
+            />
+          </div>
+        );
       default:
         return (
           <p className="muted">
@@ -91,7 +107,28 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
       <section className="hero">
         <div>
           <h2>{viewTitles[currentView] || 'Dashboard'}</h2>
-          {renderContent()}
+          {currentView === 'dashboard' ? (
+            <>
+              <p className="muted">Current operational status of platform components</p>
+              <StatusOverview />
+              <div className="mount-points-grid">
+                <MountPoint
+                  title="Tasks"
+                  description="Task management and execution queue. Will be implemented in subsequent task cards."
+                />
+                <MountPoint
+                  title="Reports"
+                  description="Analytics and reporting dashboard. Will be implemented in subsequent task cards."
+                />
+                <MountPoint
+                  title="Extensions"
+                  description="Platform extension capabilities. Will be implemented in subsequent task cards."
+                />
+              </div>
+            </>
+          ) : (
+            renderContent()
+          )}
         </div>
       </section>
     </main>

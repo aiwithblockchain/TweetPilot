@@ -86,14 +86,6 @@ button {
   font-size: 1.5rem;
 }
 
-.eyebrow {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.74rem;
-  color: #86a2c4;
-}
-
 .muted {
   color: #9fb0c7;
 }
@@ -104,14 +96,10 @@ button {
   gap: 0.6rem;
 }
 
-.nav-item,
-.prompt-card {
+.nav-item {
   border-radius: 0.95rem;
   color: inherit;
   text-align: left;
-}
-
-.nav-item {
   padding: 0.85rem 1rem;
   cursor: pointer;
 }
@@ -135,6 +123,14 @@ button {
   letter-spacing: 0.08em;
 }
 
+.section-title {
+  margin: 1rem 0 0.7rem;
+  color: #90a6c5;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .kv {
   display: flex;
   align-items: center;
@@ -150,6 +146,73 @@ button {
   display: block;
 }
 
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid rgba(138, 160, 186, 0.16);
+  border-radius: 0.95rem;
+  background: rgba(13, 19, 28, 0.82);
+}
+
+.status-label {
+  font-size: 0.85rem;
+  color: #9fb0c7;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-value {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.status-badge {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-ok {
+  background: rgba(19, 95, 68, 0.22);
+  color: #6fe6b3;
+  border: 1px solid rgba(111, 230, 179, 0.18);
+}
+
+.status-pending {
+  background: rgba(104, 85, 20, 0.25);
+  color: #ffd36d;
+  border: 1px solid rgba(255, 211, 109, 0.18);
+}
+
+.mount-points-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.mount-point {
+  min-height: 8rem;
+}
+
+.mount-point-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
 @media (max-width: 1100px) {
   .shell {
     grid-template-columns: 1fr;
@@ -162,5 +225,10 @@ button {
 
   .hero {
     flex-direction: column;
+  }
+
+  .status-grid,
+  .mount-points-grid {
+    grid-template-columns: 1fr;
   }
 }

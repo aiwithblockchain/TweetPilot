@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../src/App';
 
 describe('App Integration - Object Relationships', () => {
   it('should display workspace data when navigating to workspace view', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
 
-    const workspaceButton = screen.getByText('Customer Workspace');
+    const nav = container.querySelector('.nav') as HTMLElement;
+    const workspaceButton = within(nav).getByText('Customer Workspace');
     await user.click(workspaceButton);
 
     // Verify workspace data from seed is displayed
@@ -18,9 +19,10 @@ describe('App Integration - Object Relationships', () => {
 
   it('should display account data when navigating to accounts view', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
 
-    const accountsButton = screen.getByText('Accounts');
+    const nav = container.querySelector('.nav') as HTMLElement;
+    const accountsButton = within(nav).getByText('Accounts');
     await user.click(accountsButton);
 
     // Verify account data from seed is displayed
@@ -31,9 +33,10 @@ describe('App Integration - Object Relationships', () => {
 
   it('should display instance data when navigating to instances view', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
 
-    const instancesButton = screen.getByText('Instances');
+    const nav = container.querySelector('.nav') as HTMLElement;
+    const instancesButton = within(nav).getByText('Instances');
     await user.click(instancesButton);
 
     // Verify instance data from seed is displayed
@@ -46,7 +49,7 @@ describe('App Integration - Object Relationships', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const channelsButton = screen.getByText('Execution Channels');
+    const channelsButton = screen.getByRole('button', { name: 'Execution Channels' });
     await user.click(channelsButton);
 
     // Verify channel data from seed is displayed
