@@ -80,4 +80,56 @@ test.describe('TweetPilot UI E2E (Chromium)', () => {
     await expect(runtimePanel.locator('text=App')).toBeVisible();
     await expect(runtimePanel.locator('text=TweetPilot')).toBeVisible();
   });
+
+  test('should trigger reply generation flow from comment inputs view', async ({ page }) => {
+    await page.waitForSelector('h2');
+    await page.click('nav >> text=Comment Inputs');
+    await expect(page.locator('h2:has-text("Comment Inputs")')).toBeVisible();
+
+    await page.click('.comment-selection-card >> nth=0');
+    await page.click('text=Generate Replies');
+
+    await expect(page.locator('text=Reply 1')).toBeVisible();
+    await expect(page.locator('text=Candidate Replies')).toBeVisible();
+  });
+
+  test('should display candidate reply cards with risk and confidence', async ({ page }) => {
+    await page.waitForSelector('h2');
+    await page.click('nav >> text=Comment Inputs');
+    await page.click('.comment-selection-card >> nth=0');
+    await page.click('text=Generate Replies');
+
+    await expect(page.locator('.candidate-reply-card').first()).toBeVisible();
+    await expect(page.locator('text=Risk: low').first()).toBeVisible();
+    await expect(page.locator('text=Confidence:').first()).toBeVisible();
+  });
+
+  test('should display generation metadata after selecting a reply', async ({ page }) => {
+    await page.waitForSelector('h2');
+    await page.click('nav >> text=Comment Inputs');
+    await page.click('.comment-selection-card >> nth=0');
+    await page.click('text=Generate Replies');
+    await page.click('.candidate-reply-card >> text=View Details');
+
+    const metadataPanel = page.locator('.reply-panel').filter({ hasText: 'Generation Metadata' });
+    await expect(metadataPanel).toBeVisible();
+    await expect(metadataPanel.locator('text=Model Source')).toBeVisible();
+    await expect(metadataPanel.locator('text=Knowledge Hits')).toBeVisible();
+    await expect(metadataPanel.locator('text=Comment Input').last()).toBeVisible();
+  });
+
+  test('should change generated output when switching roles', async ({ page }) => {
+    await page.waitForSelector('h2');
+    await page.click('nav >> text=Comment Inputs');
+    await page.click('.comment-selection-card >> nth=0');
+
+    await page.click('text=Generate Replies');
+    const defaultReply = await page.locator('.candidate-reply-card p').nth(0).textContent();
+
+    await page.selectOption('label:has-text("Role") select', { label: '友好助手' });
+    await page.click('text=Generate Replies');
+
+    const friendlyReply = await page.locator('.candidate-reply-card p').nth(0).textContent();
+    expect(defaultReply).not.toBe(friendlyReply);
+  });
 });

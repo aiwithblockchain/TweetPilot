@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm test:*)",
-      "Bash(grep -E \"\\\\.\\(ts|test\\\\.ts\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|test\\\\.ts\\)$\")",
+      "Bash(grep -E \"\\\\.\\(tsx?|test\\\\.tsx?\\)$\")"
     ]
   }
 }

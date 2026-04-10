@@ -1,9 +1,8 @@
 import { platformState } from '../../data/platformState';
-import { commentInputRepository } from '../../data/commentInputRepositoryInstance';
 import StatusOverview from './StatusOverview';
 import MountPoint from '../../components/MountPoint';
-import CommentInputList from '../commentInput/CommentInputList';
 import RoleManagement from '../roles/RoleManagement';
+import ReplyGenerationView from '../reply-generation/ReplyGenerationView';
 
 type DashboardViewProps = {
   currentView: string;
@@ -87,7 +86,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
         );
       }
       case 'inputs':
-        return <CommentInputList repository={commentInputRepository} />;
+        return <ReplyGenerationView />;
       case 'tasks':
       case 'reports':
       case 'extensions':

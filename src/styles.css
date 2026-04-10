@@ -246,7 +246,10 @@ button {
 .roles-grid-left,
 .role-list,
 .role-form,
-.binding-list {
+.binding-list,
+.reply-generation-layout,
+.comment-selection-list,
+.candidate-reply-list {
   display: flex;
   flex-direction: column;
 }
@@ -255,7 +258,10 @@ button {
 .roles-grid,
 .roles-grid-left,
 .role-list,
-.binding-list {
+.binding-list,
+.reply-generation-layout,
+.comment-selection-list,
+.candidate-reply-list {
   gap: 1rem;
 }
 
@@ -266,6 +272,10 @@ button {
 }
 
 .role-panel {
+  margin: 0;
+}
+
+.reply-panel {
   margin: 0;
 }
 
@@ -333,7 +343,9 @@ button {
 }
 
 .role-card,
-.binding-item {
+.binding-item,
+.reply-preview-card,
+.candidate-reply-card {
   border: 1px solid rgba(138, 160, 186, 0.14);
   border-radius: 1rem;
   background: rgba(7, 16, 24, 0.48);
@@ -356,7 +368,9 @@ button {
 }
 
 .role-card-main p,
-.binding-item p {
+.binding-item p,
+.reply-preview-card p,
+.candidate-reply-card p {
   margin: 0.35rem 0 0;
   line-height: 1.5;
 }
@@ -371,6 +385,13 @@ button {
 
 .binding-header {
   align-items: flex-start;
+}
+
+.reply-trigger-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
 }
 
 .binding-columns {
@@ -417,6 +438,90 @@ button {
   color: #9fb0c7;
 }
 
+.comment-selection-card {
+  border: 1px solid rgba(138, 160, 186, 0.14);
+  border-radius: 0.95rem;
+  background: rgba(7, 16, 24, 0.45);
+  color: inherit;
+  text-align: left;
+  padding: 0.95rem 1rem;
+  cursor: pointer;
+}
+
+.comment-selection-card.is-selected,
+.candidate-reply-card.is-selected {
+  border-color: rgba(105, 171, 255, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(105, 171, 255, 0.22);
+}
+
+.candidate-reply-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+}
+
+.risk-low {
+  background: rgba(31, 111, 81, 0.26);
+  color: #8ef2c8;
+}
+
+.risk-medium {
+  background: rgba(147, 107, 16, 0.24);
+  color: #ffd36d;
+}
+
+.risk-high {
+  background: rgba(145, 46, 46, 0.28);
+  color: #ffb1b1;
+}
+
+.confidence-meter {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(138, 160, 186, 0.14);
+  overflow: hidden;
+  margin: 0.8rem 0 0.45rem;
+}
+
+.confidence-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(71, 125, 255, 0.9), rgba(36, 194, 170, 0.9));
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(138, 160, 186, 0.12);
+  border-radius: 0.85rem;
+  background: rgba(7, 16, 24, 0.42);
+}
+
+.metadata-item-wide {
+  grid-column: span 2;
+}
+
+.error-message {
+  margin: 0.75rem 0 0;
+  color: #ffb1b1;
+}
+
 button:disabled,
 input:disabled,
 textarea:disabled,
@@ -442,7 +547,12 @@ select:disabled {
   .status-grid,
   .mount-points-grid,
   .roles-grid,
-  .binding-columns {
+  .binding-columns,
+  .metadata-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metadata-item-wide {
+    grid-column: span 1;
   }
 }
