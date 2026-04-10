@@ -14,6 +14,7 @@ export default function Navigation({ items, onNavigate }: NavigationProps) {
 		<nav className="nav">
 			{items.map((item) => (
 				<button
+					type="button"
 					key={item.id}
 					className={`nav-item ${item.active ? "is-active" : ""}`}
 					onClick={() => onNavigate?.(item.id)}

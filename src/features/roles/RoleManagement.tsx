@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { platformState } from "../../data/platformState";
 import { roleRepository } from "../../data/roleRepositoryInstance";
 import { createRole, type Role } from "../../domain/role";
@@ -59,7 +59,7 @@ export default function RoleManagement() {
 		};
 	});
 
-	const loadWorkspaceData = async (workspaceId: string) => {
+	const loadWorkspaceData = useCallback(async (workspaceId: string) => {
 		const workspaceRoles = await roleRepository.findByWorkspace(workspaceId);
 		const workspaceAccounts = platformState.getAccounts(workspaceId);
 		const accountEntries = await Promise.all(
@@ -80,28 +80,31 @@ export default function RoleManagement() {
 			workspaceRoles,
 			accountRoleViews: Object.fromEntries(accountEntries),
 		};
-	};
+	}, []);
 
-	const reload = async (
-		workspaceId: string = selectedWorkspaceId,
-		message: string = "Loading role data...",
-	) => {
-		setIsLoading(true);
-		setLoadingMessage(message);
-		try {
-			const { workspaceRoles, accountRoleViews: nextAccountRoleViews } =
-				await loadWorkspaceData(workspaceId);
+	const reload = useCallback(
+		async (
+			workspaceId: string = selectedWorkspaceId,
+			message: string = "Loading role data...",
+		) => {
+			setIsLoading(true);
+			setLoadingMessage(message);
+			try {
+				const { workspaceRoles, accountRoleViews: nextAccountRoleViews } =
+					await loadWorkspaceData(workspaceId);
 
-			setRoles(workspaceRoles);
-			setAccountRoleViews(nextAccountRoleViews);
-		} finally {
-			setIsLoading(false);
-		}
-	};
+				setRoles(workspaceRoles);
+				setAccountRoleViews(nextAccountRoleViews);
+			} finally {
+				setIsLoading(false);
+			}
+		},
+		[selectedWorkspaceId, loadWorkspaceData],
+	);
 
 	useEffect(() => {
 		void reload(selectedWorkspaceId, "Loading role data...");
-	}, [selectedWorkspaceId]);
+	}, [selectedWorkspaceId, reload]);
 
 	const runWithLoading = async (
 		message: string,
