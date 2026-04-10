@@ -60,6 +60,45 @@ class ErrorBoundary extends React.Component<Props, State> {
 
 ---
 
+## Slice 2 遗留问题
+
+### 13. E2E 测试未使用真实 Electron 环境
+- **来源**: T2-04 Code Review
+- **严重程度**: 高
+- **状态**: ⏭️ **推迟到后续阶段**
+- **位置**: [tests/e2e/](../../../tests/e2e/)
+
+**问题描述**:
+- 当前 E2E 测试使用 RTL (React Testing Library) 模拟，而非真实的 Electron 渲染器验证
+- 无法验证真实运行环境中的问题
+
+**建议解决方案**:
+- 使用 Playwright 拉起真实的 Electron 窗口进行 E2E 测试
+- 参考 Slice 1 中已有的 Playwright + Electron 测试基础设施
+
+**建议时机**: 
+- 在进入 Slice 3 之前，在项目路线图中标记"打通真实运行环境 E2E 测试"的里程碑
+- 建议在 Slice 3 或 Slice 4 期间完成
+
+---
+
+### 14. 评论输入列表样式优化
+- **来源**: T2-04 Code Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/styles.css](../../../src/styles.css)
+
+**问题描述**:
+- 多个 Meta 信息的展示较为拥挤，缺少视觉层次
+
+**建议解决方案**:
+- 引入间距标准或图标辅助区分信息
+- 优化 Metadata 展示的视觉层次
+
+**建议时机**: 在后续美化环节中处理
+
+---
+
 ### 3. 导航状态管理优化
 - **来源**: Slice 1 Complete Review
 - **严重程度**: 低
