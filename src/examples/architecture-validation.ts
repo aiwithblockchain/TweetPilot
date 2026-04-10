@@ -6,6 +6,8 @@
 import { AIProviderFactory } from '../ai/index.js';
 import { EmptyKnowledgeBase } from '../knowledge/index.js';
 import { ReplyAgent } from '../agents/index.js';
+import { createCommentInput } from '../domain/commentInput.js';
+import { roleRepository } from '../data/roleRepositoryInstance.js';
 
 // 示例：创建 Reply Agent 实例
 async function createReplyAgentExample() {
@@ -19,7 +21,7 @@ async function createReplyAgentExample() {
   const knowledgeBase = new EmptyKnowledgeBase();
 
   // 3. 创建 Reply Agent（依赖接口，不依赖具体实现）
-  const replyAgent = new ReplyAgent(aiProvider, knowledgeBase);
+  const replyAgent = new ReplyAgent(aiProvider, knowledgeBase, roleRepository);
 
   return replyAgent;
 }
@@ -27,16 +29,30 @@ async function createReplyAgentExample() {
 // 示例：使用 Reply Agent 生成回复
 async function generateReplyExample() {
   const agent = await createReplyAgentExample();
+  const defaultRole = await roleRepository.getDefaultRole('acc-001');
 
   // 不传 options（向后兼容）
-  const result1 = await agent.generateReply('Great post!');
+  const result1 = await agent.generateReply(
+    createCommentInput({
+      workspaceId: 'ws-001',
+      accountId: 'acc-001',
+      content: 'Great post!',
+    })
+  );
   console.log('Reply without options:', result1);
 
   // 传入 role 参数（支持不同角色）
-  const result2 = await agent.generateReply('How does this work?', {
-    role: 'technical expert',
-    temperature: 0.7,
-  });
+  const result2 = await agent.generateReply(
+    createCommentInput({
+      workspaceId: 'ws-001',
+      accountId: 'acc-001',
+      content: 'How does this work?',
+    }),
+    {
+      role: defaultRole?.id,
+      temperature: 0.7,
+    }
+  );
   console.log('Reply with role:', result2);
 }
 
