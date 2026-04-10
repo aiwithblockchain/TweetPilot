@@ -320,3 +320,60 @@ function parseTwitterDate(dateStr: string): Date {
 
 **建议时机**: 可在后续 Slice 添加
 
+---
+
+## Slice 3 可选优化
+
+### 15. 温度变化策略优化
+- **来源**: Slice 3 Engineering Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/agents/ReplyAgent.ts](../../../src/agents/ReplyAgent.ts)
+
+**问题描述**:
+- 当前温度变化策略是简单的线性递增（0.7, 0.8, 0.9）
+- 第二阶段可能需要更灵活的策略（随机、指数、用户自定义）
+
+**建议解决方案**:
+```typescript
+// src/agents/temperatureStrategies.ts
+export interface ITemperatureStrategy {
+  getTemperature(baseTemperature: number, index: number, count: number): number;
+}
+
+export class LinearTemperatureStrategy implements ITemperatureStrategy {
+  constructor(private step: number = 0.1) {}
+  getTemperature(base: number, index: number, count: number): number {
+    return base + (index * this.step);
+  }
+}
+
+export class RandomTemperatureStrategy implements ITemperatureStrategy {
+  constructor(private range: number = 0.3) {}
+  getTemperature(base: number, index: number, count: number): number {
+    return base + (Math.random() * this.range);
+  }
+}
+```
+
+**建议时机**: 第二阶段，当需要更多样化的回复生成策略时
+
+---
+
+### 16. 测试覆盖率目标
+- **来源**: Slice 3 Engineering Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: 所有任务卡的"完成定义"部分
+
+**问题描述**:
+- 当前任务卡的"完成定义"中没有明确的测试覆盖率目标
+- 建议添加量化指标（如 ≥80%）
+
+**建议解决方案**:
+在每个任务卡的"完成定义"部分添加：
+- 单元测试覆盖率 ≥ 80%
+- 关键路径测试覆盖率 100%
+
+**建议时机**: 第二阶段建立 CI/CD 流程时统一添加
+

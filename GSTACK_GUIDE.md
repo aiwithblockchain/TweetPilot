@@ -258,3 +258,41 @@ A: 能。`/qa` 使用真实的 Chromium 浏览器，可以测试 Electron 应用
 - [gstack 官方文档](https://github.com/garrytan/gstack)
 - [Conductor 官方网站](https://conductor.build)
 - [gstack 技能详解](~/.claude/skills/gstack/docs/skills.md)
+
+
+
+
+Viewed CLAUDE.md:1-12
+Listed directory TweetPilot
+Viewed GSTACK_GUIDE.md:1-261
+
+是的，我理解这个文件以及其中定义的命令。
+
+`CLAUDE.md` 文件在这里被用作 **gstack**（一个基于 Claude 的自动化工作流框架）的配置和技能声明文件。它定义了开发流程中可以调用的自动化“技能”（Skills）。
+
+以下是我对这些命令和配置的理解：
+
+### 1. 核心指令
+*   **浏览工具配置**：明确要求使用 `/browse` 技能进行联网搜索，严禁使用 `mcp__claude-in-chrome__*` 相关的工具。这确保了联网操作的一致性和可控性。
+
+### 2. 常用技能（Slash Commands）
+根据项目中的 `GSTACK_GUIDE.md` 说明，这些命令代表了不同的自动化工作流：
+
+*   **`/review` (代码审查)**：自动检查代码逻辑漏洞、性能问题和测试覆盖率，而不只是基础的格式检查。
+*   **`/ship` (自动化发布)**：完成一个阶段（Slice）后的全流程自动化：运行测试 -> 检查覆盖率 -> 创建 PR -> 更新文档。
+*   **`/qa` (端到端测试)**：调用真实浏览器（Playwright/Chromium）进行 UI 自动化测试，并自动发现和修复 Bug。
+*   **`/office-hours` (产品审视)**：在复杂任务开始前，从产品和设计的角度挑战当前方案，寻找更简洁的实现路径。
+*   **`/autoplan` (自动化规划)**：自动执行 CEO、工程、设计三方审查，为复杂任务生成详细的实现计划。
+*   **`/cso` (安全审计)**：进行安全风险扫描，包括 OWASP Top 10 和危害建模。
+
+### 3. 项目上下文
+*   **项目定位**：TweetPilot 是一个 Twitter/X 的自动化管理工具。
+*   **使用节奏**：
+    *   **早期 (Slice 1-2)**：重点使用 `/review` 和 `/ship` 保证基础代码稳固。
+    *   **中期 (Slice 3-5)**：引入 `/qa` 进行 UI 测试。
+    *   **后期 (Slice 6-8)**：使用 `/office-hours` 和 `/cso` 处理复杂逻辑和安全性。
+
+**总结：**
+这些命令是你的“AI 助手快捷键”。你可以通过输入这些指令来触发具体的自动化任务，而不是每次都手动下达复杂的指令。
+
+**你需要我现在执行其中的某项指令（如对当前代码进行 `/review`），或者针对某个 Slice 进行规划吗？**
