@@ -1,6 +1,8 @@
 import { platformState } from '../../data/platformState';
+import { commentInputRepository } from '../../data/commentInputRepositoryInstance';
 import StatusOverview from './StatusOverview';
 import MountPoint from '../../components/MountPoint';
+import CommentInputList from '../commentInput/CommentInputList';
 
 type DashboardViewProps = {
   currentView: string;
@@ -13,6 +15,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
     accounts: 'Accounts',
     instances: 'Instances',
     channels: 'Execution Channels',
+    inputs: 'Comment Inputs',
     tasks: 'Tasks',
     reports: 'Reports',
     extensions: 'Extensions',
@@ -79,6 +82,8 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
           </div>
         );
       }
+      case 'inputs':
+        return <CommentInputList repository={commentInputRepository} />;
       case 'tasks':
       case 'reports':
       case 'extensions':

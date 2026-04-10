@@ -9,6 +9,7 @@ const navigationItems = [
   { id: 'accounts', label: 'Accounts' },
   { id: 'instances', label: 'Instances' },
   { id: 'channels', label: 'Execution Channels' },
+  { id: 'inputs', label: 'Comment Inputs' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'reports', label: 'Reports' },
   { id: 'extensions', label: 'Extensions' },
