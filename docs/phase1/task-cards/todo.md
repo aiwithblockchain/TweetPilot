@@ -196,3 +196,88 @@ export type IPCResult<T> = IPCSuccess<T> | IPCError;
 - 在 Phase 2 实现 LocalBridge 时同步考虑
 - 在 Slice 4-5（本地桥接与扩展通信）阶段解决
 
+---
+
+## T2-01 & T2-02 可选优化
+
+### 9. LocalBridgeClient 缺少 dispose 方法
+- **来源**: T2-01-T2-02 Complete Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/adapters/localBridge/client.ts](../../../src/adapters/localBridge/client.ts)
+
+**问题描述**:
+- 虽然 `electron/main.ts` 已添加清理逻辑，但 `LocalBridgeClient` 本身没有 `dispose()` 方法
+
+**建议解决方案**:
+```typescript
+export class LocalBridgeClient {
+  // ...
+  
+  dispose(): void {
+    // 如果未来有需要清理的资源（如 WebSocket 连接），在这里清理
+  }
+}
+```
+
+**建议时机**: 当前没有需要清理的资源，可在未来需要时添加
+
+---
+
+### 10. 日期解析可以更健壮
+- **来源**: T2-01-T2-02 Complete Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/adapters/localBridge/mapper.ts:40-42](../../../src/adapters/localBridge/mapper.ts#L40-L42)
+
+**问题描述**:
+- 如果 Twitter 日期格式变更，`new Date()` 可能返回 Invalid Date
+
+**建议解决方案**:
+```typescript
+function parseTwitterDate(dateStr: string): Date {
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid Twitter date format: ${dateStr}`);
+  }
+  return date;
+}
+```
+
+**建议时机**: Twitter 日期格式稳定，低优先级
+
+---
+
+### 11. 哈希函数可以使用更好的算法
+- **来源**: T2-01-T2-02 Complete Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/domain/commentInput.ts:34-41](../../../src/domain/commentInput.ts#L34-L41)
+
+**问题描述**:
+- 简单的哈希函数，可能有碰撞
+
+**建议解决方案**:
+- 如果未来需要更强的唯一性保证，可以使用 crypto.subtle.digest() 或 UUID
+
+**建议时机**: 当前场景足够，低优先级
+
+---
+
+### 12. 契约测试可以添加更多边界情况
+- **来源**: T2-01-T2-02 Complete Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [tests/adapters/localBridge/contract.test.ts](../../../tests/adapters/localBridge/contract.test.ts)
+
+**当前覆盖**:
+- ✅ 正常响应结构
+- ✅ 空回复列表
+
+**可添加**:
+- 缺少必需字段的响应
+- 嵌套结构为 null 的情况
+- 超大回复列表（性能测试）
+
+**建议时机**: 可在后续 Slice 添加
+
