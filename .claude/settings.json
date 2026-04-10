@@ -4,6 +4,9 @@
       "Bash(npm test:*)",
       "Bash(grep -E \"\\\\.\\(ts|test\\\\.ts\\)$\")",
       "Bash(grep -E \"\\\\.\\(tsx?|test\\\\.tsx?\\)$\")"
+    ],
+    "additionalDirectories": [
+      "/Users/wesley/aiwithblockchain/TweetPilot/docs/phase1/task-cards"
     ]
   }
 }
