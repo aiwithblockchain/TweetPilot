@@ -30,6 +30,7 @@ describe('App Integration', () => {
     expect(within(nav).getByText('Dashboard')).toBeInTheDocument();
     expect(within(nav).getByText('Customer Workspace')).toBeInTheDocument();
     expect(within(nav).getByText('Accounts')).toBeInTheDocument();
+    expect(within(nav).getByText('Roles')).toBeInTheDocument();
     expect(within(nav).getByText('Instances')).toBeInTheDocument();
     expect(within(nav).getByText('Execution Channels')).toBeInTheDocument();
 

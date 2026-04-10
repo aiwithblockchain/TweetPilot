@@ -7,6 +7,7 @@ const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', active: true },
   { id: 'workspace', label: 'Customer Workspace' },
   { id: 'accounts', label: 'Accounts' },
+  { id: 'roles', label: 'Roles' },
   { id: 'instances', label: 'Instances' },
   { id: 'channels', label: 'Execution Channels' },
   { id: 'inputs', label: 'Comment Inputs' },

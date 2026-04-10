@@ -3,6 +3,7 @@ import { commentInputRepository } from '../../data/commentInputRepositoryInstanc
 import StatusOverview from './StatusOverview';
 import MountPoint from '../../components/MountPoint';
 import CommentInputList from '../commentInput/CommentInputList';
+import RoleManagement from '../roles/RoleManagement';
 
 type DashboardViewProps = {
   currentView: string;
@@ -13,6 +14,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
     dashboard: 'Dashboard',
     workspace: 'Customer Workspace',
     accounts: 'Accounts',
+    roles: 'Roles',
     instances: 'Instances',
     channels: 'Execution Channels',
     inputs: 'Comment Inputs',
@@ -68,6 +70,8 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
           </div>
         );
       }
+      case 'roles':
+        return <RoleManagement />;
       case 'channels': {
         const channels = platformState.getChannels();
         return (

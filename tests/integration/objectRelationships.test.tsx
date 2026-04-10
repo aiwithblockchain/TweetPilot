@@ -28,7 +28,8 @@ describe('App Integration - Object Relationships', () => {
     // Verify account data from seed is displayed
     expect(screen.getByText('TweetPilot Demo')).toBeInTheDocument();
     expect(screen.getByText(/\@tweetpilot_demo/)).toBeInTheDocument();
-    expect(screen.getByText(/Status: active/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Status: active/)).toHaveLength(2);
+    expect(screen.getByText('TweetPilot Growth')).toBeInTheDocument();
   });
 
   it('should display instance data when navigating to instances view', async () => {
@@ -43,6 +44,7 @@ describe('App Integration - Object Relationships', () => {
     expect(screen.getByText('Local Instance 1')).toBeInTheDocument();
     expect(screen.getByText(/Status: online/)).toBeInTheDocument();
     expect(screen.getByText(/Capabilities: read, write, monitor/)).toBeInTheDocument();
+    expect(screen.getByText('Growth Instance 1')).toBeInTheDocument();
   });
 
   it('should display channel data when navigating to channels view', async () => {
@@ -57,5 +59,6 @@ describe('App Integration - Object Relationships', () => {
     expect(screen.getByText(/local-bridge/)).toBeInTheDocument();
     expect(screen.getByText('X Official API')).toBeInTheDocument();
     expect(screen.getByText(/x-api/)).toBeInTheDocument();
+    expect(screen.getByText('Growth MCP')).toBeInTheDocument();
   });
 });

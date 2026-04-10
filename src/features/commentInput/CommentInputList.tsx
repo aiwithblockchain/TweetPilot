@@ -64,8 +64,8 @@ export default function CommentInputList({ repository, workspaceId, accountId }:
             {input.targetTweetId && (
               <p className="muted">Target Tweet: {input.targetTweetId}</p>
             )}
-            {input.metadata?.source && (
-              <p className="muted">Source: {input.metadata.source as string}</p>
+            {input.metadata?.source !== undefined && input.metadata?.source !== null && (
+              <p className="muted">Source: {String(input.metadata.source)}</p>
             )}
             <p className="muted">Created: {new Date(input.createdAt).toLocaleString()}</p>
           </div>

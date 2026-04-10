@@ -28,7 +28,7 @@ describe('StatusOverview Component', () => {
     const statusGrid = container.querySelector('.status-grid') as HTMLElement;
 
     expect(within(statusGrid).getByText('Instances')).toBeInTheDocument();
-    expect(within(statusGrid).getByText('1/1')).toBeInTheDocument();
+    expect(within(statusGrid).getByText('1/2')).toBeInTheDocument();
   });
 
   it('should display channel status with availability', () => {
@@ -36,6 +36,6 @@ describe('StatusOverview Component', () => {
     const statusGrid = container.querySelector('.status-grid') as HTMLElement;
 
     expect(within(statusGrid).getByText('Channels')).toBeInTheDocument();
-    expect(within(statusGrid).getByText('1/2')).toBeInTheDocument();
+    expect(within(statusGrid).getByText('2/3')).toBeInTheDocument();
   });
 });
