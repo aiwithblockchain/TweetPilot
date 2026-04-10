@@ -4,21 +4,25 @@ export type CommentInputId = string;
 
 export interface CommentInput {
   id: CommentInputId;
+  organizationId?: string;  // Reserved for multi-tenant support (Phase 2)
   workspaceId: string;
   accountId: string;
   content: string;
   targetTweetId?: string;
   targetTweetUrl?: string;
   createdAt: Date;
+  createdBy?: string;  // Reserved for permission system (Phase 2)
   metadata?: Record<string, unknown>;
 }
 
 export interface CreateCommentInputParams {
+  organizationId?: string;  // Reserved for multi-tenant support (Phase 2)
   workspaceId: string;
   accountId: string;
   content: string;
   targetTweetId?: string;
   targetTweetUrl?: string;
+  createdBy?: string;  // Reserved for permission system (Phase 2)
   metadata?: Record<string, unknown>;
 }
 
@@ -46,12 +50,14 @@ export function createCommentInput(params: CreateCommentInputParams): CommentInp
   const id = generateCommentInputId(params);
   return {
     id,
+    organizationId: params.organizationId,
     workspaceId: params.workspaceId,
     accountId: params.accountId,
     content: params.content,
     targetTweetId: params.targetTweetId,
     targetTweetUrl: params.targetTweetUrl,
     createdAt: new Date(),
+    createdBy: params.createdBy,
     metadata: params.metadata,
   };
 }
