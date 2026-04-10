@@ -14,7 +14,11 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.config.ts --mode integration",
     "test:e2e": "playwright test",
-    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:coverage": "vitest --coverage --run",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "deadcode": "knip"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.87.0",
@@ -22,6 +26,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.11",
     "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
@@ -31,9 +36,11 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "4.7.0",
+    "@vitest/coverage-v8": "^4.1.4",
     "electron": "^38.3.0",
     "http-server": "^14.1.1",
     "jsdom": "^25.0.1",
+    "knip": "^6.3.1",
     "mime-types": "^3.0.2",
     "playwright": "^1.49.1",
     "typescript": "^5.9.3",

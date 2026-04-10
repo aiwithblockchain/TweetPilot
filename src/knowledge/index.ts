@@ -2,5 +2,5 @@
  * 知识库模块导出
  */
 
-export * from './IKnowledgeBase.js';
-export * from './EmptyKnowledgeBase.js';
+export * from "./EmptyKnowledgeBase.js";
+export * from "./IKnowledgeBase.js";

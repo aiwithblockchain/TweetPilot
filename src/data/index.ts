@@ -1,8 +1,9 @@
 // Data layer exports
-export * from './commentInputRepository';
-export * from './platformState';
-export * from './seed';
-export * from './repositories';
-export * from './commentInputRepositoryInstance';
-export * from './candidateReplyRepositoryInstance';
-export * from './roleRepositoryInstance';
+
+export * from "./candidateReplyRepositoryInstance";
+export * from "./commentInputRepository";
+export * from "./commentInputRepositoryInstance";
+export * from "./platformState";
+export * from "./repositories";
+export * from "./roleRepositoryInstance";
+export * from "./seed";
