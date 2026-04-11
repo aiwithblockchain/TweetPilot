@@ -33,6 +33,8 @@ export interface ExecutionChannel {
 	type: "local-bridge" | "x-api" | "x-mcp";
 	accountId: AccountId;
 	status: "available" | "unavailable";
+	capabilities: string[];
+	metadata?: Record<string, unknown>;
 }
 
 export interface PlatformState {

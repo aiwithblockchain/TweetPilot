@@ -30,7 +30,11 @@ function clonePlatformState(state: PlatformState): PlatformState {
 			...instance,
 			capabilities: [...instance.capabilities],
 		})),
-		channels: state.channels.map((channel) => ({ ...channel })),
+		channels: state.channels.map((channel) => ({
+			...channel,
+			capabilities: [...channel.capabilities],
+			metadata: channel.metadata ? { ...channel.metadata } : undefined,
+		})),
 	};
 }
 
@@ -122,6 +126,7 @@ export class LocalBridgeHybridPlatformDataSource
 				type: "local-bridge",
 				accountId,
 				status: "available",
+				capabilities: ["reply"],
 			});
 		}
 

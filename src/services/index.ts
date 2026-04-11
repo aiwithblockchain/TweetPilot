@@ -6,6 +6,7 @@ import { commentInputRepository } from "../data/commentInputRepositoryInstance.j
 import { replyTaskRepository } from "../data/replyTaskRepositoryInstance.js";
 import { roleRepository } from "../data/roleRepositoryInstance.js";
 import { EmptyKnowledgeBase } from "../knowledge/EmptyKnowledgeBase.js";
+export * from "./executionRequestBuilder.js";
 import { createReplyTaskCreationService } from "./replyTaskCreationService.js";
 import { createReviewQueueService } from "./reviewQueueService.js";
 import { createTaskOwnershipService } from "./taskOwnershipService.js";

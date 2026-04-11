@@ -54,6 +54,7 @@ export const seedPlatformState: PlatformState = {
 			type: "local-bridge",
 			accountId: "acc-001",
 			status: "available",
+			capabilities: ["reply"],
 		},
 		{
 			id: "ch-002",
@@ -61,6 +62,7 @@ export const seedPlatformState: PlatformState = {
 			type: "x-api",
 			accountId: "acc-001",
 			status: "unavailable",
+			capabilities: ["reply"],
 		},
 		{
 			id: "ch-003",
@@ -68,6 +70,7 @@ export const seedPlatformState: PlatformState = {
 			type: "x-mcp",
 			accountId: "acc-002",
 			status: "available",
+			capabilities: ["reply"],
 		},
 	],
 };

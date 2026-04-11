@@ -105,6 +105,7 @@ describe("PlatformStateDataSource", () => {
 				type: "local-bridge",
 				accountId: "acc-001",
 				status: "unavailable",
+				capabilities: ["reply"],
 			},
 			{
 				id: "ch-001",
@@ -112,6 +113,7 @@ describe("PlatformStateDataSource", () => {
 				type: "local-bridge",
 				accountId: "acc-001",
 				status: "available",
+				capabilities: ["reply"],
 			},
 		]);
 

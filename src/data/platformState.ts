@@ -47,6 +47,10 @@ export class PlatformStateManager {
 		}
 		return channels;
 	}
+
+	getChannel(channelId: string): ExecutionChannel | null {
+		return this.getStateSnapshot().channels.find((channel) => channel.id === channelId) ?? null;
+	}
 }
 
 export function resolveConfiguredDataSourceMode(
