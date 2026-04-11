@@ -1,4 +1,5 @@
 import type {
+	ReplyTaskRoute,
 	ReplyTask,
 	ReplyTaskEvent,
 	ReplyTaskId,
@@ -67,6 +68,12 @@ export class InMemoryReplyTaskRepository implements IReplyTaskRepository {
 	async findByStatus(status: ReplyTaskStatus): Promise<ReplyTask[]> {
 		return sortByNewest(
 			Array.from(this.tasks.values()).filter((task) => task.status === status),
+		);
+	}
+
+	async findByRoute(route: ReplyTaskRoute): Promise<ReplyTask[]> {
+		return sortByNewest(
+			Array.from(this.tasks.values()).filter((task) => task.route === route),
 		);
 	}
 

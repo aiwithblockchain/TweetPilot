@@ -1,4 +1,5 @@
 import type {
+	ReplyTaskRoute,
 	ReplyTask,
 	ReplyTaskEvent,
 	ReplyTaskId,
@@ -11,6 +12,7 @@ export interface IReplyTaskRepository {
 	findByCandidateReplyId(candidateReplyId: string): Promise<ReplyTask | null>;
 	findByWorkspace(workspaceId: string): Promise<ReplyTask[]>;
 	findByStatus(status: ReplyTaskStatus): Promise<ReplyTask[]>;
+	findByRoute(route: ReplyTaskRoute): Promise<ReplyTask[]>;
 	findPendingReview(): Promise<ReplyTask[]>;
 	findEvents(taskId: ReplyTaskId): Promise<ReplyTaskEvent[]>;
 }

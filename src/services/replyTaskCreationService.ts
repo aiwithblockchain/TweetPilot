@@ -2,9 +2,9 @@ import type { ICandidateReplyRepository } from "../data/repositories/ICandidateR
 import type { IReplyTaskRepository } from "../data/repositories/IReplyTaskRepository";
 import {
 	createReplyTask,
-	markReplyTaskStatus,
 	type ReplyTask,
 } from "../domain/replyTask";
+import type { TaskRoutingService } from "./taskRoutingService";
 
 export enum ReplyTaskCreationErrorCode {
 	CANDIDATE_REPLY_NOT_FOUND = "CANDIDATE_REPLY_NOT_FOUND",
@@ -66,6 +66,7 @@ interface ReplyTaskCreationDependencies {
 		IReplyTaskRepository,
 		"save" | "findByCandidateReplyId"
 	>;
+	taskRoutingService?: Pick<TaskRoutingService, "routeTask">;
 }
 
 export function createReplyTaskCreationService(
@@ -121,12 +122,30 @@ export function createReplyTaskCreationService(
 					...(params.metadata ?? {}),
 				},
 			});
-			const pendingRouteTask = markReplyTaskStatus(
-				createdTask,
-				"pending_route",
-			);
+			const pendingRouteTask = {
+				...createdTask,
+				status: "pending_route" as const,
+			};
 
 			await dependencies.replyTaskRepository.save(pendingRouteTask);
+
+			if (dependencies.taskRoutingService) {
+				await dependencies.taskRoutingService.routeTask(
+					pendingRouteTask.id,
+					params.triggeredBy,
+				);
+				const routedTask =
+					await dependencies.replyTaskRepository.findByCandidateReplyId(
+						params.candidateReplyId,
+					);
+
+				if (routedTask) {
+					return {
+						status: "created",
+						task: routedTask,
+					};
+				}
+			}
 
 			return {
 				status: "created",

@@ -6,4 +6,5 @@ export * from "./commentInput";
 export * from "./errors";
 export * from "./replyTask";
 export * from "./role";
+export * from "./taskRouting";
 export * from "./types";

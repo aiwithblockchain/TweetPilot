@@ -6,6 +6,7 @@ import { replyTaskRepository } from "../data/replyTaskRepositoryInstance.js";
 import { roleRepository } from "../data/roleRepositoryInstance.js";
 import { EmptyKnowledgeBase } from "../knowledge/EmptyKnowledgeBase.js";
 import { createReplyTaskCreationService } from "./replyTaskCreationService.js";
+import { createTaskRoutingService } from "./taskRoutingService.js";
 
 function createFallbackAIProvider(): IAIProvider {
 	return {
@@ -82,6 +83,9 @@ export const replyAgent = new ReplyAgent(
 );
 export const replyTaskCreationService = createReplyTaskCreationService({
 	candidateReplyRepository,
+	replyTaskRepository,
+});
+export const taskRoutingService = createTaskRoutingService({
 	replyTaskRepository,
 });
 

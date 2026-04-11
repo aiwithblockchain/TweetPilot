@@ -7,6 +7,7 @@ import {
 	ReplyTaskCreationErrorCode,
 	createReplyTaskCreationService,
 } from "../../src/services/replyTaskCreationService";
+import { createTaskRoutingService } from "../../src/services/taskRoutingService";
 
 describe("replyTaskCreationService", () => {
 	let candidateReplyRepository: InMemoryCandidateReplyRepository;
@@ -54,6 +55,43 @@ describe("replyTaskCreationService", () => {
 		expect(result.task.roleId).toBe(candidateReply.roleId);
 		expect(result.task.riskLevel).toBe(candidateReply.riskLevel);
 		expect(result.task.status).toBe("pending_route");
+	});
+
+	it("should invoke task routing service when provided", async () => {
+		const candidateReply = createCandidateReply({
+			commentInputId: "comment-001",
+			accountId: "account-001",
+			workspaceId: "workspace-001",
+			content: "Candidate reply",
+			riskLevel: "low",
+			confidence: 0.8,
+			modelSource: "claude",
+			knowledgeHits: 1,
+		});
+		await candidateReplyRepository.save(candidateReply);
+		const taskRoutingService = createTaskRoutingService({
+			replyTaskRepository,
+		});
+		service = createReplyTaskCreationService({
+			candidateReplyRepository,
+			replyTaskRepository,
+			taskRoutingService,
+		});
+
+		const result = await service.createFromCandidateReply({
+			candidateReplyId: candidateReply.id,
+			triggeredBy: "user-001",
+		});
+
+		expect(result.status).toBe("created");
+		if (result.status !== "created") {
+			throw new Error("Expected created result");
+		}
+
+		expect(result.task.status).toBe("ready_for_execution");
+		expect(result.task.events.at(-1)).toMatchObject({
+			type: "risk_routed",
+		});
 	});
 
 	it("should return existing task result for duplicate taskization", async () => {

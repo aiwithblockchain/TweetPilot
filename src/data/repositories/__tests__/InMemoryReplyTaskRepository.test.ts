@@ -117,6 +117,45 @@ describe("InMemoryReplyTaskRepository", () => {
 		expect(pendingTasks[0].status).toBe("pending_review");
 	});
 
+	it("should filter tasks by route", async () => {
+		const pendingReviewTask = markReplyTaskStatus(
+			markReplyTaskStatus(
+				createReplyTask({
+					workspaceId: "workspace-001",
+					accountId: "account-001",
+					commentInputId: "comment-001",
+					candidateReplyId: "candidate-001",
+					riskLevel: "high",
+					createdBy: "user-001",
+				}),
+				"pending_route",
+			),
+			"pending_review",
+			{ route: "pending_review" },
+		);
+		const readyTask = markReplyTaskStatus(
+			markReplyTaskStatus(
+				createReplyTask({
+					workspaceId: "workspace-001",
+					accountId: "account-001",
+					commentInputId: "comment-002",
+					candidateReplyId: "candidate-002",
+					riskLevel: "low",
+					createdBy: "user-001",
+				}),
+				"pending_route",
+			),
+			"ready_for_execution",
+			{ route: "ready_for_execution" },
+		);
+
+		await repository.save(pendingReviewTask);
+		await repository.save(readyTask);
+
+		expect(await repository.findByRoute("pending_review")).toHaveLength(1);
+		expect(await repository.findByRoute("ready_for_execution")).toHaveLength(1);
+	});
+
 	it("should return full event history for a task", async () => {
 		const task = createReplyTask({
 			workspaceId: "workspace-001",
