@@ -504,3 +504,24 @@ export class RandomTemperatureStrategy implements ITemperatureStrategy {
 **建议时机**:
 - 等 Slice 4 或 Slice 5 真正引入批量任务化入口时再处理
 - 当前阶段保持单条任务化链路稳定优先
+
+---
+
+### 23. 审核队列仓储级过滤与排序优化
+- **来源**: T4-03 Code Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/services/reviewQueueService.ts](../../../src/services/reviewQueueService.ts)
+
+**问题描述**:
+- 当前 `listPending()` 先读取全部待审核任务，再在服务层按 `workspaceId`、`riskLevel` 过滤并排序
+- 在当前 `InMemory` 阶段这足够简单直接，但如果待审核任务规模继续上升，服务层扫描会逐步变成瓶颈
+
+**建议解决方案**:
+- 在未来真实持久化或更大规模数据场景下，将过滤、排序和分页能力下沉到仓储层
+- 可评估增加类似 `findPendingReviewByWorkspace(workspaceId, query)` 的查询接口
+- 让分页尽量发生在数据源侧，而不是服务层内存切片
+
+**建议时机**:
+- 保持当前 `InMemory + 最小闭环` 实现不变，先完成 `T4-04` / `T4-05`
+- 在接入真实数据源、多人协作或明显出现查询压力时再处理
