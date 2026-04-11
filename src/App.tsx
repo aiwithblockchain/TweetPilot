@@ -1,4 +1,6 @@
 import { useState } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { getUserVisibleErrorMessage } from "./components/ErrorBoundary";
 import Navigation from "./components/Navigation";
 import RuntimePanel from "./components/RuntimePanel";
 import DashboardView from "./features/shell/DashboardView";
@@ -46,7 +48,22 @@ export default function App() {
 				/>
 			</aside>
 
-			<DashboardView currentView={currentView} />
+			<ErrorBoundary
+				fallback={(error, reset) => (
+					<main className="main">
+						<section className="error-boundary panel" role="alert">
+							<p className="panel-title">Application Error</p>
+							<h2>Something went wrong</h2>
+							<p className="muted">{getUserVisibleErrorMessage(error)}</p>
+							<button type="button" onClick={reset}>
+								Try again
+							</button>
+						</section>
+					</main>
+				)}
+			>
+				<DashboardView currentView={currentView} />
+			</ErrorBoundary>
 		</div>
 	);
 }

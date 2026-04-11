@@ -125,6 +125,27 @@ button {
 	gap: 0.7rem;
 }
 
+.error-boundary {
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+	align-items: flex-start;
+}
+
+.error-boundary h2,
+.error-boundary p {
+	margin: 0;
+}
+
+.error-boundary button {
+	padding: 0.7rem 1rem;
+	border: 1px solid rgba(105, 171, 255, 0.35);
+	border-radius: 0.8rem;
+	background: rgba(26, 43, 66, 0.95);
+	color: inherit;
+	cursor: pointer;
+}
+
 .panel-title {
 	margin: 0 0 0.7rem;
 	color: #90a6c5;

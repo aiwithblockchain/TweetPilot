@@ -8,77 +8,15 @@
 
 ---
 
-## Slice 1 可选优化
+## Slice 1 & Slice 2 遗留问题
 
-### 1. 状态管理的单例模式优化
-- **来源**: Slice 1 Complete Review
-- **严重程度**: 低
-- **状态**: 🟡 **可选优化**
-- **位置**: [src/data/platformState.ts:44](../../../src/data/platformState.ts#L44)
+**注意**: 以下问题已在 [T4-06.T5前遗留问题修复.md](./T4-06.T5前遗留问题修复.md) 中完成：
+- #1 状态管理的单例模式优化
+- #2 添加 React Error Boundary
+- #8 种子数据向真实数据流的平滑过渡
+- #13 E2E 测试未使用真实 Electron 环境
 
-**问题描述**:
-- 单例模式使测试隔离困难，多个测试可能共享状态
-
-**建议解决方案**:
-```typescript
-// 导出工厂函数而非单例
-export function createPlatformState(initialState: PlatformState) {
-  return new PlatformStateManager(initialState);
-}
-
-// 导出默认实例供应用使用
-export const platformState = createPlatformState(seedPlatformState);
-```
-
-**建议时机**: 在测试变复杂前修复
-
----
-
-### 2. 添加 React Error Boundary
-- **来源**: Slice 1 Complete Review
-- **严重程度**: 低
-- **状态**: 🟡 **可选优化**
-- **位置**: [src/App.tsx](../../../src/App.tsx)
-
-**问题描述**:
-- 如果任何子组件抛出错误，整个应用会崩溃，没有错误恢复机制
-
-**建议解决方案**:
-```typescript
-// src/components/ErrorBoundary.tsx
-class ErrorBoundary extends React.Component<Props, State> {
-  // ... 标准 Error Boundary 实现
-}
-
-// 在 App.tsx 中使用
-<ErrorBoundary>
-  <DashboardView currentView={currentView} />
-</ErrorBoundary>
-```
-
-**建议时机**: 可在后续 Slice 添加
-
----
-
-## Slice 2 遗留问题
-
-### 13. E2E 测试未使用真实 Electron 环境
-- **来源**: T2-04 Code Review
-- **严重程度**: 高
-- **状态**: ⏭️ **推迟到后续阶段**
-- **位置**: [tests/e2e/](../../../tests/e2e/)
-
-**问题描述**:
-- 当前 E2E 测试使用 RTL (React Testing Library) 模拟，而非真实的 Electron 渲染器验证
-- 无法验证真实运行环境中的问题
-
-**建议解决方案**:
-- 使用 Playwright 拉起真实的 Electron 窗口进行 E2E 测试
-- 参考 Slice 1 中已有的 Playwright + Electron 测试基础设施
-
-**建议时机**: 
-- 在进入 Slice 3 之前，在项目路线图中标记"打通真实运行环境 E2E 测试"的里程碑
-- 建议在 Slice 3 或 Slice 4 期间完成
+验证结果请参考 T4-06 任务卡中的“验收标准”和“验证记录”。
 
 ---
 

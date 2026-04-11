@@ -9,6 +9,16 @@ beforeAll(() => {
 			runtime: {
 				platform: "darwin",
 			},
+			localBridge: {
+				getInstances: async () => [],
+				getTabStatus: async () => ({
+					tabs: [],
+					hasXTabs: false,
+					isLoggedIn: false,
+				}),
+				getTweet: async () => ({}),
+				getTweetReplies: async () => ({}),
+			},
 		},
 		writable: true,
 	});

@@ -1,54 +1,78 @@
-import { seedPlatformState } from "../data/seed";
 import type {
 	Account,
 	ExecutionChannel,
 	Instance,
-	PlatformState,
 	Workspace,
 } from "../domain/types";
+import {
+	type PlatformStateDataSource,
+	type PlatformStateDataSourceMode,
+	LocalBridgeHybridPlatformDataSource,
+	SeedPlatformDataSource,
+} from "./platformStateDataSource";
 
-// Platform state manager
-// In subsequent task cards, this will be replaced with real data sources
-class PlatformStateManager {
-	private state: PlatformState;
+export const PLATFORM_DATA_SOURCE_ENV_KEY = "VITE_PLATFORM_DATA_SOURCE";
 
-	constructor(initialState: PlatformState) {
-		this.state = initialState;
+export class PlatformStateManager {
+	constructor(private readonly dataSource: PlatformStateDataSource) {}
+
+	private getStateSnapshot() {
+		return this.dataSource.getSnapshot();
 	}
 
 	getWorkspaces(): Workspace[] {
-		return this.state.workspaces;
+		return this.getStateSnapshot().workspaces;
 	}
 
 	getAccounts(workspaceId?: string): Account[] {
+		const accounts = this.getStateSnapshot().accounts;
 		if (workspaceId) {
-			return this.state.accounts.filter(
-				(acc) => acc.workspaceId === workspaceId,
-			);
+			return accounts.filter((account) => account.workspaceId === workspaceId);
 		}
-		return this.state.accounts;
+		return accounts;
 	}
 
 	getInstances(accountId?: string): Instance[] {
+		const instances = this.getStateSnapshot().instances;
 		if (accountId) {
-			return this.state.instances.filter(
-				(inst) => inst.accountId === accountId,
-			);
+			return instances.filter((instance) => instance.accountId === accountId);
 		}
-		return this.state.instances;
+		return instances;
 	}
 
 	getChannels(accountId?: string): ExecutionChannel[] {
+		const channels = this.getStateSnapshot().channels;
 		if (accountId) {
-			return this.state.channels.filter((ch) => ch.accountId === accountId);
+			return channels.filter((channel) => channel.accountId === accountId);
 		}
-		return this.state.channels;
-	}
-
-	getState(): PlatformState {
-		return this.state;
+		return channels;
 	}
 }
 
-// Export singleton instance
-export const platformState = new PlatformStateManager(seedPlatformState);
+export function resolveConfiguredDataSourceMode(
+	envValue =
+		import.meta.env?.[PLATFORM_DATA_SOURCE_ENV_KEY] ??
+		(typeof process !== "undefined"
+			? process.env?.[PLATFORM_DATA_SOURCE_ENV_KEY]
+			: undefined),
+): PlatformStateDataSourceMode {
+	return envValue === "local-bridge-hybrid" ? envValue : "seed";
+}
+
+export function createPlatformState(
+	dataSource: PlatformStateDataSource = resolveDefaultPlatformStateDataSource(),
+): PlatformStateManager {
+	return new PlatformStateManager(dataSource);
+}
+
+export function resolveDefaultPlatformStateDataSource(): PlatformStateDataSource {
+	const mode = resolveConfiguredDataSourceMode();
+
+	if (mode === "local-bridge-hybrid") {
+		return new LocalBridgeHybridPlatformDataSource();
+	}
+
+	return new SeedPlatformDataSource();
+}
+
+export const platformState = createPlatformState();
