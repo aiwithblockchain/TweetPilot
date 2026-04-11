@@ -1,6 +1,7 @@
 import MountPoint from "../../components/MountPoint";
 import { platformState } from "../../data/platformState";
 import ReplyGenerationView from "../reply-generation/ReplyGenerationView";
+import ReviewQueueView from "../review-queue/ReviewQueueView";
 import RoleManagement from "../roles/RoleManagement";
 import StatusOverview from "./StatusOverview";
 
@@ -90,6 +91,7 @@ export default function DashboardView({ currentView }: DashboardViewProps) {
 			case "inputs":
 				return <ReplyGenerationView />;
 			case "tasks":
+				return <ReviewQueueView />;
 			case "reports":
 			case "extensions":
 				return (

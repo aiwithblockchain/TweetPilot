@@ -28,7 +28,7 @@ describe('App Integration - Status Overview and Mount Points', () => {
     expect(within(mountPointsGrid).getByText('Extensions')).toBeInTheDocument();
   });
 
-  it('should show mount point placeholders when navigating to pending features', async () => {
+  it('should show the review queue workbench when navigating to tasks', async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
 
@@ -37,7 +37,9 @@ describe('App Integration - Status Overview and Mount Points', () => {
     const tasksButton = within(nav).getByText('Tasks');
     await user.click(tasksButton);
 
-    // Verify mount point placeholder is shown
-    expect(screen.getByText(/will be implemented in subsequent task cards/i)).toBeInTheDocument();
+    expect(screen.getByText('Pending Review Queue')).toBeInTheDocument();
+    expect(
+      screen.getByText(/No tasks currently require manual review/i),
+    ).toBeInTheDocument();
   });
 });

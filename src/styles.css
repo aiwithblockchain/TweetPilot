@@ -258,6 +258,9 @@ button {
 .role-form,
 .binding-list,
 .reply-generation-layout,
+.review-queue-layout,
+.review-detail-panel,
+.timeline-list,
 .comment-selection-list,
 .candidate-reply-list {
 	display: flex;
@@ -270,6 +273,9 @@ button {
 .role-list,
 .binding-list,
 .reply-generation-layout,
+.review-queue-layout,
+.review-detail-panel,
+.timeline-list,
 .comment-selection-list,
 .candidate-reply-list {
 	gap: 1rem;
@@ -468,6 +474,120 @@ button {
 	box-shadow: inset 0 0 0 1px rgba(105, 171, 255, 0.22);
 }
 
+.review-queue-grid {
+	display: grid;
+	grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
+	gap: 1rem;
+	align-items: start;
+}
+
+.review-workspace-bar,
+.review-list-panel,
+.review-detail-header {
+	margin: 0;
+}
+
+.review-list-header,
+.review-pagination,
+.timeline-item-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.review-list-items,
+.skeleton-card-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.8rem;
+}
+
+.review-list-item,
+.timeline-item {
+	border: 1px solid rgba(138, 160, 186, 0.14);
+	border-radius: 1rem;
+	background: rgba(7, 16, 24, 0.48);
+	padding: 1rem;
+}
+
+.review-list-item {
+	width: 100%;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.review-list-item.is-selected {
+	border-color: rgba(105, 171, 255, 0.45);
+	box-shadow: inset 0 0 0 1px rgba(105, 171, 255, 0.22);
+}
+
+.governance-form {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+}
+
+.timeline-payload {
+	margin: 0.6rem 0 0;
+	padding: 0.8rem 0.9rem;
+	border-radius: 0.8rem;
+	background: rgba(7, 16, 24, 0.72);
+	border: 1px solid rgba(138, 160, 186, 0.12);
+	color: #cfe0ff;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 0.8rem;
+}
+
+.review-error-state {
+	margin: 0;
+}
+
+.skeleton-line,
+.skeleton-card,
+.skeleton-block {
+	background: linear-gradient(
+		90deg,
+		rgba(138, 160, 186, 0.12),
+		rgba(138, 160, 186, 0.26),
+		rgba(138, 160, 186, 0.12)
+	);
+	background-size: 220% 100%;
+	animation: skeleton-shimmer 1.3s linear infinite;
+	border-radius: 0.8rem;
+}
+
+.skeleton-line {
+	height: 1rem;
+}
+
+.skeleton-line-short {
+	width: 10rem;
+}
+
+.skeleton-line-medium {
+	width: 14rem;
+}
+
+.skeleton-card {
+	min-height: 5rem;
+}
+
+.skeleton-block {
+	min-height: 7rem;
+}
+
+@keyframes skeleton-shimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
 .candidate-reply-header {
 	display: flex;
 	justify-content: space-between;
@@ -566,7 +686,9 @@ select:disabled {
 	.mount-points-grid,
 	.roles-grid,
 	.binding-columns,
-	.metadata-grid {
+	.metadata-grid,
+	.review-queue-grid,
+	.governance-form {
 		grid-template-columns: 1fr;
 	}
 
