@@ -462,3 +462,24 @@ export class RandomTemperatureStrategy implements ITemperatureStrategy {
 **建议时机**:
 - 建议在 Slice 5-6 之后，根据真实治理复杂度再决定是否建设
 - 当前阶段保持任务状态机 + 服务层编排即可
+
+---
+
+### 21. ReplyTask 边界输入与性能测试补强
+- **来源**: T4-00 Code Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/domain/__tests__/replyTask.test.ts](../../../src/domain/__tests__/replyTask.test.ts), [src/data/repositories/__tests__/InMemoryReplyTaskRepository.test.ts](../../../src/data/repositories/__tests__/InMemoryReplyTaskRepository.test.ts)
+
+**问题描述**:
+- 当前 `T4-00` 已覆盖核心状态机、事件追加和乐观锁冲突，但仍缺少更细的边界输入测试和大数据量性能测试
+- 这不会阻塞 Slice 4 后续开发，但会影响后期回归的稳健性
+
+**建议解决方案**:
+- 增加空字符串 ID、异常 payload、超长事件历史等边界输入测试
+- 增加 `1000+` 任务下的仓储查询性能基线测试
+- 将性能测试与功能测试分开，避免日常单测变慢
+
+**建议时机**:
+- 在 Slice 4 后续任务基本稳定后补做
+- 优先保证任务化、路由、审核链路先落地，再补性能与极端场景测试
