@@ -483,3 +483,24 @@ export class RandomTemperatureStrategy implements ITemperatureStrategy {
 **建议时机**:
 - 在 Slice 4 后续任务基本稳定后补做
 - 优先保证任务化、路由、审核链路先落地，再补性能与极端场景测试
+
+---
+
+### 22. 批量任务化的部分失败处理策略
+- **来源**: T4-01 Code Review
+- **严重程度**: 低
+- **状态**: 🟡 **可选优化**
+- **位置**: [src/services/replyTaskCreationService.ts](../../../src/services/replyTaskCreationService.ts)
+
+**问题描述**:
+- 当前 `createBatchFromCandidateReplies()` 基于 `Promise.all` 实现
+- 当批量输入中存在单条失败时，整个批量调用会以异常结束，而不是返回部分成功结果
+
+**建议解决方案**:
+- 在后续明确批量任务化的产品语义后，再决定是否改成 `Promise.allSettled`
+- 如果需要支持部分成功，应补充新的结果类型，显式区分 `created`、`existing`、`skipped`、`failed`
+- 避免在当前预留接口阶段提前引入未使用的复杂返回结构
+
+**建议时机**:
+- 等 Slice 4 或 Slice 5 真正引入批量任务化入口时再处理
+- 当前阶段保持单条任务化链路稳定优先

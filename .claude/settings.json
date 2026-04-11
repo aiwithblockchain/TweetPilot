@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm test:*)",
       "Bash(grep -E \"\\\\.\\(ts|test\\\\.ts\\)$\")",
-      "Bash(grep -E \"\\\\.\\(tsx?|test\\\\.tsx?\\)$\")"
+      "Bash(grep -E \"\\\\.\\(tsx?|test\\\\.tsx?\\)$\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(git commit -m ':*)"
     ],
     "additionalDirectories": [
       "/Users/wesley/aiwithblockchain/TweetPilot/docs/phase1/task-cards"

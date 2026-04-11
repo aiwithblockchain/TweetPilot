@@ -2,8 +2,10 @@ import { ReplyAgent } from "../agents/ReplyAgent.js";
 import { ClaudeProvider } from "../ai/ClaudeProvider.js";
 import type { AIOptions, AIResponse, IAIProvider } from "../ai/IAIProvider.js";
 import { candidateReplyRepository } from "../data/candidateReplyRepositoryInstance.js";
+import { replyTaskRepository } from "../data/replyTaskRepositoryInstance.js";
 import { roleRepository } from "../data/roleRepositoryInstance.js";
 import { EmptyKnowledgeBase } from "../knowledge/EmptyKnowledgeBase.js";
+import { createReplyTaskCreationService } from "./replyTaskCreationService.js";
 
 function createFallbackAIProvider(): IAIProvider {
 	return {
@@ -78,5 +80,13 @@ export const replyAgent = new ReplyAgent(
 	knowledgeBase,
 	roleRepository,
 );
+export const replyTaskCreationService = createReplyTaskCreationService({
+	candidateReplyRepository,
+	replyTaskRepository,
+});
 
-export { candidateReplyRepository, roleRepository };
+export {
+	candidateReplyRepository,
+	replyTaskRepository,
+	roleRepository,
+};

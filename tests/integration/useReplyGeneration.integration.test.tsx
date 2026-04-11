@@ -4,8 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { AIProviderError, AIErrorCode } from '../../src/ai/errors.js';
 import { createCommentInput } from '../../src/domain/commentInput.js';
 import { InMemoryCandidateReplyRepository } from '../../src/data/repositories/InMemoryCandidateReplyRepository.js';
+import { InMemoryReplyTaskRepository } from '../../src/data/repositories/InMemoryReplyTaskRepository.js';
+import { createReplyTaskCreationService } from '../../src/services/replyTaskCreationService.js';
 import { useReplyGeneration } from '../../src/features/reply-generation/useReplyGeneration';
-import { candidateReplyRepository } from '../../src/services';
+import { candidateReplyRepository, replyTaskRepository } from '../../src/services';
 
 const testComment = createCommentInput({
   workspaceId: 'ws-001',
@@ -51,6 +53,7 @@ function HookHarness(props: {
 describe('useReplyGeneration Integration', () => {
   beforeEach(() => {
     candidateReplyRepository.clear();
+    replyTaskRepository.clear();
   });
 
   it('should generate replies successfully through the hook', async () => {
@@ -201,6 +204,48 @@ describe('useReplyGeneration Integration', () => {
     });
   });
 
+  it('should create reply tasks after saving generated replies', async () => {
+    const candidateRepository = new InMemoryCandidateReplyRepository();
+    const taskRepository = new InMemoryReplyTaskRepository();
+    const taskCreationService = createReplyTaskCreationService({
+      candidateReplyRepository: candidateRepository,
+      replyTaskRepository: taskRepository,
+    });
+    const replyAgent = {
+      generateMultipleReplies: vi.fn().mockResolvedValue([
+        {
+          reply: 'Reply A',
+          riskLevel: 'low',
+          confidence: 0.8,
+          metadata: { modelSource: 'mock', knowledgeHits: 1 },
+        },
+        {
+          reply: 'Reply B',
+          riskLevel: 'medium',
+          confidence: 0.7,
+          metadata: { modelSource: 'mock', knowledgeHits: 0 },
+        },
+      ]),
+    };
+
+    const user = userEvent.setup();
+    render(
+      <HookHarness
+        dependencies={{
+          replyAgent,
+          candidateReplyRepository: candidateRepository,
+          replyTaskCreationService: taskCreationService,
+        }}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Run Generation' }));
+
+    await waitFor(async () => {
+      expect(await taskRepository.findByWorkspace(testComment.workspaceId)).toHaveLength(2);
+    });
+  });
+
   it('should work with global singleton dependencies by default', async () => {
     const user = userEvent.setup();
     render(<HookHarness count={2} />);
@@ -211,6 +256,7 @@ describe('useReplyGeneration Integration', () => {
       expect(await candidateReplyRepository.countByCommentInput(testComment.id)).toBe(2);
     });
 
+    expect(await replyTaskRepository.findByWorkspace(testComment.workspaceId)).toHaveLength(2);
     expect(screen.getByTestId('count')).toHaveTextContent('2');
   });
 });

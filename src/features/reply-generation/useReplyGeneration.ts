@@ -4,7 +4,12 @@ import type { ICandidateReplyRepository } from "../../data/repositories/ICandida
 import type { CandidateReply } from "../../domain/candidateReply";
 import { createCandidateReply } from "../../domain/candidateReply";
 import type { CommentInput } from "../../domain/commentInput";
-import { candidateReplyRepository, replyAgent } from "../../services";
+import {
+	candidateReplyRepository,
+	replyAgent,
+	replyTaskCreationService,
+} from "../../services";
+import type { ReplyTaskCreationResult } from "../../services/replyTaskCreationService";
 
 export interface ReplyGenerationTrace {
 	commentInput: CommentInput;
@@ -21,6 +26,14 @@ export interface ReplyGenerationDependencies {
 		) => Promise<ReplyResult[]>;
 	};
 	candidateReplyRepository?: Pick<ICandidateReplyRepository, "save">;
+	replyTaskCreationService?: {
+		createFromCandidateReply: (params: {
+			candidateReplyId: string;
+			triggeredBy: string;
+			requestedRoute?: "auto" | "force_review" | "skip";
+			metadata?: Record<string, unknown>;
+		}) => Promise<ReplyTaskCreationResult>;
+	};
 }
 
 export function useReplyGeneration(
@@ -29,6 +42,9 @@ export function useReplyGeneration(
 	const generationAgent = dependencies.replyAgent ?? replyAgent;
 	const replyRepository =
 		dependencies.candidateReplyRepository ?? candidateReplyRepository;
+	const taskCreationService =
+		dependencies.replyTaskCreationService ??
+		(dependencies.candidateReplyRepository ? null : replyTaskCreationService);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [replies, setReplies] = useState<CandidateReply[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -74,6 +90,16 @@ export function useReplyGeneration(
 					});
 
 					await replyRepository.save(reply);
+					if (taskCreationService) {
+						await taskCreationService.createFromCandidateReply({
+							candidateReplyId: reply.id,
+							triggeredBy: "system:reply-generation",
+							requestedRoute: "auto",
+							metadata: {
+								commentInputId: commentInput.id,
+							},
+						});
+					}
 					return reply;
 				}),
 			);
