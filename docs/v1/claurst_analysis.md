@@ -134,14 +134,18 @@
 
 ## 3. 集成方案建议
 
-### 3.1 推荐架构：Claurst 作为 Agent 引擎
+### 3.1 推荐架构：Claurst 角色会话架构
+
+**核心设计理念**：
+- **会话映射角色**：每个数字员工角色（Reply Agent、Content Agent、Growth Agent）有自己的长期会话
+- **MCP 全局配置**：所有会话共享相同的 MCP 服务器配置，MCP 服务器根据运行时参数返回不同数据
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    TweetPilot 平台                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐ │
-│  │  Web UI     │  │  API Gateway │  │  客户空间管理   │ │
-│  │  总控台     │  │              │  │  权限管理       │ │
+│  │  Web UI     │  │  API Gateway │  │  工作区管理     │ │
+│  │  产品选择器 │  │              │  │  权限管理       │ │
 │  └─────────────┘  └──────────────┘  └────────────────┘ │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐  │
@@ -151,29 +155,76 @@
 │  └──────────────────────────────────────────────────┘  │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐  │
-│  │           MCP 服务层                              │  │
+│  │           MCP 服务层（全局配置）                  │  │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐ │  │
 │  │  │ Twitter    │  │ 知识库     │  │ 数据访问   │ │  │
 │  │  │ MCP Server │  │ MCP Server │  │ MCP Server │ │  │
 │  │  └────────────┘  └────────────┘  └────────────┘ │  │
+│  │  根据运行时参数（产品ID、工作区ID）返回不同数据  │  │
 │  └──────────────────────────────────────────────────┘  │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐  │
-│  │           Claurst Agent 引擎池                    │  │
+│  │           Claurst 角色会话层                      │  │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐ │  │
-│  │  │ Claurst    │  │ Claurst    │  │ Claurst    │ │  │
-│  │  │ Instance 1 │  │ Instance 2 │  │ Instance N │ │  │
+│  │  │ Reply      │  │ Content    │  │ Growth     │ │  │
+│  │  │ Agent      │  │ Agent      │  │ Agent      │ │  │
+│  │  │ Session    │  │ Session    │  │ Session    │ │  │
 │  │  └────────────┘  └────────────┘  └────────────┘ │  │
+│  │  每个角色有独立的长期会话，积累专业经验          │  │
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
+
+**架构说明**：
+
+1. **角色会话层**：
+   - Reply Agent Session：专门处理评论回复，积累回复经验和风格
+   - Content Agent Session：专门处理内容创作，积累创作经验和模式
+   - Growth Agent Session：专门处理增长策略，积累增长经验和洞察
+   - 每个会话独立运行，互不干扰
+   - 会话持久化到 `~/.claurst/projects/{project}/{session_id}.jsonl`
+
+2. **MCP 服务层**：
+   - 在 `~/.claurst/settings.json` 配置一次
+   - 所有角色会话共享相同的 MCP 服务器
+   - MCP 服务器接收运行时参数（产品 ID、工作区 ID、账号 ID）
+   - 根据参数返回对应的数据（知识库、历史数据、Twitter 数据）
+
+3. **工作流程**：
+   ```
+   用户请求 → TweetPilot 平台 → 选择角色会话 → 
+   传递上下文参数（产品ID、工作区ID） → 
+   Claurst 会话调用 MCP 工具 → 
+   MCP 服务器根据参数返回数据 → 
+   Agent 生成结果 → 返回平台
+   ```
 
 ### 3.2 具体集成步骤
 
 #### 第一步：开发 Twitter MCP 服务器
 ```typescript
 // 将你现有的 Twitter 读写能力包装成 MCP 服务器
+// MCP 服务器根据运行时参数返回不同数据
 class TwitterMCPServer {
+  // 工具接收上下文参数
+  async twitter_get_comments(params: {
+    accountId: string;
+    workspaceId: string;
+    tweetId: string;
+  }) {
+    // 根据 workspaceId 和 accountId 获取对应的凭证
+    // 返回该账号的评论数据
+  }
+  
+  async twitter_reply(params: {
+    accountId: string;
+    workspaceId: string;
+    commentId: string;
+    content: string;
+  }) {
+    // 根据 workspaceId 和 accountId 发送回复
+  }
+  
   tools: [
     "twitter_get_comments",      // 获取评论
     "twitter_get_mentions",       // 获取提及
@@ -187,10 +238,21 @@ class TwitterMCPServer {
 
 #### 第二步：开发知识库 MCP 服务器
 ```typescript
-// 为每个客户提供独立的知识库访问
+// 知识库 MCP 服务器根据工作区 ID 返回对应知识
 class KnowledgeMCPServer {
-  constructor(customerId: string) {
-    // 加载客户专属知识
+  async knowledge_search(params: {
+    workspaceId: string;
+    query: string;
+  }) {
+    // 根据 workspaceId 加载对应的知识库
+    // 搜索并返回相关知识
+  }
+  
+  async knowledge_get_faq(params: {
+    workspaceId: string;
+    category?: string;
+  }) {
+    // 根据 workspaceId 返回对应的 FAQ
   }
   
   tools: [
@@ -203,8 +265,25 @@ class KnowledgeMCPServer {
 
 #### 第三步：开发数据访问 MCP 服务器
 ```typescript
-// 提供历史数据访问能力
+// 数据访问 MCP 服务器根据工作区 ID 返回对应数据
 class DataMCPServer {
+  async data_get_tweet_history(params: {
+    workspaceId: string;
+    accountId: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    // 根据 workspaceId 和 accountId 查询历史推文
+  }
+  
+  async data_get_interaction_stats(params: {
+    workspaceId: string;
+    accountId: string;
+    period: string;
+  }) {
+    // 根据 workspaceId 和 accountId 返回互动统计
+  }
+  
   tools: [
     "data_get_tweet_history",     // 获取推文历史
     "data_get_interaction_stats", // 获取互动统计
