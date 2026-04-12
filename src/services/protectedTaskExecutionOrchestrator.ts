@@ -33,7 +33,7 @@ export class ProtectedTaskExecutionOrchestrator {
 				success: false,
 				error: {
 					code: "PERMISSION_DENIED",
-					message: `Actor ${params.actorId} does not have execution permission`,
+					message: "Execution permission denied",
 					retryable: false,
 				},
 			};

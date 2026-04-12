@@ -32,6 +32,12 @@ export class ExecutionProtectionService {
 			violations.push(duplicateCheck.reason);
 		}
 
+		// Known limitation:
+		// This protection layer is check-based, not atomic. Under concurrent callers,
+		// two executions can still pass these reads before either request is persisted.
+		// Slice 5 accepts this tradeoff for the in-memory/local flow. If execution moves
+		// to multi-process or remote concurrency, the repository layer should combine
+		// protection checks and request creation with a lock, transaction, or CAS guard.
 		const [recentAccountRequests, recentChannelRequests] = await Promise.all([
 			this.requestRepository.findRecentByAccountId(
 				params.task.accountId,
