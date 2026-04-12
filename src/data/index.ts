@@ -4,6 +4,7 @@ export * from "./candidateReplyRepositoryInstance";
 export * from "./commentInputRepository";
 export * from "./commentInputRepositoryInstance";
 export * from "./executionRequestRepository";
+export * from "./executionRequestRepositoryInstance";
 export * from "./platformState";
 export * from "./platformStateDataSource";
 export * from "./replyTaskRepositoryInstance";

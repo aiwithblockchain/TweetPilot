@@ -4,6 +4,7 @@ import type {
 	Instance,
 	Workspace,
 } from "../domain/types";
+import type { IPlatformState } from "../domain/platformState";
 import {
 	type PlatformStateDataSource,
 	type PlatformStateDataSourceMode,
@@ -13,7 +14,7 @@ import {
 
 export const PLATFORM_DATA_SOURCE_ENV_KEY = "VITE_PLATFORM_DATA_SOURCE";
 
-export class PlatformStateManager {
+export class PlatformStateManager implements IPlatformState {
 	constructor(private readonly dataSource: PlatformStateDataSource) {}
 
 	private getStateSnapshot() {
