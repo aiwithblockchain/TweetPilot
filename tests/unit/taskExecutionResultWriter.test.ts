@@ -69,7 +69,7 @@ describe("TaskExecutionResultWriter", () => {
 		});
 	});
 
-	it("records a failure event for failed requests", async () => {
+	it("skips failed requests and leaves failure handling to the failure handler", async () => {
 		const taskRepository = new InMemoryReplyTaskRepository();
 		const requestRepository = new InMemoryExecutionRequestRepository();
 		const task = buildTask();
@@ -94,14 +94,7 @@ describe("TaskExecutionResultWriter", () => {
 		});
 
 		const stored = await taskRepository.findById(task.id);
-		expect(stored?.events.at(-1)).toMatchObject({
-			type: "task_failed",
-			actorId: "executor-001",
-			payload: expect.objectContaining({
-				errorCode: "RATE_LIMITED",
-				retryable: true,
-			}),
-		});
+		expect(stored?.events).toHaveLength(1);
 	});
 
 	it("rejects mismatched task and request associations", async () => {

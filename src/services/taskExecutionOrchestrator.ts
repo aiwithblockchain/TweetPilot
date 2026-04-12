@@ -63,11 +63,13 @@ export class TaskExecutionOrchestrator {
 			requestId: executionRequest.id,
 		});
 
-		await this.resultWriter.writeResult({
-			taskId: task.id,
-			requestId: executionRequest.id,
-			actorId,
-		});
+		if (executeResult.success) {
+			await this.resultWriter.writeResult({
+				taskId: task.id,
+				requestId: executionRequest.id,
+				actorId,
+			});
+		}
 
 		return {
 			success: executeResult.success,

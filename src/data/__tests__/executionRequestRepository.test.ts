@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createExecutionRequest,
 	type ExecutionRequest,
@@ -95,6 +95,47 @@ describe("InMemoryExecutionRequestRepository", () => {
 
 		expect(requests).toHaveLength(1);
 		expect(requests[0].id).toBe(newest.id);
+	});
+
+	it("returns recent requests by account and channel within a time window", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-04-10T12:00:30.000Z"));
+
+		const recentByAccount = buildRequest({
+			accountId: "acc-001",
+			taskId: "task-001",
+			channelId: "channel-001",
+			createdAt: new Date("2026-04-10T12:00:20.000Z"),
+			updatedAt: new Date("2026-04-10T12:00:20.000Z"),
+		});
+		const oldByAccount = buildRequest({
+			accountId: "acc-001",
+			taskId: "task-002",
+			channelId: "channel-002",
+			createdAt: new Date("2026-04-10T11:59:00.000Z"),
+			updatedAt: new Date("2026-04-10T11:59:00.000Z"),
+		});
+		const recentByChannel = buildRequest({
+			accountId: "acc-002",
+			taskId: "task-003",
+			channelId: "channel-003",
+			createdAt: new Date("2026-04-10T12:00:25.000Z"),
+			updatedAt: new Date("2026-04-10T12:00:25.000Z"),
+		});
+
+		await repository.save(recentByAccount);
+		await repository.save(oldByAccount);
+		await repository.save(recentByChannel);
+
+		const accountRequests = await repository.findRecentByAccountId("acc-001", 15000);
+		const channelRequests = await repository.findRecentByChannelId("channel-003", 15000);
+
+		expect(accountRequests).toHaveLength(1);
+		expect(accountRequests[0].id).toBe(recentByAccount.id);
+		expect(channelRequests).toHaveLength(1);
+		expect(channelRequests[0].id).toBe(recentByChannel.id);
+
+		vi.useRealTimers();
 	});
 
 	it("updates an existing request", async () => {

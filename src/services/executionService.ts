@@ -68,32 +68,51 @@ export class ExecutionService {
 			roleId: request.payload.roleId,
 		};
 
-		const executorResult = await this.replyExecutor.postReply(input);
-		const now = new Date();
-		request.status = executorResult.success ? "completed" : "failed";
-		request.updatedAt = now;
-		request.executedAt = now;
+		try {
+			const executorResult = await this.replyExecutor.postReply(input);
+			const now = new Date();
+			request.status = executorResult.success ? "completed" : "failed";
+			request.updatedAt = now;
+			request.executedAt = now;
 
-		if (executorResult.success) {
-			request.result = {
-				success: true,
-				tweetId: executorResult.replyTweetId,
-				platformResponse: executorResult.rawResponse,
-				executedAt: now,
-			};
-			request.error = undefined;
-		} else {
-			request.error = {
-				code: executorResult.code,
-				message: executorResult.message,
-				retryable: executorResult.retryable,
-				details: executorResult.rawResponse,
-			};
+			if (executorResult.success) {
+				request.result = {
+					success: true,
+					tweetId: executorResult.replyTweetId,
+					platformResponse: executorResult.rawResponse,
+					executedAt: now,
+				};
+				request.error = undefined;
+			} else {
+				request.error = {
+					code: executorResult.code,
+					message: executorResult.message,
+					retryable: executorResult.retryable,
+					details: executorResult.rawResponse,
+				};
+				request.result = undefined;
+			}
+
+			await this.repository.update(request);
+
+			return buildResultFromRequest(request);
+		} catch (error) {
+			const now = new Date();
+			request.status = "failed";
+			request.updatedAt = now;
+			request.executedAt = now;
 			request.result = undefined;
+			request.error = {
+				code: "EXECUTION_EXCEPTION",
+				message:
+					error instanceof Error ? error.message : "Unknown execution error",
+				retryable: false,
+				details:
+					error instanceof Error ? { name: error.name } : undefined,
+			};
+			await this.repository.update(request);
+
+			return buildResultFromRequest(request);
 		}
-
-		await this.repository.update(request);
-
-		return buildResultFromRequest(request);
 	}
 }

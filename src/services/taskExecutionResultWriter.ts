@@ -44,17 +44,6 @@ export class TaskExecutionResultWriter {
 					channelType: request.channelType,
 				},
 			});
-		} else if (request.status === "failed" && request.error) {
-			updatedTask = appendReplyTaskEvent(updatedTask, {
-				type: "task_failed",
-				actorId,
-				payload: {
-					executionRequestId: request.id,
-					errorCode: request.error.code,
-					errorMessage: request.error.message,
-					retryable: request.error.retryable,
-				},
-			});
 		} else {
 			return;
 		}

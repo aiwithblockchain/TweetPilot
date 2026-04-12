@@ -74,6 +74,29 @@ describe("ExecutionService", () => {
 		expect(stored?.error?.code).toBe("RATE_LIMITED");
 	});
 
+	it("converts thrown executor errors into failed execution requests", async () => {
+		const repository = new InMemoryExecutionRequestRepository();
+		const request = buildRequest();
+		await repository.save(request);
+
+		const executor: ITwitterReplyExecutor = {
+			type: "localbridge",
+			isAvailable: async () => true,
+			postReply: async () => {
+				throw new Error("connection dropped");
+			},
+		};
+
+		const service = new ExecutionService(repository, executor);
+		const result = await service.execute({ requestId: request.id });
+		const stored = await repository.findById(request.id);
+
+		expect(result.success).toBe(false);
+		expect(result.error?.code).toBe("EXECUTION_EXCEPTION");
+		expect(stored?.status).toBe("failed");
+		expect(stored?.error?.message).toBe("connection dropped");
+	});
+
 	it("returns existing result for completed requests", async () => {
 		const repository = new InMemoryExecutionRequestRepository();
 		const request = {

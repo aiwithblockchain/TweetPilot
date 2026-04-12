@@ -11,6 +11,14 @@ export interface IExecutionRequestRepository {
 		accountId: string,
 		limit?: number,
 	): Promise<ExecutionRequest[]>;
+	findRecentByAccountId(
+		accountId: string,
+		withinMs: number,
+	): Promise<ExecutionRequest[]>;
+	findRecentByChannelId(
+		channelId: string,
+		withinMs: number,
+	): Promise<ExecutionRequest[]>;
 	update(request: ExecutionRequest): Promise<void>;
 }
 
@@ -66,6 +74,34 @@ export class InMemoryExecutionRequestRepository
 			.map(cloneExecutionRequest);
 
 		return typeof limit === "number" ? results.slice(0, limit) : results;
+	}
+
+	async findRecentByAccountId(
+		accountId: string,
+		withinMs: number,
+	): Promise<ExecutionRequest[]> {
+		const cutoffTime = Date.now() - withinMs;
+		return Array.from(this.requests.values())
+			.filter(
+				(request) =>
+					request.payload.accountId === accountId &&
+					request.createdAt.getTime() >= cutoffTime,
+			)
+			.map(cloneExecutionRequest);
+	}
+
+	async findRecentByChannelId(
+		channelId: string,
+		withinMs: number,
+	): Promise<ExecutionRequest[]> {
+		const cutoffTime = Date.now() - withinMs;
+		return Array.from(this.requests.values())
+			.filter(
+				(request) =>
+					request.channelId === channelId &&
+					request.createdAt.getTime() >= cutoffTime,
+			)
+			.map(cloneExecutionRequest);
 	}
 
 	async update(request: ExecutionRequest): Promise<void> {
