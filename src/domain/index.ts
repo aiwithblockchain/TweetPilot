@@ -2,7 +2,9 @@
 
 export * from "./accountRole";
 export * from "./candidateReply";
+export * from "./channelRouting";
 export * from "./commentInput";
+export * from "./executionEligibility";
 export * from "./executionRequest";
 export * from "./errors";
 export * from "./platformState";

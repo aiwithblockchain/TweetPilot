@@ -1,20 +1,18 @@
 import type { IExecutionRequestRepository } from "../data/executionRequestRepository";
-import type { ICandidateReplyRepository } from "../data/repositories/ICandidateReplyRepository";
 import type { IReplyTaskRepository } from "../data/repositories/IReplyTaskRepository";
 import type { IPlatformState } from "../domain/platformState";
-import { ExecutionRequestBuilder } from "./executionRequestBuilder";
 import { ExecutionService } from "./executionService";
+import { ExecutionPreparationService } from "./executionPreparationService";
 import { TaskExecutionResultWriter } from "./taskExecutionResultWriter";
 
 export interface ExecuteTaskParams {
 	taskId: string;
-	channelId: string;
 	actorId: string;
 }
 
 export interface ExecuteTaskResult {
 	success: boolean;
-	executionRequestId: string;
+	executionRequestId?: string;
 	tweetId?: string;
 	error?: {
 		code: string;
@@ -26,44 +24,39 @@ export interface ExecuteTaskResult {
 export class TaskExecutionOrchestrator {
 	constructor(
 		private readonly taskRepository: Pick<IReplyTaskRepository, "findById">,
-		private readonly candidateReplyRepository: Pick<ICandidateReplyRepository, "findById">,
 		private readonly requestRepository: IExecutionRequestRepository,
-		private readonly requestBuilder: ExecutionRequestBuilder,
+		private readonly preparationService: ExecutionPreparationService,
 		private readonly executionService: ExecutionService,
 		private readonly resultWriter: TaskExecutionResultWriter,
 		private readonly platformState: IPlatformState,
 	) {}
 
 	async executeTask(params: ExecuteTaskParams): Promise<ExecuteTaskResult> {
-		const { taskId, channelId, actorId } = params;
+		const { taskId, actorId } = params;
 		const task = await this.taskRepository.findById(taskId);
 		if (!task) {
 			throw new Error(`ReplyTask ${taskId} not found`);
 		}
 
-		const candidateReply = await this.candidateReplyRepository.findById(
-			task.candidateReplyId,
-		);
-		if (!candidateReply) {
-			throw new Error(`CandidateReply ${task.candidateReplyId} not found`);
-		}
-
-		const channel = this.platformState.getChannel(channelId);
-		if (!channel) {
-			throw new Error(`ExecutionChannel ${channelId} not found`);
-		}
-
-		if (channel.accountId !== task.accountId) {
-			throw new Error(
-				`Channel ${channelId} does not belong to account ${task.accountId}`,
-			);
-		}
-
-		const executionRequest = await this.requestBuilder.build({
+		const preparationResult = await this.preparationService.prepare({
 			task,
-			candidateReply,
-			channel,
+			availableChannels: this.platformState.getChannels(task.accountId),
 		});
+
+		if (!preparationResult.ready || !preparationResult.request) {
+			return {
+				success: false,
+				error: {
+					code: preparationResult.error?.code ?? "EXECUTION_NOT_READY",
+					message:
+						preparationResult.error?.message ??
+						"Task is not ready for execution",
+					retryable: false,
+				},
+			};
+		}
+
+		const executionRequest = preparationResult.request;
 		await this.requestRepository.save(executionRequest);
 
 		const executeResult = await this.executionService.execute({

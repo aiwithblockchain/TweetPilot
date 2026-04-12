@@ -8,6 +8,8 @@ import { createCommentInput } from "../../src/domain/commentInput";
 import type { ExecutionChannel } from "../../src/domain/executionChannel";
 import { createReplyTask } from "../../src/domain/replyTask";
 import type { ITwitterReplyExecutor } from "../../src/domain/twitterReplyExecutor";
+import { ExecutionEligibilityService } from "../../src/services/executionEligibilityService";
+import { ExecutionPreparationService } from "../../src/services/executionPreparationService";
 import { ExecutionRequestBuilder } from "../../src/services/executionRequestBuilder";
 import { ExecutionService } from "../../src/services/executionService";
 import { TaskExecutionOrchestrator } from "../../src/services/taskExecutionOrchestrator";
@@ -47,6 +49,8 @@ describe("taskExecutionOrchestrator integration", () => {
 			candidateReplyId: candidateReply.id,
 			riskLevel: "low",
 			createdBy: "user-001",
+			status: "ready_for_execution",
+			route: "ready_for_execution",
 		});
 		await taskRepository.save(task);
 
@@ -70,28 +74,35 @@ describe("taskExecutionOrchestrator integration", () => {
 		};
 
 		const builder = new ExecutionRequestBuilder(commentInputRepository);
+		const preparationService = new ExecutionPreparationService(
+			candidateReplyRepository,
+			new ExecutionEligibilityService(),
+			builder,
+		);
 		const service = new ExecutionService(requestRepository, executor);
 		const writer = new TaskExecutionResultWriter(taskRepository, requestRepository);
 		const orchestrator = new TaskExecutionOrchestrator(
 			taskRepository,
-			candidateReplyRepository,
 			requestRepository,
-			builder,
+			preparationService,
 			service,
 			writer,
 			{
-				getChannel: (channelId: string) =>
-					channelId === channel.id ? channel : null,
+				getChannels: (accountId?: string) =>
+					accountId === task.accountId ? [channel] : [],
+				getChannel: (channelId: string) => (channelId === channel.id ? channel : null),
 			},
 		);
 
 		const result = await orchestrator.executeTask({
 			taskId: task.id,
-			channelId: channel.id,
 			actorId: "executor-001",
 		});
+		expect(result.executionRequestId).toBeDefined();
 
-		const storedRequest = await requestRepository.findById(result.executionRequestId);
+		const storedRequest = await requestRepository.findById(
+			result.executionRequestId!,
+		);
 		const storedTask = await taskRepository.findById(task.id);
 
 		expect(result.success).toBe(true);
