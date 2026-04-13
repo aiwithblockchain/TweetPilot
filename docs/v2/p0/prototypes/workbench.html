@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TweetPilot - 产品工作台</title>
+  <title>TweetPilot - 工作台</title>
   <link rel="stylesheet" href="styles/design-system.css">
   <style>
     /* 工作台布局 */
@@ -311,12 +311,12 @@
     <div class="top-bar">
       <div class="top-bar-left">
         <div class="product-selector" id="productSelector">
-          <span class="product-icon" id="currentProductIcon">📦</span>
+          <span class="product-icon" id="currentProductIcon">📁</span>
           <span class="product-name" id="currentProductName">加载中...</span>
           <span class="dropdown-icon">▼</span>
         </div>
 
-        <!-- 产品切换下拉菜单 -->
+        <!-- 工作区切换下拉菜单 -->
         <div class="dropdown-menu" id="productDropdown" style="position: absolute; top: 56px; left: 24px;">
           <!-- 动态生成 -->
         </div>
@@ -405,7 +405,7 @@
           <div id="settingsView" class="view-content" style="display: none;">
             <div class="content-header">
               <h1 class="content-title">设置</h1>
-              <p class="content-description">配置产品、Twitter 账号、系统设置</p>
+              <p class="content-description">配置当前工作区、连接状态和系统设置</p>
             </div>
             <div class="placeholder">
               <div class="placeholder-icon">⚙️</div>
@@ -423,14 +423,14 @@
   <script src="scripts/mock-data.js"></script>
   <script>
     // ==================== 全局状态 ====================
-    let currentProductId = null;
+    let currentWorkspacePath = null;
     let currentView = 'tasks';
     let sidebarCollapsed = false;
 
     // ==================== 初始化 ====================
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
-      loadCurrentProduct();
+      loadCurrentWorkspace();
       bindEvents();
     });
 
@@ -452,47 +452,45 @@
       setTheme(newTheme);
     }
 
-    // ==================== 加载当前产品 ====================
-    async function loadCurrentProduct() {
-      // 验证工作区上下文：必须从产品选择器进入
+    // ==================== 加载当前工作区 ====================
+    async function loadCurrentWorkspace() {
       const workspaceInitialized = localStorage.getItem('workspaceInitialized');
-      currentProductId = localStorage.getItem('currentProductId');
+      currentWorkspacePath = localStorage.getItem('currentWorkspacePath');
 
-      if (!workspaceInitialized || !currentProductId) {
-        // 如果没有初始化工作区或没有选中的产品，强制返回产品选择器
+      if (!workspaceInitialized || !currentWorkspacePath) {
         alert('请先选择一个工作区');
         window.location.href = 'product-selector.html';
         return;
       }
 
-      // 模拟 API 延迟
       await MockData.delay(300);
 
-      const product = MockData.products.find(p => p.id === currentProductId);
-      if (!product) {
-        // 产品不存在，清除上下文并返回选择器
+      const workspace = MockData.getWorkspaceByPath(currentWorkspacePath);
+      if (!workspace) {
         localStorage.removeItem('workspaceInitialized');
-        localStorage.removeItem('currentProductId');
-        localStorage.removeItem('currentWorkspace');
-        alert('工作区不存在，请重新选择');
+        localStorage.removeItem('currentWorkspacePath');
+        localStorage.removeItem('currentWorkspaceName');
+        alert('工作区目录不存在，请重新选择');
         window.location.href = 'product-selector.html';
         return;
       }
 
-      // 更新顶部栏
-      document.getElementById('currentProductIcon').textContent = product.icon || '📦';
-      document.getElementById('currentProductName').textContent = product.name;
+      document.getElementById('currentProductIcon').textContent = workspace.hasMetadata ? '🗂️' : '📁';
+      document.getElementById('currentProductName').textContent = MockData.getWorkspaceNameFromPath(workspace.rootPath);
 
-      // 更新 Twitter 账号状态
-      const account = MockData.getProductTwitterAccount(currentProductId);
+      const account = MockData.getWorkspaceTwitterAccount(currentWorkspacePath);
       if (account) {
         document.getElementById('twitterUsername').textContent = `@${account.username}`;
         const statusDot = document.querySelector('#twitterStatus .status-dot');
         statusDot.className = `status-dot ${account.isConnected ? 'connected' : 'disconnected'}`;
+      } else {
+        document.getElementById('twitterUsername').textContent = '未绑定账号';
+        const statusDot = document.querySelector('#twitterStatus .status-dot');
+        statusDot.className = 'status-dot disconnected';
       }
     }
 
-    // ==================== 产品切换下拉菜单 ====================
+    // ==================== 工作区切换下拉菜单 ====================
     function toggleProductDropdown() {
       const dropdown = document.getElementById('productDropdown');
       const isActive = dropdown.classList.contains('active');
@@ -507,29 +505,28 @@
 
     function renderProductDropdown() {
       const dropdown = document.getElementById('productDropdown');
-      const recentProducts = MockData.products
+      const recentWorkspaces = [...MockData.workspaces]
         .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
         .slice(0, 3);
 
       dropdown.innerHTML = `
-        ${recentProducts.map(product => `
-          <div class="dropdown-item" data-product-id="${product.id}">
-            <span>${product.icon || '📦'}</span>
-            <span>${product.name}</span>
+        ${recentWorkspaces.map(workspace => `
+          <div class="dropdown-item" data-workspace-path="${workspace.rootPath}">
+            <span>${workspace.hasMetadata ? '🗂️' : '📁'}</span>
+            <span>${MockData.getWorkspaceNameFromPath(workspace.rootPath)}</span>
           </div>
         `).join('')}
         <div class="dropdown-divider"></div>
         <div class="dropdown-item" id="viewAllProducts">
           <span>📋</span>
-          <span>查看所有产品</span>
+          <span>查看所有工作区</span>
         </div>
       `;
 
-      // 绑定点击事件
-      dropdown.querySelectorAll('.dropdown-item[data-product-id]').forEach(item => {
+      dropdown.querySelectorAll('.dropdown-item[data-workspace-path]').forEach(item => {
         item.addEventListener('click', () => {
-          const productId = item.getAttribute('data-product-id');
-          switchProduct(productId);
+          const workspacePath = item.getAttribute('data-workspace-path');
+          switchWorkspace(workspacePath);
         });
       });
 
@@ -538,8 +535,9 @@
       });
     }
 
-    async function switchProduct(productId) {
-      localStorage.setItem('currentProductId', productId);
+    async function switchWorkspace(workspacePath) {
+      localStorage.setItem('currentWorkspacePath', workspacePath);
+      localStorage.setItem('currentWorkspaceName', MockData.getWorkspaceNameFromPath(workspacePath));
       window.location.reload();
     }
 
@@ -591,7 +589,7 @@
 
     // ==================== 事件绑定 ====================
     function bindEvents() {
-      // 产品选择器下拉菜单
+      // 工作区选择器下拉菜单
       document.getElementById('productSelector').addEventListener('click', toggleProductDropdown);
 
       // 点击外部关闭下拉菜单

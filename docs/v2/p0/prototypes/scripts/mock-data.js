@@ -3,6 +3,51 @@
  * 模拟数据，用于原型演示
  */
 
+// ==================== 工作区数据 ====================
+
+const mockWorkspaces = [
+  {
+    id: 'workspace-1',
+    rootPath: '/Users/alex/Projects/tweetpilot-cli',
+    accountId: 'account-1',
+    hasMetadata: true,
+    source: 'folder',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-04-13'),
+    lastUsedAt: new Date(Date.now() - 45 * 60 * 1000), // 45 分钟前
+  },
+  {
+    id: 'workspace-2',
+    rootPath: '/Users/alex/Projects/ai-writer-studio',
+    accountId: 'account-2',
+    hasMetadata: true,
+    source: 'folder',
+    createdAt: new Date('2026-02-15'),
+    updatedAt: new Date('2026-04-10'),
+    lastUsedAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 小时前
+  },
+  {
+    id: 'workspace-3',
+    rootPath: '/Users/alex/Work/data-analytics-lab',
+    accountId: 'account-3',
+    hasMetadata: false,
+    source: 'folder',
+    createdAt: new Date('2026-03-01'),
+    updatedAt: new Date('2026-04-05'),
+    lastUsedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 天前
+  },
+  {
+    id: 'workspace-4',
+    rootPath: '/Users/alex/Code/content-engine',
+    accountId: 'account-4',
+    hasMetadata: true,
+    source: 'clone',
+    createdAt: new Date('2025-12-01'),
+    updatedAt: new Date('2026-03-20'),
+    lastUsedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // 8 天前
+  },
+];
+
 // ==================== 产品数据 ====================
 
 const mockProducts = [
@@ -293,6 +338,25 @@ function formatNumber(num) {
 }
 
 /**
+ * 从目录路径提取工作区名称
+ * @param {string} workspacePath - 工作区路径
+ * @returns {string}
+ */
+function getWorkspaceNameFromPath(workspacePath) {
+  if (!workspacePath) return '';
+  return workspacePath.split('/').filter(Boolean).pop() || workspacePath;
+}
+
+/**
+ * 缩短路径显示
+ * @param {string} workspacePath - 工作区路径
+ * @returns {string}
+ */
+function compactPath(workspacePath) {
+  return workspacePath.replace('/Users/alex', '~');
+}
+
+/**
  * 模拟 API 延迟
  * @param {number} ms - 延迟毫秒数
  * @returns {Promise<void>}
@@ -322,6 +386,44 @@ function searchProducts(keyword) {
 }
 
 /**
+ * 搜索工作区
+ * @param {string} keyword - 搜索关键词
+ * @returns {Array}
+ */
+function searchWorkspaces(keyword) {
+  if (!keyword) return mockWorkspaces;
+
+  const lowerKeyword = keyword.toLowerCase();
+  return mockWorkspaces.filter(workspace => {
+    const workspaceName = getWorkspaceNameFromPath(workspace.rootPath);
+    return (
+      workspaceName.toLowerCase().includes(lowerKeyword) ||
+      workspace.rootPath.toLowerCase().includes(lowerKeyword)
+    );
+  });
+}
+
+/**
+ * 根据路径获取工作区
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Object|null}
+ */
+function getWorkspaceByPath(workspacePath) {
+  return mockWorkspaces.find(workspace => workspace.rootPath === workspacePath) || null;
+}
+
+/**
+ * 获取工作区绑定的 Twitter 账号
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Object|null}
+ */
+function getWorkspaceTwitterAccount(workspacePath) {
+  const workspace = getWorkspaceByPath(workspacePath);
+  if (!workspace?.accountId) return null;
+  return mockTwitterAccounts[workspace.accountId] || null;
+}
+
+/**
  * 获取产品的 Twitter 账号信息
  * @param {string} productId - 产品 ID
  * @returns {Object|null} - Twitter 账号信息
@@ -335,6 +437,7 @@ function getProductTwitterAccount(productId) {
 // ==================== 导出 ====================
 
 window.MockData = {
+  workspaces: mockWorkspaces,
   products: mockProducts,
   twitterAccounts: mockTwitterAccounts,
   tasks: mockTasks,
@@ -345,7 +448,12 @@ window.MockData = {
   // 工具函数
   formatRelativeTime,
   formatNumber,
+  getWorkspaceNameFromPath,
+  compactPath,
   delay,
   searchProducts,
+  searchWorkspaces,
+  getWorkspaceByPath,
+  getWorkspaceTwitterAccount,
   getProductTwitterAccount,
 };
