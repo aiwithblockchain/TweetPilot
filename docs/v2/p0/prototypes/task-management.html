@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot - 任务管理</title>
+  <link rel="stylesheet" href="styles/design-system.css">
+  <style>
+    body {
+      margin: 0;
+      background-color: var(--bg-primary);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--spacing-8);
+    }
+
+    /* 顶部操作栏 */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--spacing-6);
+    }
+
+    .header-left h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-1);
+    }
+
+    .header-left p {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .header-right {
+      display: flex;
+      gap: var(--spacing-3);
+    }
+
+    /* 筛选栏 */
+    .filter-bar {
+      display: flex;
+      gap: var(--spacing-3);
+      margin-bottom: var(--spacing-6);
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: var(--spacing-2) var(--spacing-4);
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .filter-btn:hover {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .filter-btn.active {
+      background-color: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    /* 任务列表 */
+    .tasks-grid {
+      display: grid;
+      gap: var(--spacing-4);
+    }
+
+    /* 任务卡片 */
+    .task-card {
+      display: flex;
+      gap: var(--spacing-4);
+      padding: var(--spacing-5);
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .task-card:hover {
+      border-color: var(--primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .task-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .task-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .task-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-3);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .task-id {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+    }
+
+    .task-name {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .task-meta {
+      display: flex;
+      gap: var(--spacing-4);
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+    }
+
+    .task-actions {
+      display: flex;
+      gap: var(--spacing-2);
+      flex-shrink: 0;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      text-align: center;
+      padding: var(--spacing-16) var(--spacing-4);
+    }
+
+    .empty-icon {
+      font-size: 4rem;
+      margin-bottom: var(--spacing-4);
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .empty-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    /* 创建任务对话框 */
+    .dialog-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .dialog-overlay.active {
+      display: flex;
+    }
+
+    .dialog {
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      background-color: var(--bg-primary);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dialog-header {
+      padding: var(--spacing-5);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dialog-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+    }
+
+    .dialog-body {
+      padding: var(--spacing-6);
+      overflow-y: auto;
+    }
+
+    .form-group {
+      margin-bottom: var(--spacing-5);
+    }
+
+    .form-label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .form-label-required::after {
+      content: ' *';
+      color: var(--error);
+    }
+
+    .form-help {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      margin-top: var(--spacing-1);
+    }
+
+    .radio-group {
+      display: flex;
+      gap: var(--spacing-4);
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+    }
+
+    .dialog-footer {
+      padding: var(--spacing-5);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--spacing-3);
+    }
+
+    /* 任务详情侧边栏 */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.3);
+      z-index: 999;
+    }
+
+    .sidebar-overlay.active {
+      display: block;
+    }
+
+    .task-sidebar {
+      position: fixed;
+      top: 0;
+      right: -500px;
+      width: 500px;
+      height: 100vh;
+      background-color: var(--bg-primary);
+      box-shadow: var(--shadow-xl);
+      transition: right var(--transition-base);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .task-sidebar.active {
+      right: 0;
+    }
+
+    .sidebar-header {
+      padding: var(--spacing-5);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+    }
+
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: transparent;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all var(--transition-fast);
+    }
+
+    .close-btn:hover {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--spacing-6);
+    }
+
+    .detail-section {
+      margin-bottom: var(--spacing-6);
+    }
+
+    .detail-section-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--spacing-3);
+    }
+
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+      padding: var(--spacing-2) 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-item:last-child {
+      border-bottom: none;
+    }
+
+    .detail-label {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    .detail-value {
+      font-size: var(--text-sm);
+      color: var(--text-primary);
+      font-weight: var(--font-medium);
+    }
+
+    .sidebar-footer {
+      padding: var(--spacing-5);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: var(--spacing-3);
+    }
+
+    /* 主题切换 */
+    .theme-toggle {
+      position: fixed;
+      bottom: var(--spacing-6);
+      right: var(--spacing-6);
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.25rem;
+      transition: all var(--transition-fast);
+      box-shadow: var(--shadow-md);
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-tertiary);
+      box-shadow: var(--shadow-lg);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部操作栏 -->
+    <div class="header">
+      <div class="header-left">
+        <h1>任务管理</h1>
+        <p>管理和执行 Twitter 自动化任务</p>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-secondary" id="filterBtn">
+          筛选 ▼
+        </button>
+        <button class="btn btn-primary" id="createTaskBtn">
+          + 创建任务
+        </button>
+      </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="filter-bar" id="filterBar">
+      <button class="filter-btn active" data-filter="all">全部任务</button>
+      <button class="filter-btn" data-filter="pending">待执行</button>
+      <button class="filter-btn" data-filter="in_progress">执行中</button>
+      <button class="filter-btn" data-filter="completed">已完成</button>
+      <button class="filter-btn" data-filter="failed">失败</button>
+      <button class="filter-btn" data-filter="pending_review">待审核</button>
+    </div>
+
+    <!-- 任务列表 -->
+    <div class="tasks-grid" id="tasksList">
+      <!-- 动态生成 -->
+    </div>
+
+    <!-- 空状态 -->
+    <div class="empty-state" id="emptyState" style="display: none;">
+      <div class="empty-icon">✅</div>
+      <div class="empty-title">暂无任务</div>
+      <div class="empty-description">点击"+ 创建任务"创建第一个任务</div>
+    </div>
+  </div>
+
+  <!-- 创建任务对话框 -->
+  <div class="dialog-overlay" id="createTaskDialog">
+    <div class="dialog">
+      <div class="dialog-header">
+        <h2 class="dialog-title">创建任务</h2>
+      </div>
+      <div class="dialog-body">
+        <form id="createTaskForm">
+          <div class="form-group">
+            <label class="form-label form-label-required">任务类型</label>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="taskType" value="reply_comment" checked>
+                <span>自动回复评论</span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="taskType" value="create_tweet">
+                <span>生成推文</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label form-label-required" for="taskName">任务名称</label>
+            <input
+              type="text"
+              class="input"
+              id="taskName"
+              placeholder="例如：自动回复评论"
+              required
+            >
+          </div>
+
+          <!-- 自动回复评论配置 -->
+          <div id="replyCommentConfig">
+            <div class="form-group">
+              <label class="form-label form-label-required" for="tweetUrl">推文 URL</label>
+              <input
+                type="text"
+                class="input"
+                id="tweetUrl"
+                placeholder="https://twitter.com/username/status/123456789"
+              >
+              <div class="form-help">输入要回复评论的推文链接</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label form-label-required">回复策略</label>
+              <select class="input" id="replyStrategy">
+                <option value="all">回复所有评论</option>
+                <option value="high_engagement">仅回复高互动评论</option>
+                <option value="keywords">仅回复包含关键词的评论</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="minLikesGroup" style="display: none;">
+              <label class="form-label" for="minLikes">最小点赞数</label>
+              <input
+                type="number"
+                class="input"
+                id="minLikes"
+                placeholder="10"
+                min="0"
+              >
+            </div>
+          </div>
+
+          <!-- 生成推文配置 -->
+          <div id="createTweetConfig" style="display: none;">
+            <div class="form-group">
+              <label class="form-label form-label-required" for="tweetTopic">推文主题</label>
+              <input
+                type="text"
+                class="input"
+                id="tweetTopic"
+                placeholder="例如：新功能发布"
+              >
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="tweetStyle">推文风格</label>
+              <select class="input" id="tweetStyle">
+                <option value="professional">专业</option>
+                <option value="casual">轻松</option>
+                <option value="humorous">幽默</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="tweetCount">生成数量</label>
+              <input
+                type="number"
+                class="input"
+                id="tweetCount"
+                value="3"
+                min="1"
+                max="10"
+              >
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn btn-secondary" id="cancelCreateBtn">取消</button>
+        <button class="btn btn-primary" id="confirmCreateBtn">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 任务详情侧边栏 -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="task-sidebar" id="taskSidebar">
+    <div class="sidebar-header">
+      <h2 class="sidebar-title">任务详情</h2>
+      <button class="close-btn" id="closeSidebarBtn">✕</button>
+    </div>
+    <div class="sidebar-body" id="sidebarBody">
+      <!-- 动态生成 -->
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn btn-secondary btn-sm" id="deleteTaskBtn">删除</button>
+      <button class="btn btn-primary btn-sm" id="executeTaskBtn">执行任务</button>
+    </div>
+  </div>
+
+  <!-- 主题切换 -->
+  <button class="theme-toggle" id="themeToggle">
+    <span id="themeIcon">🌙</span>
+  </button>
+
+  <script src="scripts/mock-data.js"></script>
+  <script>
+    // ==================== 全局状态 ====================
+    let currentFilter = 'all';
+    let currentTasks = [];
+    let selectedTask = null;
+
+    // ==================== 初始化 ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      loadTasks();
+      bindEvents();
+    });
+
+    // ==================== 主题切换 ====================
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      setTheme(savedTheme);
+    }
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      document.getElementById('themeIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      setTheme(newTheme);
+    }
+
+    // ==================== 加载任务列表 ====================
+    async function loadTasks() {
+      await MockData.delay(300);
+      currentTasks = MockData.tasks;
+      renderTasks();
+    }
+
+    // ==================== 渲染任务列表 ====================
+    function renderTasks() {
+      const tasksList = document.getElementById('tasksList');
+      const emptyState = document.getElementById('emptyState');
+
+      const filteredTasks = currentFilter === 'all'
+        ? currentTasks
+        : currentTasks.filter(task => task.status === currentFilter);
+
+      if (filteredTasks.length === 0) {
+        tasksList.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      tasksList.style.display = 'grid';
+      emptyState.style.display = 'none';
+
+      const taskIcons = {
+        reply_comment: '🔄',
+        create_tweet: '✍️',
+        analyze_data: '📊',
+      };
+
+      const statusLabels = {
+        pending: '待执行',
+        in_progress: '执行中',
+        completed: '已完成',
+        failed: '失败',
+        pending_review: '待审核',
+      };
+
+      const statusClasses = {
+        pending: 'neutral',
+        in_progress: 'info',
+        completed: 'success',
+        failed: 'error',
+        pending_review: 'warning',
+      };
+
+      tasksList.innerHTML = filteredTasks.map(task => `
+        <div class="task-card" data-task-id="${task.id}">
+          <div class="task-icon">${taskIcons[task.type] || '📋'}</div>
+          <div class="task-content">
+            <div class="task-header">
+              <span class="task-id">任务 #${task.id.split('-')[1]}</span>
+              <span class="badge badge-${statusClasses[task.status]}">${statusLabels[task.status]}</span>
+            </div>
+            <div class="task-name">${task.name}</div>
+            <div class="task-meta">
+              <span>创建：${MockData.formatRelativeTime(task.createdAt)}</span>
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="btn btn-secondary btn-sm">详情</button>
+          </div>
+        </div>
+      `).join('');
+
+      // 绑定卡片点击事件
+      document.querySelectorAll('.task-card').forEach(card => {
+        card.addEventListener('click', () => {
+          const taskId = card.getAttribute('data-task-id');
+          showTaskDetails(taskId);
+        });
+      });
+    }
+
+    // ==================== 筛选任务 ====================
+    function filterTasks(filter) {
+      currentFilter = filter;
+
+      // 更新筛选按钮状态
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-filter') === filter) {
+          btn.classList.add('active');
+        }
+      });
+
+      renderTasks();
+    }
+
+    // ==================== 显示任务详情 ====================
+    function showTaskDetails(taskId) {
+      selectedTask = currentTasks.find(t => t.id === taskId);
+      if (!selectedTask) return;
+
+      const sidebar = document.getElementById('taskSidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      const body = document.getElementById('sidebarBody');
+
+      const statusLabels = {
+        pending: '待执行',
+        in_progress: '执行中',
+        completed: '已完成',
+        failed: '失败',
+        pending_review: '待审核',
+      };
+
+      const typeLabels = {
+        reply_comment: '自动回复评论',
+        create_tweet: '生成推文',
+        analyze_data: '数据分析',
+      };
+
+      body.innerHTML = `
+        <div class="detail-section">
+          <div class="detail-section-title">基本信息</div>
+          <div class="detail-item">
+            <span class="detail-label">任务 ID</span>
+            <span class="detail-value">#${selectedTask.id.split('-')[1]}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">任务名称</span>
+            <span class="detail-value">${selectedTask.name}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">任务类型</span>
+            <span class="detail-value">${typeLabels[selectedTask.type]}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">状态</span>
+            <span class="detail-value">${statusLabels[selectedTask.status]}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">时间信息</div>
+          <div class="detail-item">
+            <span class="detail-label">创建时间</span>
+            <span class="detail-value">${MockData.formatRelativeTime(selectedTask.createdAt)}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">更新时间</span>
+            <span class="detail-value">${MockData.formatRelativeTime(selectedTask.updatedAt)}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">任务配置</div>
+          ${Object.entries(selectedTask.config).map(([key, value]) => `
+            <div class="detail-item">
+              <span class="detail-label">${key}</span>
+              <span class="detail-value">${value}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      sidebar.classList.add('active');
+      overlay.classList.add('active');
+    }
+
+    function closeSidebar() {
+      document.getElementById('taskSidebar').classList.remove('active');
+      document.getElementById('sidebarOverlay').classList.remove('active');
+      selectedTask = null;
+    }
+
+    // ==================== 创建任务对话框 ====================
+    function openCreateDialog() {
+      document.getElementById('createTaskDialog').classList.add('active');
+      document.getElementById('createTaskForm').reset();
+      updateTaskTypeConfig();
+    }
+
+    function closeCreateDialog() {
+      document.getElementById('createTaskDialog').classList.remove('active');
+    }
+
+    function updateTaskTypeConfig() {
+      const taskType = document.querySelector('input[name="taskType"]:checked').value;
+      const replyConfig = document.getElementById('replyCommentConfig');
+      const tweetConfig = document.getElementById('createTweetConfig');
+
+      if (taskType === 'reply_comment') {
+        replyConfig.style.display = 'block';
+        tweetConfig.style.display = 'none';
+      } else {
+        replyConfig.style.display = 'none';
+        tweetConfig.style.display = 'block';
+      }
+    }
+
+    function updateReplyStrategy() {
+      const strategy = document.getElementById('replyStrategy').value;
+      const minLikesGroup = document.getElementById('minLikesGroup');
+
+      if (strategy === 'high_engagement') {
+        minLikesGroup.style.display = 'block';
+      } else {
+        minLikesGroup.style.display = 'none';
+      }
+    }
+
+    async function createTask() {
+      const form = document.getElementById('createTaskForm');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+
+      const taskType = document.querySelector('input[name="taskType"]:checked').value;
+      const taskName = document.getElementById('taskName').value;
+
+      let config = {};
+      if (taskType === 'reply_comment') {
+        config = {
+          tweetUrl: document.getElementById('tweetUrl').value,
+          replyStrategy: document.getElementById('replyStrategy').value,
+          minLikes: document.getElementById('minLikes').value || 10,
+        };
+      } else {
+        config = {
+          topic: document.getElementById('tweetTopic').value,
+          style: document.getElementById('tweetStyle').value,
+          count: parseInt(document.getElementById('tweetCount').value),
+        };
+      }
+
+      closeCreateDialog();
+      await MockData.delay(500);
+
+      const newTask = {
+        id: `task-${Date.now()}`,
+        productId: localStorage.getItem('currentProductId'),
+        type: taskType,
+        name: taskName,
+        status: 'pending',
+        config,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      MockData.tasks.push(newTask);
+      await loadTasks();
+    }
+
+    // ==================== 执行任务 ====================
+    async function executeTask() {
+      if (!selectedTask) return;
+
+      closeSidebar();
+      await MockData.delay(1000);
+
+      selectedTask.status = 'completed';
+      selectedTask.updatedAt = new Date();
+
+      await loadTasks();
+      alert('任务执行成功！');
+    }
+
+    // ==================== 删除任务 ====================
+    async function deleteTask() {
+      if (!selectedTask) return;
+
+      if (!confirm('确定要删除这个任务吗？')) return;
+
+      closeSidebar();
+      await MockData.delay(300);
+
+      const index = MockData.tasks.findIndex(t => t.id === selectedTask.id);
+      if (index > -1) {
+        MockData.tasks.splice(index, 1);
+      }
+
+      await loadTasks();
+    }
+
+    // ==================== 事件绑定 ====================
+    function bindEvents() {
+      // 筛选按钮
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const filter = btn.getAttribute('data-filter');
+          filterTasks(filter);
+        });
+      });
+
+      // 创建任务
+      document.getElementById('createTaskBtn').addEventListener('click', openCreateDialog);
+      document.getElementById('cancelCreateBtn').addEventListener('click', closeCreateDialog);
+      document.getElementById('confirmCreateBtn').addEventListener('click', createTask);
+
+      // 任务类型切换
+      document.querySelectorAll('input[name="taskType"]').forEach(radio => {
+        radio.addEventListener('change', updateTaskTypeConfig);
+      });
+
+      // 回复策略切换
+      document.getElementById('replyStrategy').addEventListener('change', updateReplyStrategy);
+
+      // 侧边栏
+      document.getElementById('closeSidebarBtn').addEventListener('click', closeSidebar);
+      document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
+      document.getElementById('executeTaskBtn').addEventListener('click', executeTask);
+      document.getElementById('deleteTaskBtn').addEventListener('click', deleteTask);
+
+      // 对话框
+      document.getElementById('createTaskDialog').addEventListener('click', (e) => {
+        if (e.target.id === 'createTaskDialog') {
+          closeCreateDialog();
+        }
+      });
+
+      // ESC 键
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeCreateDialog();
+          closeSidebar();
+        }
+      });
+
+      // 主题切换
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot - 产品工作台</title>
+  <link rel="stylesheet" href="styles/design-system.css">
+  <style>
+    /* 工作台布局 */
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .workbench {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* 顶部状态栏 */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      padding: 0 var(--spacing-6);
+      background-color: var(--bg-primary);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .top-bar-left {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-3);
+    }
+
+    .product-selector {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2) var(--spacing-3);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .product-selector:hover {
+      background-color: var(--bg-tertiary);
+      border-color: var(--border-hover);
+    }
+
+    .product-icon {
+      font-size: 1.25rem;
+    }
+
+    .product-name {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-primary);
+    }
+
+    .dropdown-icon {
+      font-size: 0.75rem;
+      color: var(--text-tertiary);
+    }
+
+    .top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-4);
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2) var(--spacing-3);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      font-size: var(--text-sm);
+    }
+
+    .status-badge:hover {
+      background-color: var(--bg-tertiary);
+      border-color: var(--border-hover);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-dot.connected {
+      background-color: var(--success);
+    }
+
+    .status-dot.disconnected {
+      background-color: var(--text-tertiary);
+    }
+
+    .status-dot.error {
+      background-color: var(--error);
+    }
+
+    /* 主内容区 */
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* 侧边栏 */
+    .sidebar {
+      width: 240px;
+      background-color: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      transition: width var(--transition-base);
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: var(--spacing-4) 0;
+      overflow-y: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-3);
+      padding: var(--spacing-3) var(--spacing-6);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+
+    .nav-item:hover {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background-color: var(--bg-primary);
+      color: var(--primary);
+      font-weight: var(--font-medium);
+      border-right: 2px solid var(--primary);
+    }
+
+    .nav-icon {
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .nav-label {
+      font-size: var(--text-sm);
+      transition: opacity var(--transition-base);
+    }
+
+    .sidebar.collapsed .nav-label {
+      opacity: 0;
+      width: 0;
+      overflow: hidden;
+    }
+
+    .sidebar-footer {
+      padding: var(--spacing-4);
+      border-top: 1px solid var(--border);
+    }
+
+    .collapse-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--spacing-2);
+      background-color: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      color: var(--text-secondary);
+    }
+
+    .collapse-btn:hover {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    /* 内容区域 */
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      background-color: var(--bg-primary);
+    }
+
+    .content-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--spacing-8);
+    }
+
+    .content-header {
+      margin-bottom: var(--spacing-6);
+    }
+
+    .content-title {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .content-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    /* 占位内容 */
+    .placeholder {
+      text-align: center;
+      padding: var(--spacing-16) var(--spacing-4);
+    }
+
+    .placeholder-icon {
+      font-size: 4rem;
+      margin-bottom: var(--spacing-4);
+      opacity: 0.3;
+    }
+
+    .placeholder-text {
+      font-size: var(--text-lg);
+      color: var(--text-secondary);
+    }
+
+    /* 主题切换按钮 */
+    .theme-toggle {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      background-color: transparent;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-tertiary);
+    }
+
+    /* 下拉菜单 */
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: var(--spacing-2);
+      min-width: 200px;
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      overflow: hidden;
+    }
+
+    .dropdown-menu.active {
+      display: block;
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-3);
+      padding: var(--spacing-3) var(--spacing-4);
+      cursor: pointer;
+      transition: background-color var(--transition-fast);
+    }
+
+    .dropdown-item:hover {
+      background-color: var(--bg-secondary);
+    }
+
+    .dropdown-divider {
+      height: 1px;
+      background-color: var(--border);
+      margin: var(--spacing-2) 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="workbench">
+    <!-- 顶部状态栏 -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="product-selector" id="productSelector">
+          <span class="product-icon" id="currentProductIcon">📦</span>
+          <span class="product-name" id="currentProductName">加载中...</span>
+          <span class="dropdown-icon">▼</span>
+        </div>
+
+        <!-- 产品切换下拉菜单 -->
+        <div class="dropdown-menu" id="productDropdown" style="position: absolute; top: 56px; left: 24px;">
+          <!-- 动态生成 -->
+        </div>
+      </div>
+
+      <div class="top-bar-right">
+        <!-- Twitter 账号状态 -->
+        <div class="status-badge" id="twitterStatus">
+          <span class="status-dot connected"></span>
+          <span id="twitterUsername">@loading</span>
+        </div>
+
+        <!-- Claurst 状态 -->
+        <div class="status-badge" id="claurstStatus">
+          <span class="status-dot connected"></span>
+          <span>Claurst</span>
+        </div>
+
+        <!-- 主题切换 -->
+        <button class="theme-toggle" id="themeToggle">
+          <span id="themeIcon">🌙</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <!-- 侧边栏 -->
+      <div class="sidebar" id="sidebar">
+        <nav class="sidebar-nav">
+          <div class="nav-item active" data-view="tasks">
+            <span class="nav-icon">✅</span>
+            <span class="nav-label">任务管理</span>
+          </div>
+          <div class="nav-item" data-view="data-blocks">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">数据积木</span>
+          </div>
+          <div class="nav-item" data-view="settings">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">设置</span>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="collapse-btn" id="collapseBtn">
+            <span id="collapseIcon">◀</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 内容区域 -->
+      <div class="content-area" id="contentArea">
+        <div class="content-container">
+          <!-- 任务管理视图 -->
+          <div id="tasksView" class="view-content">
+            <div class="content-header">
+              <h1 class="content-title">任务管理</h1>
+              <p class="content-description">管理和执行 Twitter 自动化任务</p>
+            </div>
+            <div class="placeholder">
+              <div class="placeholder-icon">✅</div>
+              <div class="placeholder-text">任务管理界面开发中...</div>
+              <p style="margin-top: var(--spacing-4); color: var(--text-tertiary); font-size: var(--text-sm);">
+                完整的任务管理界面将在 task-management.html 中实现
+              </p>
+            </div>
+          </div>
+
+          <!-- 数据积木视图 -->
+          <div id="dataBlocksView" class="view-content" style="display: none;">
+            <div class="content-header">
+              <h1 class="content-title">数据积木</h1>
+              <p class="content-description">展示半成品数据（高互动推文、评论、用户画像）</p>
+            </div>
+            <div class="placeholder">
+              <div class="placeholder-icon">📊</div>
+              <div class="placeholder-text">数据积木界面开发中...</div>
+              <p style="margin-top: var(--spacing-4); color: var(--text-tertiary); font-size: var(--text-sm);">
+                完整的数据积木界面将在 data-blocks.html 中实现
+              </p>
+            </div>
+          </div>
+
+          <!-- 设置视图 -->
+          <div id="settingsView" class="view-content" style="display: none;">
+            <div class="content-header">
+              <h1 class="content-title">设置</h1>
+              <p class="content-description">配置产品、Twitter 账号、系统设置</p>
+            </div>
+            <div class="placeholder">
+              <div class="placeholder-icon">⚙️</div>
+              <div class="placeholder-text">设置界面开发中...</div>
+              <p style="margin-top: var(--spacing-4); color: var(--text-tertiary); font-size: var(--text-sm);">
+                完整的设置界面将在 settings.html 中实现
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="scripts/mock-data.js"></script>
+  <script>
+    // ==================== 全局状态 ====================
+    let currentProductId = null;
+    let currentView = 'tasks';
+    let sidebarCollapsed = false;
+
+    // ==================== 初始化 ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      loadCurrentProduct();
+      bindEvents();
+    });
+
+    // ==================== 主题切换 ====================
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      setTheme(savedTheme);
+    }
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      document.getElementById('themeIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      setTheme(newTheme);
+    }
+
+    // ==================== 加载当前产品 ====================
+    async function loadCurrentProduct() {
+      // 验证工作区上下文：必须从产品选择器进入
+      const workspaceInitialized = localStorage.getItem('workspaceInitialized');
+      currentProductId = localStorage.getItem('currentProductId');
+
+      if (!workspaceInitialized || !currentProductId) {
+        // 如果没有初始化工作区或没有选中的产品，强制返回产品选择器
+        alert('请先选择一个工作区');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      // 模拟 API 延迟
+      await MockData.delay(300);
+
+      const product = MockData.products.find(p => p.id === currentProductId);
+      if (!product) {
+        // 产品不存在，清除上下文并返回选择器
+        localStorage.removeItem('workspaceInitialized');
+        localStorage.removeItem('currentProductId');
+        localStorage.removeItem('currentWorkspace');
+        alert('工作区不存在，请重新选择');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      // 更新顶部栏
+      document.getElementById('currentProductIcon').textContent = product.icon || '📦';
+      document.getElementById('currentProductName').textContent = product.name;
+
+      // 更新 Twitter 账号状态
+      const account = MockData.getProductTwitterAccount(currentProductId);
+      if (account) {
+        document.getElementById('twitterUsername').textContent = `@${account.username}`;
+        const statusDot = document.querySelector('#twitterStatus .status-dot');
+        statusDot.className = `status-dot ${account.isConnected ? 'connected' : 'disconnected'}`;
+      }
+    }
+
+    // ==================== 产品切换下拉菜单 ====================
+    function toggleProductDropdown() {
+      const dropdown = document.getElementById('productDropdown');
+      const isActive = dropdown.classList.contains('active');
+
+      if (isActive) {
+        dropdown.classList.remove('active');
+      } else {
+        renderProductDropdown();
+        dropdown.classList.add('active');
+      }
+    }
+
+    function renderProductDropdown() {
+      const dropdown = document.getElementById('productDropdown');
+      const recentProducts = MockData.products
+        .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+        .slice(0, 3);
+
+      dropdown.innerHTML = `
+        ${recentProducts.map(product => `
+          <div class="dropdown-item" data-product-id="${product.id}">
+            <span>${product.icon || '📦'}</span>
+            <span>${product.name}</span>
+          </div>
+        `).join('')}
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-item" id="viewAllProducts">
+          <span>📋</span>
+          <span>查看所有产品</span>
+        </div>
+      `;
+
+      // 绑定点击事件
+      dropdown.querySelectorAll('.dropdown-item[data-product-id]').forEach(item => {
+        item.addEventListener('click', () => {
+          const productId = item.getAttribute('data-product-id');
+          switchProduct(productId);
+        });
+      });
+
+      document.getElementById('viewAllProducts').addEventListener('click', () => {
+        window.location.href = 'product-selector.html';
+      });
+    }
+
+    async function switchProduct(productId) {
+      localStorage.setItem('currentProductId', productId);
+      window.location.reload();
+    }
+
+    // ==================== 侧边栏导航 ====================
+    function switchView(viewName) {
+      currentView = viewName;
+
+      // 更新导航项激活状态
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.getAttribute('data-view') === viewName) {
+          item.classList.add('active');
+        }
+      });
+
+      // 切换内容视图
+      document.querySelectorAll('.view-content').forEach(view => {
+        view.style.display = 'none';
+      });
+
+      const viewMap = {
+        'tasks': 'tasksView',
+        'data-blocks': 'dataBlocksView',
+        'settings': 'settingsView',
+      };
+
+      const targetView = document.getElementById(viewMap[viewName]);
+      if (targetView) {
+        targetView.style.display = 'block';
+      }
+    }
+
+    // ==================== 侧边栏折叠 ====================
+    function toggleSidebar() {
+      sidebarCollapsed = !sidebarCollapsed;
+      const sidebar = document.getElementById('sidebar');
+      const collapseIcon = document.getElementById('collapseIcon');
+
+      if (sidebarCollapsed) {
+        sidebar.classList.add('collapsed');
+        collapseIcon.textContent = '▶';
+      } else {
+        sidebar.classList.remove('collapsed');
+        collapseIcon.textContent = '◀';
+      }
+
+      localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+    }
+
+    // ==================== 事件绑定 ====================
+    function bindEvents() {
+      // 产品选择器下拉菜单
+      document.getElementById('productSelector').addEventListener('click', toggleProductDropdown);
+
+      // 点击外部关闭下拉菜单
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('productDropdown');
+        const selector = document.getElementById('productSelector');
+        if (!dropdown.contains(e.target) && !selector.contains(e.target)) {
+          dropdown.classList.remove('active');
+        }
+      });
+
+      // 侧边栏导航
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const viewName = item.getAttribute('data-view');
+          switchView(viewName);
+        });
+      });
+
+      // 侧边栏折叠
+      document.getElementById('collapseBtn').addEventListener('click', toggleSidebar);
+
+      // 主题切换
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+      // 快捷键
+      document.addEventListener('keydown', (e) => {
+        if (e.metaKey || e.ctrlKey) {
+          switch (e.key) {
+            case '1':
+              e.preventDefault();
+              switchView('tasks');
+              break;
+            case '2':
+              e.preventDefault();
+              switchView('data-blocks');
+              break;
+            case '3':
+              e.preventDefault();
+              switchView('settings');
+              break;
+            case 'p':
+              e.preventDefault();
+              window.location.href = 'product-selector.html';
+              break;
+          }
+        }
+      });
+
+      // 恢复侧边栏折叠状态
+      const savedCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+      if (savedCollapsed) {
+        toggleSidebar();
+      }
+    }
+  </script>
+</body>
+</html>

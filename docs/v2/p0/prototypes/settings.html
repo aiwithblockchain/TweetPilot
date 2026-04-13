@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot - 设置</title>
+  <link rel="stylesheet" href="styles/design-system.css">
+  <style>
+    body {
+      margin: 0;
+      background-color: var(--bg-primary);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--spacing-8);
+    }
+
+    /* 顶部标题 */
+    .header {
+      margin-bottom: var(--spacing-8);
+    }
+
+    .header h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-1);
+    }
+
+    .header p {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    /* 设置布局 */
+    .settings-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: var(--spacing-8);
+    }
+
+    /* 左侧导航 */
+    .settings-nav {
+      position: sticky;
+      top: var(--spacing-8);
+      height: fit-content;
+    }
+
+    .nav-section {
+      margin-bottom: var(--spacing-6);
+    }
+
+    .nav-section-title {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--spacing-2);
+      padding: 0 var(--spacing-3);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      padding: var(--spacing-2) var(--spacing-3);
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .nav-item:hover {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background-color: var(--bg-secondary);
+      color: var(--primary);
+      font-weight: var(--font-medium);
+    }
+
+    /* 右侧内容区 */
+    .settings-content {
+      min-width: 0;
+    }
+
+    .settings-section {
+      display: none;
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: var(--spacing-6);
+    }
+
+    .settings-section.active {
+      display: block;
+    }
+
+    .section-header {
+      margin-bottom: var(--spacing-6);
+      padding-bottom: var(--spacing-4);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-1);
+    }
+
+    .section-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    /* 表单组 */
+    .form-group {
+      margin-bottom: var(--spacing-6);
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .form-help {
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+      margin-top: var(--spacing-1);
+    }
+
+    .form-actions {
+      display: flex;
+      gap: var(--spacing-3);
+      margin-top: var(--spacing-6);
+      padding-top: var(--spacing-6);
+      border-top: 1px solid var(--border);
+    }
+
+    /* Twitter 账号列表 */
+    .account-list {
+      display: grid;
+      gap: var(--spacing-3);
+    }
+
+    .account-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-4);
+      padding: var(--spacing-4);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+
+    .account-avatar {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      background-color: var(--bg-tertiary);
+      border-radius: var(--radius-full);
+      flex-shrink: 0;
+    }
+
+    .account-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .account-name {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-1);
+    }
+
+    .account-username {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    .account-actions {
+      display: flex;
+      gap: var(--spacing-2);
+    }
+
+    /* 危险区域 */
+    .danger-zone {
+      margin-top: var(--spacing-8);
+      padding: var(--spacing-6);
+      background-color: rgba(239, 68, 68, 0.05);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: var(--radius-lg);
+    }
+
+    .danger-zone-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--error);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .danger-zone-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      margin-bottom: var(--spacing-4);
+    }
+
+    /* 主题切换 */
+    .theme-toggle {
+      position: fixed;
+      bottom: var(--spacing-6);
+      right: var(--spacing-6);
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.25rem;
+      transition: all var(--transition-fast);
+      box-shadow: var(--shadow-md);
+      z-index: 100;
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-tertiary);
+      box-shadow: var(--shadow-lg);
+    }
+
+    /* 响应式 */
+    @media (max-width: 768px) {
+      .settings-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-nav {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部标题 -->
+    <div class="header">
+      <h1>设置</h1>
+      <p>配置产品、Twitter 账号、系统设置</p>
+    </div>
+
+    <!-- 设置布局 -->
+    <div class="settings-layout">
+      <!-- 左侧导航 -->
+      <nav class="settings-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">产品</div>
+          <div class="nav-item active" data-section="product">产品配置</div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">集成</div>
+          <div class="nav-item" data-section="twitter">Twitter 账号</div>
+          <div class="nav-item" data-section="claurst">Claurst 配置</div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">系统</div>
+          <div class="nav-item" data-section="appearance">外观</div>
+          <div class="nav-item" data-section="storage">数据存储</div>
+          <div class="nav-item" data-section="about">关于</div>
+        </div>
+      </nav>
+
+      <!-- 右侧内容区 -->
+      <div class="settings-content">
+        <!-- 产品配置 -->
+        <div class="settings-section active" id="productSection">
+          <div class="section-header">
+            <h2 class="section-title">产品配置</h2>
+            <p class="section-description">管理当前产品的基本信息</p>
+          </div>
+
+          <form id="productForm">
+            <div class="form-group">
+              <label class="form-label" for="productName">产品名称</label>
+              <input type="text" class="input" id="productName" value="我的 SaaS 产品">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="productDescription">产品描述</label>
+              <input type="text" class="input" id="productDescription" value="一个很棒的 SaaS 产品">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="productIcon">产品图标</label>
+              <input type="text" class="input" id="productIcon" value="📦" maxlength="2">
+              <div class="form-help">输入一个 emoji 作为产品图标</div>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" id="cancelProductBtn">取消</button>
+              <button type="submit" class="btn btn-primary">保存更改</button>
+            </div>
+          </form>
+
+          <!-- 危险区域 -->
+          <div class="danger-zone">
+            <h3 class="danger-zone-title">危险区域</h3>
+            <p class="danger-zone-description">删除产品将永久删除所有相关数据，此操作不可恢复。</p>
+            <button class="btn btn-danger" id="deleteProductBtn">删除产品</button>
+          </div>
+        </div>
+
+        <!-- Twitter 账号 -->
+        <div class="settings-section" id="twitterSection">
+          <div class="section-header">
+            <h2 class="section-title">Twitter 账号管理</h2>
+            <p class="section-description">管理连接的 Twitter 账号</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">已连接账号</label>
+            <div class="account-list" id="accountList">
+              <!-- 动态生成 -->
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="addAccountBtn">+ 添加账号</button>
+        </div>
+
+        <!-- Claurst 配置 -->
+        <div class="settings-section" id="claurstSection">
+          <div class="section-header">
+            <h2 class="section-title">Claurst 配置</h2>
+            <p class="section-description">配置 Claurst 服务连接</p>
+          </div>
+
+          <form id="claurstForm">
+            <div class="form-group">
+              <label class="form-label" for="claurstUrl">Claurst 服务地址</label>
+              <input type="text" class="input" id="claurstUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+              <div class="form-help">Claurst 服务的 HTTP 地址</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="claurstApiKey">API Key</label>
+              <input type="password" class="input" id="claurstApiKey" placeholder="输入 API Key（可选）">
+              <div class="form-help">如果 Claurst 服务需要认证，请输入 API Key</div>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" id="testConnectionBtn">测试连接</button>
+              <button type="submit" class="btn btn-primary">保存配置</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- 外观设置 -->
+        <div class="settings-section" id="appearanceSection">
+          <div class="section-header">
+            <h2 class="section-title">外观</h2>
+            <p class="section-description">自定义应用外观</p>
+          </div>
+
+          <form id="appearanceForm">
+            <div class="form-group">
+              <label class="form-label">主题</label>
+              <select class="input" id="themeSelect">
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+                <option value="auto">跟随系统</option>
+              </select>
+              <div class="form-help">选择应用的颜色主题</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">语言</label>
+              <select class="input" id="languageSelect">
+                <option value="zh-CN">简体中文</option>
+                <option value="en-US">English</option>
+              </select>
+              <div class="form-help">选择应用界面语言</div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">保存更改</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- 数据存储 -->
+        <div class="settings-section" id="storageSection">
+          <div class="section-header">
+            <h2 class="section-title">数据存储</h2>
+            <p class="section-description">管理应用数据存储</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">数据库位置</label>
+            <input type="text" class="input" value="~/.tweetpilot/data/tweetpilot.db" disabled>
+            <div class="form-help">SQLite 数据库文件路径</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">数据库大小</label>
+            <input type="text" class="input" value="2.4 MB" disabled>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">日志级别</label>
+            <select class="input" id="logLevelSelect">
+              <option value="error">Error</option>
+              <option value="warn">Warning</option>
+              <option value="info" selected>Info</option>
+              <option value="debug">Debug</option>
+            </select>
+            <div class="form-help">选择应用日志记录级别</div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="exportDataBtn">导出数据</button>
+            <button type="button" class="btn btn-secondary" id="clearCacheBtn">清除缓存</button>
+          </div>
+        </div>
+
+        <!-- 关于 -->
+        <div class="settings-section" id="aboutSection">
+          <div class="section-header">
+            <h2 class="section-title">关于 TweetPilot</h2>
+            <p class="section-description">应用信息和版本</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">版本</label>
+            <input type="text" class="input" value="v2.0.0 (P0 阶段)" disabled>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">构建日期</label>
+            <input type="text" class="input" value="2026-04-13" disabled>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">技术栈</label>
+            <input type="text" class="input" value="Electron + React + TypeScript + SQLite" disabled>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="checkUpdateBtn">检查更新</button>
+            <button type="button" class="btn btn-secondary" id="viewDocsBtn">查看文档</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主题切换 -->
+  <button class="theme-toggle" id="themeToggle">
+    <span id="themeIcon">🌙</span>
+  </button>
+
+  <script src="scripts/mock-data.js"></script>
+  <script>
+    // ==================== 全局状态 ====================
+    let currentSection = 'product';
+    let currentProduct = null;
+
+    // ==================== 初始化 ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      loadCurrentProduct();
+      renderAccounts();
+      bindEvents();
+    });
+
+    // ==================== 主题切换 ====================
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      setTheme(savedTheme);
+      document.getElementById('themeSelect').value = savedTheme;
+    }
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      document.getElementById('themeIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      setTheme(newTheme);
+      document.getElementById('themeSelect').value = newTheme;
+    }
+
+    // ==================== 加载当前产品 ====================
+    async function loadCurrentProduct() {
+      const productId = localStorage.getItem('currentProductId');
+      if (!productId) return;
+
+      await MockData.delay(300);
+      currentProduct = MockData.products.find(p => p.id === productId);
+
+      if (currentProduct) {
+        document.getElementById('productName').value = currentProduct.name;
+        document.getElementById('productDescription').value = currentProduct.description || '';
+        document.getElementById('productIcon').value = currentProduct.icon || '📦';
+      }
+    }
+
+    // ==================== 渲染 Twitter 账号列表 ====================
+    function renderAccounts() {
+      const list = document.getElementById('accountList');
+      const accounts = Object.values(MockData.twitterAccounts);
+
+      list.innerHTML = accounts.map(account => `
+        <div class="account-item">
+          <div class="account-avatar">${account.avatar}</div>
+          <div class="account-info">
+            <div class="account-name">${account.displayName}</div>
+            <div class="account-username">@${account.username}</div>
+          </div>
+          <div class="account-actions">
+            <button class="btn btn-secondary btn-sm" onclick="testAccount('${account.id}')">测试</button>
+            <button class="btn btn-danger btn-sm" onclick="removeAccount('${account.id}')">移除</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ==================== 切换设置区域 ====================
+    function switchSection(sectionName) {
+      currentSection = sectionName;
+
+      // 更新导航激活状态
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.getAttribute('data-section') === sectionName) {
+          item.classList.add('active');
+        }
+      });
+
+      // 切换内容区域
+      document.querySelectorAll('.settings-section').forEach(section => {
+        section.classList.remove('active');
+      });
+
+      const sectionMap = {
+        product: 'productSection',
+        twitter: 'twitterSection',
+        claurst: 'claurstSection',
+        appearance: 'appearanceSection',
+        storage: 'storageSection',
+        about: 'aboutSection',
+      };
+
+      const targetSection = document.getElementById(sectionMap[sectionName]);
+      if (targetSection) {
+        targetSection.classList.add('active');
+      }
+    }
+
+    // ==================== 保存产品配置 ====================
+    async function saveProduct(e) {
+      e.preventDefault();
+
+      const name = document.getElementById('productName').value;
+      const description = document.getElementById('productDescription').value;
+      const icon = document.getElementById('productIcon').value;
+
+      await MockData.delay(500);
+
+      if (currentProduct) {
+        currentProduct.name = name;
+        currentProduct.description = description;
+        currentProduct.icon = icon;
+        currentProduct.updatedAt = new Date();
+      }
+
+      alert('产品配置已保存！');
+    }
+
+    // ==================== 删除产品 ====================
+    async function deleteProduct() {
+      if (!confirm('确定要删除这个产品吗？此操作不可恢复！')) return;
+      if (!confirm('再次确认：删除产品将永久删除所有相关数据！')) return;
+
+      await MockData.delay(500);
+
+      const index = MockData.products.findIndex(p => p.id === currentProduct.id);
+      if (index > -1) {
+        MockData.products.splice(index, 1);
+      }
+
+      localStorage.removeItem('currentProductId');
+      window.location.href = 'product-selector.html';
+    }
+
+    // ==================== Twitter 账号操作 ====================
+    async function testAccount(accountId) {
+      await MockData.delay(500);
+      alert('连接测试成功！');
+    }
+
+    async function removeAccount(accountId) {
+      if (!confirm('确定要移除这个 Twitter 账号吗？')) return;
+
+      await MockData.delay(300);
+      alert('账号已移除');
+      renderAccounts();
+    }
+
+    function addAccount() {
+      alert('添加 Twitter 账号功能开发中...');
+    }
+
+    // ==================== Claurst 配置 ====================
+    async function saveClaurstConfig(e) {
+      e.preventDefault();
+      await MockData.delay(500);
+      alert('Claurst 配置已保存！');
+    }
+
+    async function testConnection() {
+      await MockData.delay(1000);
+      alert('连接测试成功！Claurst 服务运行正常。');
+    }
+
+    // ==================== 外观设置 ====================
+    async function saveAppearance(e) {
+      e.preventDefault();
+
+      const theme = document.getElementById('themeSelect').value;
+      const language = document.getElementById('languageSelect').value;
+
+      setTheme(theme);
+      await MockData.delay(300);
+
+      alert('外观设置已保存！');
+    }
+
+    // ==================== 数据存储 ====================
+    function exportData() {
+      alert('数据导出功能开发中...');
+    }
+
+    async function clearCache() {
+      if (!confirm('确定要清除缓存吗？')) return;
+
+      await MockData.delay(500);
+      alert('缓存已清除！');
+    }
+
+    // ==================== 关于 ====================
+    function checkUpdate() {
+      alert('当前已是最新版本！');
+    }
+
+    function viewDocs() {
+      alert('将打开文档页面...');
+    }
+
+    // ==================== 事件绑定 ====================
+    function bindEvents() {
+      // 导航切换
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const section = item.getAttribute('data-section');
+          switchSection(section);
+        });
+      });
+
+      // 产品配置
+      document.getElementById('productForm').addEventListener('submit', saveProduct);
+      document.getElementById('cancelProductBtn').addEventListener('click', loadCurrentProduct);
+      document.getElementById('deleteProductBtn').addEventListener('click', deleteProduct);
+
+      // Twitter 账号
+      document.getElementById('addAccountBtn').addEventListener('click', addAccount);
+
+      // Claurst 配置
+      document.getElementById('claurstForm').addEventListener('submit', saveClaurstConfig);
+      document.getElementById('testConnectionBtn').addEventListener('click', testConnection);
+
+      // 外观设置
+      document.getElementById('appearanceForm').addEventListener('submit', saveAppearance);
+      document.getElementById('themeSelect').addEventListener('change', (e) => {
+        setTheme(e.target.value);
+      });
+
+      // 数据存储
+      document.getElementById('exportDataBtn').addEventListener('click', exportData);
+      document.getElementById('clearCacheBtn').addEventListener('click', clearCache);
+
+      // 关于
+      document.getElementById('checkUpdateBtn').addEventListener('click', checkUpdate);
+      document.getElementById('viewDocsBtn').addEventListener('click', viewDocs);
+
+      // 主题切换
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    }
+
+    // 全局函数（供 HTML 内联调用）
+    window.testAccount = testAccount;
+    window.removeAccount = removeAccount;
+  </script>
+</body>
+</html>

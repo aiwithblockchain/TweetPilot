@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot V2 - 原型导航</title>
+  <link rel="stylesheet" href="styles/design-system.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: var(--spacing-4);
+    }
+
+    .nav-container {
+      width: 100%;
+      max-width: 800px;
+    }
+
+    .nav-header {
+      text-align: center;
+      margin-bottom: var(--spacing-12);
+    }
+
+    .nav-title {
+      font-size: 2.5rem;
+      font-weight: var(--font-bold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .nav-subtitle {
+      font-size: var(--text-lg);
+      color: var(--text-secondary);
+    }
+
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--spacing-4);
+      margin-bottom: var(--spacing-8);
+    }
+
+    .nav-card {
+      display: flex;
+      flex-direction: column;
+      padding: var(--spacing-6);
+      background-color: var(--bg-primary);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-xl);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      text-decoration: none;
+    }
+
+    .nav-card:hover {
+      border-color: var(--primary);
+      box-shadow: var(--shadow-lg);
+      transform: translateY(-4px);
+    }
+
+    .nav-card-icon {
+      font-size: 3rem;
+      margin-bottom: var(--spacing-4);
+    }
+
+    .nav-card-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .nav-card-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      line-height: var(--leading-relaxed);
+    }
+
+    .nav-card-status {
+      margin-top: var(--spacing-3);
+      padding-top: var(--spacing-3);
+      border-top: 1px solid var(--border);
+      font-size: var(--text-xs);
+      color: var(--text-tertiary);
+    }
+
+    .status-complete {
+      color: var(--success);
+      font-weight: var(--font-medium);
+    }
+
+    .status-wip {
+      color: var(--warning);
+      font-weight: var(--font-medium);
+    }
+
+    .nav-footer {
+      text-align: center;
+      padding: var(--spacing-6);
+      background-color: var(--bg-secondary);
+      border-radius: var(--radius-lg);
+    }
+
+    .nav-footer-text {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      margin-bottom: var(--spacing-3);
+    }
+
+    .theme-toggle {
+      position: fixed;
+      bottom: var(--spacing-6);
+      right: var(--spacing-6);
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.25rem;
+      transition: all var(--transition-fast);
+      box-shadow: var(--shadow-md);
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-tertiary);
+      box-shadow: var(--shadow-lg);
+    }
+  </style>
+</head>
+<body>
+  <div class="nav-container">
+    <div class="nav-header">
+      <h1 class="nav-title">TweetPilot V2</h1>
+      <p class="nav-subtitle">P0 阶段 - 界面原型导航</p>
+    </div>
+
+    <div class="nav-grid">
+      <a href="product-selector.html" class="nav-card">
+        <div class="nav-card-icon">🏠</div>
+        <div class="nav-card-title">工作区选择器（应用入口）</div>
+        <div class="nav-card-description">
+          应用的唯一入口，类似 IDE 的工作区选择。每个工作区对应一个产品，拥有独立的数据库、配置和上下文
+        </div>
+        <div class="nav-card-status status-complete">✓ 已完成</div>
+      </a>
+
+      <a href="workbench.html" class="nav-card">
+        <div class="nav-card-icon">💼</div>
+        <div class="nav-card-title">产品工作台</div>
+        <div class="nav-card-description">
+          选择工作区后进入的主界面。必须从工作区选择器进入，包含产品上下文验证
+        </div>
+        <div class="nav-card-status status-complete">✓ 已完成</div>
+      </a>
+
+      <a href="task-management.html" class="nav-card">
+        <div class="nav-card-icon">✅</div>
+        <div class="nav-card-title">任务管理</div>
+        <div class="nav-card-description">
+          管理和执行 Twitter 自动化任务（即时任务 + 定时任务）
+        </div>
+        <div class="nav-card-status status-wip">⏳ 开发中</div>
+      </a>
+
+      <a href="data-blocks.html" class="nav-card">
+        <div class="nav-card-icon">📊</div>
+        <div class="nav-card-title">数据积木</div>
+        <div class="nav-card-description">
+          展示半成品数据（高互动推文、评论、用户画像）
+        </div>
+        <div class="nav-card-status status-wip">⏳ 开发中</div>
+      </a>
+
+      <a href="settings.html" class="nav-card">
+        <div class="nav-card-icon">⚙️</div>
+        <div class="nav-card-title">设置</div>
+        <div class="nav-card-description">
+          配置产品、Twitter 账号、系统设置
+        </div>
+        <div class="nav-card-status status-wip">⏳ 开发中</div>
+      </a>
+    </div>
+
+    <div class="nav-footer">
+      <p class="nav-footer-text">
+        这些原型使用纯 HTML + CSS + JavaScript 实现<br>
+        支持深色/浅色模式切换，包含完整的交互逻辑和 Mock 数据
+      </p>
+      <p class="nav-footer-text">
+        <strong>核心架构：</strong>工作区选择器是应用唯一入口，每个工作区拥有独立的数据库、配置和上下文
+      </p>
+      <p class="nav-footer-text">
+        <strong>开发策略：</strong>UI 优先驱动 → 接口定义 → Mock 实现 → 真实实现
+      </p>
+    </div>
+  </div>
+
+  <button class="theme-toggle" id="themeToggle" title="切换主题">
+    <span id="themeIcon">🌙</span>
+  </button>
+
+  <script>
+    // 主题切换
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      setTheme(savedTheme);
+    }
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      document.getElementById('themeIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      setTheme(newTheme);
+    }
+
+    document.addEventListener('DOMContentLoaded', initTheme);
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+  </script>
+</body>
+</html>
