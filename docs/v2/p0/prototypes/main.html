@@ -70,7 +70,52 @@
 
     // Open new workspace
     document.getElementById('open-workspace-btn').addEventListener('click', () => {
-      workspaceManager.openNewInstance('');
+      // Show workspace selection dialog (same as index.html)
+      const content = document.createElement('div');
+      content.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="card" style="cursor: pointer; padding: 24px;" id="select-local-dir">
+            <h3 style="margin-bottom: 8px;">📁 选择本地目录</h3>
+            <p class="text-secondary text-small">选择一个已有的项目目录</p>
+          </div>
+          <div class="card" style="cursor: pointer; padding: 24px;" id="clone-from-github">
+            <h3 style="margin-bottom: 8px;">🔗 从 GitHub 克隆</h3>
+            <p class="text-secondary text-small">输入 GitHub 仓库 URL</p>
+          </div>
+        </div>
+      `;
+
+      const modal = showModal(content, '打开工作目录');
+
+      // Select local directory
+      content.querySelector('#select-local-dir').onclick = () => {
+        modal.remove();
+        const pathInput = prompt('请输入工作目录路径：', '/Users/user/projects/my-project');
+        if (pathInput) {
+          workspaceManager.openNewInstance(pathInput);
+        }
+      };
+
+      // Clone from GitHub
+      content.querySelector('#clone-from-github').onclick = () => {
+        modal.remove();
+        const repoUrl = prompt('请输入 GitHub 仓库 URL：', 'https://github.com/user/repo');
+        if (repoUrl) {
+          workspaceManager.cloneFromGitHub(repoUrl);
+        }
+      };
+
+      // Add hover effects
+      content.querySelectorAll('.card').forEach(card => {
+        card.onmouseover = () => {
+          card.style.borderColor = 'var(--color-primary)';
+          card.style.transform = 'translateY(-2px)';
+        };
+        card.onmouseout = () => {
+          card.style.borderColor = 'var(--color-border)';
+          card.style.transform = 'translateY(0)';
+        };
+      });
     });
 
     // Settings button
@@ -105,16 +150,40 @@
         const response = await fetch(`pages/${page}.html`);
         if (response.ok) {
           const html = await response.text();
-          content.innerHTML = html;
+
+          // Create a temporary container to parse HTML
+          const temp = document.createElement('div');
+          temp.innerHTML = html;
+
+          // Extract and execute scripts
+          const scripts = temp.querySelectorAll('script');
+          const scriptTexts = [];
+          scripts.forEach(script => {
+            scriptTexts.push(script.textContent);
+            script.remove(); // Remove script tags from HTML
+          });
+
+          // Set the HTML content (without scripts)
+          content.innerHTML = temp.innerHTML;
+
+          // Execute scripts
+          scriptTexts.forEach(scriptText => {
+            const scriptEl = document.createElement('script');
+            scriptEl.textContent = scriptText;
+            document.body.appendChild(scriptEl);
+            document.body.removeChild(scriptEl);
+          });
 
           // Initialize page-specific scripts
-          if (window[`init_${page.replace('-', '_')}`]) {
-            window[`init_${page.replace('-', '_')}`]();
+          const initFuncName = `init_${page.replace(/-/g, '_')}`;
+          if (window[initFuncName]) {
+            window[initFuncName]();
           }
         } else {
           content.innerHTML = '<div class="empty-state"><div class="empty-state-title">页面加载失败</div></div>';
         }
       } catch (error) {
+        console.error('Page load error:', error);
         content.innerHTML = '<div class="empty-state"><div class="empty-state-title">页面加载失败</div></div>';
       }
     }

@@ -231,15 +231,22 @@ class TaskManager {
     const now = new Date();
 
     // Parse simple interval format: "every N minutes/hours/days"
-    if (schedule.includes('minutes')) {
-      const minutes = parseInt(schedule);
-      return new Date(now.getTime() + minutes * 60 * 1000).toISOString();
-    } else if (schedule.includes('hours')) {
-      const hours = parseInt(schedule);
-      return new Date(now.getTime() + hours * 60 * 60 * 1000).toISOString();
-    } else if (schedule.includes('days')) {
-      const days = parseInt(schedule);
-      return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+    const match = schedule.match(/every\s+(\d+)\s+(minutes?|hours?|days?)/i);
+
+    if (!match) {
+      // Default: 1 hour from now if format is invalid
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    }
+
+    const value = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (unit.startsWith('minute')) {
+      return new Date(now.getTime() + value * 60 * 1000).toISOString();
+    } else if (unit.startsWith('hour')) {
+      return new Date(now.getTime() + value * 60 * 60 * 1000).toISOString();
+    } else if (unit.startsWith('day')) {
+      return new Date(now.getTime() + value * 24 * 60 * 60 * 1000).toISOString();
     }
 
     // Default: 1 hour from now

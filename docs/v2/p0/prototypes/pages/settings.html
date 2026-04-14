@@ -9,7 +9,6 @@
     <div style="width: 200px; flex-shrink: 0;">
       <div class="sidebar-nav">
         <a href="#" class="nav-item active" data-section="accounts">Twitter 账号</a>
-        <a href="#" class="nav-item" data-section="workspace">工作目录</a>
         <a href="#" class="nav-item" data-section="preferences">系统偏好</a>
       </div>
     </div>
@@ -32,18 +31,7 @@
 
       <!-- Workspace Section -->
       <div id="section-workspace" class="settings-section hidden">
-        <h3 class="mb-lg">工作目录</h3>
-
-        <div class="card mb-lg">
-          <div class="form-group">
-            <div class="form-label">当前工作目录</div>
-            <div id="current-workspace-path" style="font-family: monospace; color: var(--color-text-secondary);"></div>
-          </div>
-          <button id="open-new-workspace-btn" class="secondary">打开新工作目录</button>
-        </div>
-
-        <h4 class="mb-md">最近使用</h4>
-        <div id="recent-workspaces-list"></div>
+        <!-- This section has been removed - workspace management is now only in the header -->
       </div>
 
       <!-- Preferences Section -->
@@ -151,39 +139,6 @@ window.init_settings = function() {
   document.getElementById('map-account-btn').onclick = () => {
     accountManager.mapAccount();
   };
-
-  // Workspace section
-  document.getElementById('current-workspace-path').textContent = workspaceManager.getCurrentWorkspace();
-
-  document.getElementById('open-new-workspace-btn').onclick = () => {
-    workspaceManager.openNewInstance('');
-  };
-
-  function renderRecentWorkspaces() {
-    const recent = workspaceManager.getRecentWorkspaces();
-    const list = document.getElementById('recent-workspaces-list');
-
-    if (recent.length === 0) {
-      list.innerHTML = '<div class="empty-state"><div class="empty-state-title">暂无历史记录</div></div>';
-      return;
-    }
-
-    list.innerHTML = recent.map(workspace => `
-      <div class="recent-item">
-        <div class="recent-item-info">
-          <div class="recent-item-name">${workspace.name}</div>
-          <div class="recent-item-path">${workspace.path}</div>
-        </div>
-        <div class="recent-item-time">${formatRelativeTime(workspace.lastAccessed)}</div>
-      </div>
-    `).join('');
-
-    document.querySelectorAll('.recent-item').forEach((item, index) => {
-      item.onclick = () => {
-        workspaceManager.openNewInstance(recent[index].path);
-      };
-    });
-  }
 
   // Preferences
   const preferences = Storage.getGlobal('preferences') || {
