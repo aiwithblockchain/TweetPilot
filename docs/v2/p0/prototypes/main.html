@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div style="font-size: 24px;">🐦</div>
+        <h1 style="font-size: 18px; font-weight: 600;">TweetPilot</h1>
+      </div>
+      <div class="header-center">
+        <div class="workspace-path" id="workspace-path"></div>
+      </div>
+      <div class="header-right">
+        <button class="secondary small" id="open-workspace-btn">打开工作目录</button>
+        <button class="secondary small" id="settings-btn">设置</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="app-main">
+      <!-- Sidebar -->
+      <aside class="app-sidebar">
+        <nav class="sidebar-nav">
+          <a href="#task-management" class="nav-item active" data-page="task-management">
+            <span>📋</span>
+            <span>任务管理</span>
+          </a>
+          <a href="#data-blocks" class="nav-item" data-page="data-blocks">
+            <span>📊</span>
+            <span>数据积木</span>
+          </a>
+          <a href="#settings" class="nav-item" data-page="settings">
+            <span>⚙️</span>
+            <span>设置</span>
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Content Area -->
+      <main class="app-content" id="app-content">
+        <!-- Content will be loaded here -->
+      </main>
+    </div>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/mock-data.js"></script>
+  <script src="js/workspace.js"></script>
+  <script src="js/account.js"></script>
+  <script src="js/task.js"></script>
+  <script src="js/data-blocks.js"></script>
+  <script>
+    // Check if workspace is selected
+    if (!workspaceManager.getCurrentWorkspace()) {
+      window.location.href = 'index.html';
+    }
+
+    // Display workspace path
+    const workspacePath = workspaceManager.getCurrentWorkspace();
+    document.getElementById('workspace-path').textContent = workspacePath;
+
+    // Open new workspace
+    document.getElementById('open-workspace-btn').addEventListener('click', () => {
+      workspaceManager.openNewInstance('');
+    });
+
+    // Settings button
+    document.getElementById('settings-btn').addEventListener('click', () => {
+      loadPage('settings');
+      updateActiveNav('settings');
+    });
+
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const page = item.dataset.page;
+        loadPage(page);
+        updateActiveNav(page);
+      });
+    });
+
+    function updateActiveNav(page) {
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.page === page) {
+          item.classList.add('active');
+        }
+      });
+    }
+
+    async function loadPage(page) {
+      const content = document.getElementById('app-content');
+
+      try {
+        const response = await fetch(`pages/${page}.html`);
+        if (response.ok) {
+          const html = await response.text();
+          content.innerHTML = html;
+
+          // Initialize page-specific scripts
+          if (window[`init_${page.replace('-', '_')}`]) {
+            window[`init_${page.replace('-', '_')}`]();
+          }
+        } else {
+          content.innerHTML = '<div class="empty-state"><div class="empty-state-title">页面加载失败</div></div>';
+        }
+      } catch (error) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-state-title">页面加载失败</div></div>';
+      }
+    }
+
+    // Load initial page
+    const hash = window.location.hash.slice(1) || 'task-management';
+    loadPage(hash);
+    updateActiveNav(hash);
+
+    // Handle hash changes
+    window.addEventListener('hashchange', () => {
+      const page = window.location.hash.slice(1) || 'task-management';
+      loadPage(page);
+      updateActiveNav(page);
+    });
+  </script>
+</body>
+</html>

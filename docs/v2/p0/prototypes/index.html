@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TweetPilot - 工作目录选择</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <div class="welcome-container">
+    <div class="welcome-content">
+      <div class="welcome-logo">🐦</div>
+      <h1 class="welcome-title">TweetPilot</h1>
+      <p class="welcome-subtitle">Twitter/X 自动化管理工具</p>
+
+      <div class="welcome-options">
+        <div class="welcome-option" id="select-local">
+          <div class="welcome-option-icon">📁</div>
+          <div class="welcome-option-title">选择本地目录</div>
+          <div class="welcome-option-desc">浏览并选择现有的工作目录</div>
+        </div>
+
+        <div class="welcome-option" id="clone-github">
+          <div class="welcome-option-icon">🔗</div>
+          <div class="welcome-option-title">从 GitHub 克隆</div>
+          <div class="welcome-option-desc">克隆 GitHub 仓库作为工作目录</div>
+        </div>
+
+        <div class="welcome-option" id="show-recent">
+          <div class="welcome-option-icon">🕐</div>
+          <div class="welcome-option-title">最近使用</div>
+          <div class="welcome-option-desc">从历史记录中选择</div>
+        </div>
+      </div>
+
+      <div id="recent-list" class="recent-list hidden"></div>
+    </div>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/mock-data.js"></script>
+  <script src="js/workspace.js"></script>
+  <script>
+    // Check if workspace is already selected (from URL parameter)
+    const urlParams = new URLSearchParams(window.location.search);
+    const workspaceParam = urlParams.get('workspace');
+
+    if (workspaceParam) {
+      workspaceManager.setCurrentWorkspace(workspaceParam);
+      window.location.href = 'main.html';
+    } else if (workspaceManager.getCurrentWorkspace()) {
+      // Already has a workspace, go to main
+      window.location.href = 'main.html';
+    }
+
+    // Select local directory
+    document.getElementById('select-local').addEventListener('click', async () => {
+      const path = await workspaceManager.selectLocalDirectory();
+      if (path) {
+        workspaceManager.setCurrentWorkspace(path);
+        window.location.href = 'main.html';
+      }
+    });
+
+    // Clone from GitHub
+    document.getElementById('clone-github').addEventListener('click', () => {
+      const content = document.createElement('div');
+      content.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">GitHub 仓库 URL</label>
+          <input type="text" id="github-url" placeholder="https://github.com/user/repo.git">
+          <div class="form-help">支持 HTTPS 和 SSH 格式</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">本地存储路径</label>
+          <input type="text" id="local-path" placeholder="/Users/user/projects/my-project">
+        </div>
+        <div class="form-actions">
+          <button class="secondary" onclick="this.closest('.modal-overlay').remove()">取消</button>
+          <button id="clone-btn">克隆</button>
+        </div>
+      `;
+
+      const modal = showModal(content, '从 GitHub 克隆');
+
+      content.querySelector('#clone-btn').addEventListener('click', async () => {
+        const url = content.querySelector('#github-url').value;
+        const path = content.querySelector('#local-path').value;
+
+        if (!url || !path) {
+          showToast('请填写完整信息', 'error');
+          return;
+        }
+
+        try {
+          modal.remove();
+          await workspaceManager.cloneFromGitHub(url, path);
+          workspaceManager.setCurrentWorkspace(path);
+          window.location.href = 'main.html';
+        } catch (error) {
+          showToast('克隆失败: ' + error.message, 'error');
+        }
+      });
+    });
+
+    // Show recent workspaces
+    document.getElementById('show-recent').addEventListener('click', () => {
+      const recentList = document.getElementById('recent-list');
+      const recent = workspaceManager.getRecentWorkspaces();
+
+      if (recent.length === 0) {
+        showToast('暂无历史记录', 'info');
+        return;
+      }
+
+      recentList.innerHTML = '';
+      recent.forEach(workspace => {
+        const item = document.createElement('div');
+        item.className = 'recent-item';
+        item.innerHTML = `
+          <div class="recent-item-info">
+            <div class="recent-item-name">${workspace.name}</div>
+            <div class="recent-item-path">${workspace.path}</div>
+          </div>
+          <div class="recent-item-time">${formatRelativeTime(workspace.lastAccessed)}</div>
+        `;
+
+        item.addEventListener('click', () => {
+          workspaceManager.setCurrentWorkspace(workspace.path);
+          window.location.href = 'main.html';
+        });
+
+        recentList.appendChild(item);
+      });
+
+      recentList.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
