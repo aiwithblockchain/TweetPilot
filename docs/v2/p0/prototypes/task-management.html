@@ -38,9 +38,49 @@
       margin: 0;
     }
 
+    .workspace-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      margin-top: var(--spacing-3);
+      padding: var(--spacing-2) var(--spacing-3);
+      font-size: var(--text-xs);
+      color: var(--text-secondary);
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      font-family: var(--font-mono);
+    }
+
     .header-right {
       display: flex;
       gap: var(--spacing-3);
+    }
+
+    .feedback-banner {
+      display: none;
+      margin-bottom: var(--spacing-5);
+      padding: var(--spacing-4) var(--spacing-5);
+      border-radius: var(--radius-lg);
+      border: 1px solid transparent;
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+    }
+
+    .feedback-banner.active {
+      display: block;
+    }
+
+    .feedback-banner.success {
+      background-color: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.2);
+      color: #047857;
+    }
+
+    .feedback-banner.info {
+      background-color: rgba(59, 130, 246, 0.08);
+      border-color: rgba(59, 130, 246, 0.2);
+      color: #1D4ED8;
     }
 
     /* 筛选栏 */
@@ -201,6 +241,13 @@
       font-size: var(--text-xl);
       font-weight: var(--font-semibold);
       color: var(--text-primary);
+      margin-bottom: var(--spacing-1);
+    }
+
+    .dialog-description {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      line-height: var(--leading-relaxed);
     }
 
     .dialog-body {
@@ -363,6 +410,7 @@
       border-top: 1px solid var(--border);
       display: flex;
       gap: var(--spacing-3);
+      flex-wrap: wrap;
     }
 
     /* 主题切换 */
@@ -398,6 +446,7 @@
       <div class="header-left">
         <h1>任务管理</h1>
         <p>管理和执行 Twitter 自动化任务</p>
+        <div class="workspace-badge" id="workspaceBadge">工作区加载中...</div>
       </div>
       <div class="header-right">
         <button class="btn btn-secondary" id="filterBtn">
@@ -410,6 +459,8 @@
     </div>
 
     <!-- 筛选栏 -->
+    <div class="feedback-banner" id="feedbackBanner"></div>
+
     <div class="filter-bar" id="filterBar">
       <button class="filter-btn active" data-filter="all">全部任务</button>
       <button class="filter-btn" data-filter="pending">待执行</button>
@@ -436,7 +487,8 @@
   <div class="dialog-overlay" id="createTaskDialog">
     <div class="dialog">
       <div class="dialog-header">
-        <h2 class="dialog-title">创建任务</h2>
+        <h2 class="dialog-title" id="taskDialogTitle">创建任务</h2>
+        <p class="dialog-description" id="taskDialogDescription">选择任务类型并填写当前工作区下的执行配置。</p>
       </div>
       <div class="dialog-body">
         <form id="createTaskForm">
@@ -474,6 +526,7 @@
                 class="input"
                 id="tweetUrl"
                 placeholder="https://twitter.com/username/status/123456789"
+                autocomplete="off"
               >
               <div class="form-help">输入要回复评论的推文链接</div>
             </div>
@@ -508,6 +561,7 @@
                 class="input"
                 id="tweetTopic"
                 placeholder="例如：新功能发布"
+                autocomplete="off"
               >
             </div>
 
@@ -536,7 +590,7 @@
       </div>
       <div class="dialog-footer">
         <button class="btn btn-secondary" id="cancelCreateBtn">取消</button>
-        <button class="btn btn-primary" id="confirmCreateBtn">创建</button>
+        <button class="btn btn-primary" id="confirmCreateBtn">创建任务</button>
       </div>
     </div>
   </div>
@@ -552,6 +606,7 @@
       <!-- 动态生成 -->
     </div>
     <div class="sidebar-footer">
+      <button class="btn btn-secondary btn-sm" id="editTaskBtn">编辑配置</button>
       <button class="btn btn-secondary btn-sm" id="deleteTaskBtn">删除</button>
       <button class="btn btn-primary btn-sm" id="executeTaskBtn">执行任务</button>
     </div>
@@ -568,10 +623,14 @@
     let currentFilter = 'all';
     let currentTasks = [];
     let selectedTask = null;
+    let currentWorkspacePath = null;
+    let dialogMode = 'create';
+    let editingTaskId = null;
 
     // ==================== 初始化 ====================
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
+      ensureWorkspaceContext();
       loadTasks();
       bindEvents();
     });
@@ -594,10 +653,42 @@
       setTheme(newTheme);
     }
 
+    function ensureWorkspaceContext() {
+      currentWorkspacePath = localStorage.getItem('currentWorkspacePath');
+      const workspaceInitialized = localStorage.getItem('workspaceInitialized');
+
+      if (!workspaceInitialized || !currentWorkspacePath) {
+        alert('请先选择一个工作区');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      const workspace = MockData.getWorkspaceByPath(currentWorkspacePath);
+      if (!workspace) {
+        alert('当前工作区不存在，请重新选择');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      document.getElementById('workspaceBadge').textContent = MockData.compactPath(workspace.rootPath);
+    }
+
+    function showFeedback(message, tone = 'success') {
+      const banner = document.getElementById('feedbackBanner');
+      banner.textContent = message;
+      banner.className = `feedback-banner active ${tone}`;
+    }
+
+    function hideFeedback() {
+      const banner = document.getElementById('feedbackBanner');
+      banner.className = 'feedback-banner';
+      banner.textContent = '';
+    }
+
     // ==================== 加载任务列表 ====================
     async function loadTasks() {
       await MockData.delay(300);
-      currentTasks = MockData.tasks;
+      currentTasks = MockData.getTasksByWorkspacePath(currentWorkspacePath);
       renderTasks();
     }
 
@@ -707,6 +798,31 @@
         analyze_data: '数据分析',
       };
 
+      const configLabels = {
+        tweetId: '推文 ID',
+        tweetUrl: '推文 URL',
+        replyStrategy: '回复策略',
+        minLikes: '最小点赞数',
+        topic: '推文主题',
+        style: '推文风格',
+        count: '生成数量',
+        window: '分析窗口',
+        focus: '分析重点',
+      };
+
+      const configValueLabels = {
+        replyStrategy: {
+          all: '回复所有评论',
+          high_engagement: '仅回复高互动评论',
+          keywords: '仅回复包含关键词的评论',
+        },
+        style: {
+          professional: '专业',
+          casual: '轻松',
+          humorous: '幽默',
+        },
+      };
+
       body.innerHTML = `
         <div class="detail-section">
           <div class="detail-section-title">基本信息</div>
@@ -744,10 +860,25 @@
           <div class="detail-section-title">任务配置</div>
           ${Object.entries(selectedTask.config).map(([key, value]) => `
             <div class="detail-item">
-              <span class="detail-label">${key}</span>
-              <span class="detail-value">${value}</span>
+              <span class="detail-label">${configLabels[key] || key}</span>
+              <span class="detail-value">${configValueLabels[key]?.[value] || value}</span>
             </div>
           `).join('')}
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">执行历史</div>
+          ${MockData.getTaskExecutions(selectedTask.id).length > 0 ? MockData.getTaskExecutions(selectedTask.id).map(execution => `
+            <div class="detail-item">
+              <span class="detail-label">${statusLabels[execution.status] || execution.status}</span>
+              <span class="detail-value">${execution.summary} · ${MockData.formatRelativeTime(execution.startedAt)}</span>
+            </div>
+          `).join('') : `
+            <div class="detail-item">
+              <span class="detail-label">暂无</span>
+              <span class="detail-value">当前任务还没有执行历史记录</span>
+            </div>
+          `}
         </div>
       `;
 
@@ -762,113 +893,266 @@
     }
 
     // ==================== 创建任务对话框 ====================
-    function openCreateDialog() {
-      document.getElementById('createTaskDialog').classList.add('active');
-      document.getElementById('createTaskForm').reset();
+    function buildMockTweetUrl(tweetId) {
+      if (!tweetId) return '';
+      const digits = String(tweetId).replace(/\D/g, '') || '123456789';
+      return `https://x.com/i/web/status/${digits}`;
+    }
+
+    function extractTweetIdFromUrl(url) {
+      const matched = url.match(/status\/(\d+)/i);
+      return matched ? matched[1] : '';
+    }
+
+    function setDialogMode(mode, task = null) {
+      dialogMode = mode;
+      editingTaskId = task?.id || null;
+
+      document.getElementById('taskDialogTitle').textContent = mode === 'edit' ? '编辑任务配置' : '创建任务';
+      document.getElementById('taskDialogDescription').textContent = mode === 'edit'
+        ? '修改当前任务的执行策略、目标推文和生成参数。'
+        : '选择任务类型并填写当前工作区下的执行配置。';
+      document.getElementById('confirmCreateBtn').textContent = mode === 'edit' ? '保存修改' : '创建任务';
+
+      const form = document.getElementById('createTaskForm');
+      form.reset();
+      document.getElementById('tweetCount').value = '3';
+      document.querySelector('input[name="taskType"][value="reply_comment"]').checked = true;
+
+      if (task) {
+        populateTaskForm(task);
+      }
+
       updateTaskTypeConfig();
+      updateReplyStrategy();
+      hideFeedback();
+    }
+
+    function openCreateDialog() {
+      setDialogMode('create');
+      document.getElementById('createTaskDialog').classList.add('active');
+    }
+
+    function openEditDialog() {
+      if (!selectedTask) return;
+      if (!['reply_comment', 'create_tweet'].includes(selectedTask.type)) {
+        closeSidebar();
+        showFeedback('当前原型暂不支持编辑该任务类型，请在后续迭代中补全对应表单。', 'info');
+        return;
+      }
+      const task = selectedTask;
+      closeSidebar();
+      setDialogMode('edit', task);
+      document.getElementById('createTaskDialog').classList.add('active');
     }
 
     function closeCreateDialog() {
       document.getElementById('createTaskDialog').classList.remove('active');
+      editingTaskId = null;
+      dialogMode = 'create';
+    }
+
+    function populateTaskForm(task) {
+      document.querySelector(`input[name="taskType"][value="${task.type}"]`).checked = true;
+      document.getElementById('taskName').value = task.name || '';
+
+      if (task.type === 'reply_comment') {
+        document.getElementById('tweetUrl').value = task.config.tweetUrl || buildMockTweetUrl(task.config.tweetId);
+        document.getElementById('replyStrategy').value = task.config.replyStrategy || 'all';
+        document.getElementById('minLikes').value = task.config.minLikes || '';
+      } else if (task.type === 'create_tweet') {
+        document.getElementById('tweetTopic').value = task.config.topic || '';
+        document.getElementById('tweetStyle').value = task.config.style || 'professional';
+        document.getElementById('tweetCount').value = task.config.count || 3;
+      }
     }
 
     function updateTaskTypeConfig() {
       const taskType = document.querySelector('input[name="taskType"]:checked').value;
       const replyConfig = document.getElementById('replyCommentConfig');
       const tweetConfig = document.getElementById('createTweetConfig');
+      const isReplyTask = taskType === 'reply_comment';
 
-      if (taskType === 'reply_comment') {
-        replyConfig.style.display = 'block';
-        tweetConfig.style.display = 'none';
-      } else {
-        replyConfig.style.display = 'none';
-        tweetConfig.style.display = 'block';
-      }
+      replyConfig.style.display = isReplyTask ? 'block' : 'none';
+      tweetConfig.style.display = isReplyTask ? 'none' : 'block';
+
+      document.getElementById('tweetUrl').disabled = !isReplyTask;
+      document.getElementById('replyStrategy').disabled = !isReplyTask;
+      document.getElementById('tweetTopic').disabled = isReplyTask;
+      document.getElementById('tweetStyle').disabled = isReplyTask;
+      document.getElementById('tweetCount').disabled = isReplyTask;
+
+      document.getElementById('tweetUrl').required = isReplyTask;
+      document.getElementById('tweetTopic').required = !isReplyTask;
+
+      updateReplyStrategy();
     }
 
     function updateReplyStrategy() {
       const strategy = document.getElementById('replyStrategy').value;
       const minLikesGroup = document.getElementById('minLikesGroup');
+      const minLikesInput = document.getElementById('minLikes');
+      const replyCommentVisible = document.getElementById('replyCommentConfig').style.display !== 'none';
 
-      if (strategy === 'high_engagement') {
+      if (replyCommentVisible && strategy === 'high_engagement') {
         minLikesGroup.style.display = 'block';
+        minLikesInput.disabled = false;
+        minLikesInput.required = true;
       } else {
         minLikesGroup.style.display = 'none';
+        minLikesInput.disabled = true;
+        minLikesInput.required = false;
+        minLikesInput.setCustomValidity('');
       }
     }
 
-    async function createTask() {
+    function validateTaskForm() {
       const form = document.getElementById('createTaskForm');
-      if (!form.checkValidity()) {
-        form.reportValidity();
+      const taskType = document.querySelector('input[name="taskType"]:checked').value;
+      const taskNameInput = document.getElementById('taskName');
+      const tweetUrlInput = document.getElementById('tweetUrl');
+      const minLikesInput = document.getElementById('minLikes');
+      const topicInput = document.getElementById('tweetTopic');
+
+      taskNameInput.value = taskNameInput.value.trim();
+      tweetUrlInput.value = tweetUrlInput.value.trim();
+      topicInput.value = topicInput.value.trim();
+
+      tweetUrlInput.setCustomValidity('');
+      minLikesInput.setCustomValidity('');
+      topicInput.setCustomValidity('');
+
+      if (taskType === 'reply_comment') {
+        const isValidTweetUrl = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/(?:i\/web\/)?[^/\s]+\/status\/\d+/i.test(tweetUrlInput.value)
+          || /https?:\/\/(?:www\.)?x\.com\/i\/web\/status\/\d+/i.test(tweetUrlInput.value);
+        if (!isValidTweetUrl) {
+          tweetUrlInput.setCustomValidity('请输入有效的推文 URL');
+        }
+
+        if (!minLikesInput.disabled) {
+          const minLikesValue = Number(minLikesInput.value);
+          if (!Number.isFinite(minLikesValue) || minLikesValue < 0) {
+            minLikesInput.setCustomValidity('请输入不小于 0 的点赞阈值');
+          }
+        }
+      }
+
+      if (!form.reportValidity()) {
+        return false;
+      }
+
+      return true;
+    }
+
+    function buildTaskConfig(taskType) {
+      if (taskType === 'reply_comment') {
+        const tweetUrl = document.getElementById('tweetUrl').value.trim();
+        const tweetId = extractTweetIdFromUrl(tweetUrl);
+        return {
+          tweetId: tweetId || 'manual',
+          tweetUrl,
+          replyStrategy: document.getElementById('replyStrategy').value,
+          minLikes: document.getElementById('minLikes').disabled
+            ? 0
+            : parseInt(document.getElementById('minLikes').value || '0', 10),
+        };
+      }
+
+      return {
+        topic: document.getElementById('tweetTopic').value.trim(),
+        style: document.getElementById('tweetStyle').value,
+        count: parseInt(document.getElementById('tweetCount').value, 10),
+      };
+    }
+
+    async function submitTaskForm() {
+      if (!validateTaskForm()) {
         return;
       }
 
+      const currentMode = dialogMode;
+      const currentEditingTaskId = editingTaskId;
       const taskType = document.querySelector('input[name="taskType"]:checked').value;
-      const taskName = document.getElementById('taskName').value;
-
-      let config = {};
-      if (taskType === 'reply_comment') {
-        config = {
-          tweetUrl: document.getElementById('tweetUrl').value,
-          replyStrategy: document.getElementById('replyStrategy').value,
-          minLikes: document.getElementById('minLikes').value || 10,
-        };
-      } else {
-        config = {
-          topic: document.getElementById('tweetTopic').value,
-          style: document.getElementById('tweetStyle').value,
-          count: parseInt(document.getElementById('tweetCount').value),
-        };
-      }
+      const taskName = document.getElementById('taskName').value.trim();
+      const config = buildTaskConfig(taskType);
 
       closeCreateDialog();
       await MockData.delay(500);
 
-      const newTask = {
-        id: `task-${Date.now()}`,
-        productId: localStorage.getItem('currentProductId'),
-        type: taskType,
-        name: taskName,
-        status: 'pending',
-        config,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      if (currentMode === 'edit' && currentEditingTaskId) {
+        const task = MockData.tasks.find(item => item.id === currentEditingTaskId);
+        if (!task) return;
 
-      MockData.tasks.push(newTask);
-      await loadTasks();
+        task.type = taskType;
+        task.name = taskName;
+        task.config = config;
+        task.updatedAt = new Date();
+
+        await loadTasks();
+        showFeedback(`任务「${task.name}」已更新。`, 'success');
+        showTaskDetails(task.id);
+      } else {
+        const newTask = {
+          id: `task-${Date.now()}`,
+          workspacePath: currentWorkspacePath,
+          type: taskType,
+          name: taskName,
+          status: 'pending',
+          config,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        MockData.tasks.push(newTask);
+        MockData.taskExecutions[newTask.id] = [];
+        await loadTasks();
+        showFeedback(`任务「${newTask.name}」已创建，当前状态为待执行。`, 'success');
+      }
     }
 
     // ==================== 执行任务 ====================
     async function executeTask() {
       if (!selectedTask) return;
+      const task = selectedTask;
 
       closeSidebar();
       await MockData.delay(1000);
 
-      selectedTask.status = 'completed';
-      selectedTask.updatedAt = new Date();
+      task.status = 'completed';
+      task.updatedAt = new Date();
+      MockData.taskExecutions[task.id] = [
+        ...MockData.getTaskExecutions(task.id),
+        {
+          id: `exec-${task.id}-${Date.now()}`,
+          status: 'completed',
+          summary: '从任务管理页手动触发执行并完成。',
+          startedAt: new Date(Date.now() - 60 * 1000),
+          endedAt: new Date(),
+        },
+      ];
 
       await loadTasks();
-      alert('任务执行成功！');
+      showFeedback(`任务「${task.name}」已执行完成。`, 'success');
     }
 
     // ==================== 删除任务 ====================
     async function deleteTask() {
       if (!selectedTask) return;
+      const task = selectedTask;
 
       if (!confirm('确定要删除这个任务吗？')) return;
 
       closeSidebar();
       await MockData.delay(300);
 
-      const index = MockData.tasks.findIndex(t => t.id === selectedTask.id);
+      const index = MockData.tasks.findIndex(t => t.id === task.id);
       if (index > -1) {
         MockData.tasks.splice(index, 1);
+        delete MockData.taskExecutions[task.id];
       }
 
       await loadTasks();
+      showFeedback(`任务「${task.name}」已删除。`, 'info');
     }
 
     // ==================== 事件绑定 ====================
@@ -884,7 +1168,11 @@
       // 创建任务
       document.getElementById('createTaskBtn').addEventListener('click', openCreateDialog);
       document.getElementById('cancelCreateBtn').addEventListener('click', closeCreateDialog);
-      document.getElementById('confirmCreateBtn').addEventListener('click', createTask);
+      document.getElementById('confirmCreateBtn').addEventListener('click', submitTaskForm);
+      document.getElementById('createTaskForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitTaskForm();
+      });
 
       // 任务类型切换
       document.querySelectorAll('input[name="taskType"]').forEach(radio => {
@@ -897,6 +1185,7 @@
       // 侧边栏
       document.getElementById('closeSidebarBtn').addEventListener('click', closeSidebar);
       document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
+      document.getElementById('editTaskBtn').addEventListener('click', openEditDialog);
       document.getElementById('executeTaskBtn').addEventListener('click', executeTask);
       document.getElementById('deleteTaskBtn').addEventListener('click', deleteTask);
 

@@ -77,9 +77,19 @@
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 
   /* 过渡动画 */
-  --transition-fast: 150ms ease-in-out;
-  --transition-base: 200ms ease-in-out;
-  --transition-slow: 300ms ease-in-out;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-emphasis: cubic-bezier(0.2, 0, 0, 1);
+  --transition-fast: var(--duration-fast) var(--easing-standard);
+  --transition-base: var(--duration-base) var(--easing-standard);
+  --transition-slow: var(--duration-slow) var(--easing-emphasis);
+
+  /* 响应式断点 */
+  --breakpoint-mobile: 768px;
+  --breakpoint-tablet: 1024px;
+  --breakpoint-desktop: 1280px;
 }
 
 /* Dark Mode */

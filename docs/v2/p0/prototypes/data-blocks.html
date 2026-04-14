@@ -38,6 +38,20 @@
       margin: 0;
     }
 
+    .workspace-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-2);
+      margin-top: var(--spacing-3);
+      padding: var(--spacing-2) var(--spacing-3);
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border);
+      background-color: var(--bg-secondary);
+      color: var(--text-secondary);
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+    }
+
     .header-right {
       display: flex;
       gap: var(--spacing-3);
@@ -215,6 +229,17 @@
       color: var(--text-tertiary);
     }
 
+    .empty-card {
+      padding: var(--spacing-5);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-lg);
+      background-color: var(--bg-secondary);
+      color: var(--text-secondary);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      text-align: center;
+    }
+
     /* 详情弹窗 */
     .modal-overlay {
       display: none;
@@ -373,6 +398,7 @@
       <div class="header-left">
         <h1>数据积木</h1>
         <p>展示半成品数据（高互动推文、评论、用户画像）</p>
+        <div class="workspace-badge" id="workspaceBadge">工作区加载中...</div>
       </div>
       <div class="header-right">
         <button class="btn btn-secondary" id="exportBtn">导出</button>
@@ -468,10 +494,14 @@
       comments: [],
       users: [],
     };
+    let currentWorkspacePath = null;
+    let currentWorkspace = null;
+    let currentDetail = null;
 
     // ==================== 初始化 ====================
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
+      ensureWorkspaceContext();
       loadData();
       bindEvents();
     });
@@ -494,17 +524,41 @@
       setTheme(newTheme);
     }
 
+    function ensureWorkspaceContext() {
+      currentWorkspacePath = localStorage.getItem('currentWorkspacePath');
+      const workspaceInitialized = localStorage.getItem('workspaceInitialized');
+
+      if (!workspaceInitialized || !currentWorkspacePath) {
+        alert('请先选择一个工作区');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      currentWorkspace = MockData.getWorkspaceByPath(currentWorkspacePath);
+      if (!currentWorkspace) {
+        alert('当前工作区不存在，请重新选择');
+        window.location.href = 'product-selector.html';
+        return;
+      }
+
+      document.getElementById('workspaceBadge').textContent = MockData.compactPath(currentWorkspace.rootPath);
+    }
+
     // ==================== 加载数据 ====================
     async function loadData() {
       await MockData.delay(300);
 
-      currentData.tweets = MockData.tweets;
-      currentData.comments = MockData.comments;
-      currentData.users = MockData.userProfiles;
+      currentData.tweets = MockData.getTweetsByWorkspacePath(currentWorkspacePath);
+      currentData.comments = MockData.getCommentsByWorkspacePath(currentWorkspacePath);
+      currentData.users = MockData.getUserProfilesByWorkspacePath(currentWorkspacePath);
 
       renderTweets();
       renderComments();
       renderUsers();
+    }
+
+    function renderEmptyCard(message) {
+      return `<div class="empty-card">${message}</div>`;
     }
 
     // ==================== 渲染推文列表 ====================
@@ -513,6 +567,11 @@
       const count = document.getElementById('tweetsCount');
 
       count.textContent = `(${currentData.tweets.length})`;
+
+      if (currentData.tweets.length === 0) {
+        list.innerHTML = renderEmptyCard('当前工作区还没有沉淀出高互动推文。请先绑定账号并完成一次数据采集。');
+        return;
+      }
 
       list.innerHTML = currentData.tweets.map(tweet => `
         <div class="data-item" data-type="tweet" data-id="${tweet.id}">
@@ -535,6 +594,11 @@
       const count = document.getElementById('commentsCount');
 
       count.textContent = `(${currentData.comments.length})`;
+
+      if (currentData.comments.length === 0) {
+        list.innerHTML = renderEmptyCard('当前工作区还没有可用评论样本。评论会随着推文采集结果自动出现。');
+        return;
+      }
 
       const sentimentEmoji = {
         positive: '😊',
@@ -568,6 +632,11 @@
       const count = document.getElementById('usersCount');
 
       count.textContent = `(${currentData.users.length})`;
+
+      if (currentData.users.length === 0) {
+        list.innerHTML = renderEmptyCard('当前工作区还没有生成活跃用户画像。先收集评论数据，再进行画像聚合。');
+        return;
+      }
 
       list.innerHTML = currentData.users.map(user => `
         <div class="user-profile-item" data-type="user" data-id="${user.id}">
@@ -604,10 +673,16 @@
       const modal = document.getElementById('detailModal');
       const title = document.getElementById('modalTitle');
       const body = document.getElementById('modalBody');
+      const viewBtn = document.getElementById('viewOnTwitterBtn');
 
       let item;
       if (type === 'tweet') {
         item = currentData.tweets.find(t => t.id === id);
+        if (!item) return;
+        currentDetail = {
+          type,
+          url: `https://x.com/${item.author.replace(/^@/, '')}/status/${item.id.replace('tweet-', '1000')}`,
+        };
         title.textContent = '推文详情';
         body.innerHTML = `
           <div class="detail-section">
@@ -638,6 +713,11 @@
         `;
       } else if (type === 'comment') {
         item = currentData.comments.find(c => c.id === id);
+        if (!item) return;
+        currentDetail = {
+          type,
+          url: `https://x.com/i/web/status/${item.tweetId.replace('tweet-', '1000')}`,
+        };
         const sentimentLabels = { positive: '正面', neutral: '中性', negative: '负面' };
         title.textContent = '评论详情';
         body.innerHTML = `
@@ -669,6 +749,11 @@
         `;
       } else if (type === 'user') {
         item = currentData.users.find(u => u.id === id);
+        if (!item) return;
+        currentDetail = {
+          type,
+          url: `https://x.com/${item.username}`,
+        };
         title.textContent = '用户画像';
         body.innerHTML = `
           <div class="detail-section">
@@ -699,10 +784,12 @@
         `;
       }
 
+      viewBtn.disabled = !currentDetail?.url;
       modal.classList.add('active');
     }
 
     function closeModal() {
+      currentDetail = null;
       document.getElementById('detailModal').classList.remove('active');
     }
 
@@ -728,6 +815,7 @@
     // ==================== 导出数据 ====================
     function exportData() {
       const data = {
+        workspacePath: currentWorkspacePath,
         tweets: currentData.tweets,
         comments: currentData.comments,
         users: currentData.users,
@@ -741,6 +829,12 @@
       a.download = `tweetpilot-data-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    function openCurrentDetailLink() {
+      if (!currentDetail?.url) return;
+      window.open(currentDetail.url, '_blank', 'noopener,noreferrer');
+      closeModal();
     }
 
     // ==================== 事件绑定 ====================
@@ -773,10 +867,7 @@
       });
 
       // 在 Twitter 查看
-      document.getElementById('viewOnTwitterBtn').addEventListener('click', () => {
-        alert('将在浏览器中打开 Twitter');
-        closeModal();
-      });
+      document.getElementById('viewOnTwitterBtn').addEventListener('click', openCurrentDetailLink);
 
       // 刷新和导出
       document.getElementById('refreshBtn').addEventListener('click', refreshData);

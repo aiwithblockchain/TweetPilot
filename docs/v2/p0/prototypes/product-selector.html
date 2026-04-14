@@ -125,6 +125,7 @@
     }
 
     .workspace-card {
+      position: relative;
       padding: var(--spacing-5);
       background: var(--bg-primary);
       border: 1px solid var(--border);
@@ -177,6 +178,29 @@
       color: var(--text-secondary);
       word-break: break-all;
       margin-bottom: var(--spacing-3);
+    }
+
+    .workspace-remove {
+      position: absolute;
+      top: var(--spacing-3);
+      right: var(--spacing-3);
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      background: var(--bg-primary);
+      color: var(--text-tertiary);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .workspace-remove:hover {
+      color: var(--error);
+      border-color: rgba(239, 68, 68, 0.28);
+      background: rgba(239, 68, 68, 0.08);
     }
 
     .workspace-meta {
@@ -277,6 +301,79 @@
       color: var(--text-secondary);
       font-size: var(--text-sm);
       line-height: var(--leading-relaxed);
+    }
+
+    .init-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      backdrop-filter: blur(10px);
+    }
+
+    .init-overlay.active {
+      display: flex;
+    }
+
+    .init-dialog {
+      width: min(520px, calc(100vw - 32px));
+      padding: var(--spacing-6);
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow-xl);
+    }
+
+    .init-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-2);
+    }
+
+    .init-text {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--spacing-5);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: var(--bg-secondary);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      margin-bottom: var(--spacing-4);
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      transition: width 240ms ease;
+    }
+
+    .init-steps {
+      display: grid;
+      gap: var(--spacing-2);
+    }
+
+    .init-step {
+      font-size: var(--text-sm);
+      color: var(--text-secondary);
+    }
+
+    .init-step.active {
+      color: var(--text-primary);
+      font-weight: var(--font-medium);
+    }
+
+    .init-step.done {
+      color: var(--success);
     }
 
     .theme-toggle {
@@ -404,6 +501,17 @@
     </aside>
   </div>
 
+  <div class="init-overlay" id="initOverlay">
+    <div class="init-dialog">
+      <div class="init-title">初始化工作区</div>
+      <div class="init-text" id="initText">正在为当前目录创建 `.tweetpilot/` 结构...</div>
+      <div class="progress-track">
+        <div class="progress-bar" id="initProgressBar"></div>
+      </div>
+      <div class="init-steps" id="initSteps"></div>
+    </div>
+  </div>
+
   <button class="theme-toggle" id="themeToggle" title="切换主题">
     <span id="themeIcon">🌙</span>
   </button>
@@ -457,6 +565,7 @@
 
         return `
           <div class="workspace-card ${selectedWorkspacePath === workspace.rootPath ? 'active' : ''}" data-workspace-path="${workspace.rootPath}">
+            <button class="workspace-remove" data-remove-path="${workspace.rootPath}" title="从最近列表移除">✕</button>
             <div class="workspace-card-top">
               <div class="workspace-name">${workspaceName}</div>
               <div class="workspace-status ${statusClass}">${statusText}</div>
@@ -474,6 +583,13 @@
         card.addEventListener('click', () => {
           const workspacePath = card.getAttribute('data-workspace-path');
           selectWorkspaceCard(workspacePath);
+        });
+      });
+
+      document.querySelectorAll('.workspace-remove').forEach(button => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          removeWorkspace(button.getAttribute('data-remove-path'));
         });
       });
 
@@ -499,11 +615,15 @@
       });
     }
 
-    function enterWorkspace() {
+    async function enterWorkspace() {
       if (!selectedWorkspacePath) return;
 
       const workspace = MockData.getWorkspaceByPath(selectedWorkspacePath);
       if (!workspace) return;
+
+      if (!workspace.hasMetadata) {
+        await initializeWorkspace(workspace);
+      }
 
       localStorage.setItem('workspaceInitialized', 'true');
       localStorage.setItem('currentWorkspacePath', workspace.rootPath);
@@ -512,10 +632,89 @@
       window.location.href = 'workbench.html';
     }
 
+    function validateWorkspacePath(workspacePath) {
+      if (!workspacePath.startsWith('/')) {
+        return { valid: false, message: '工作目录必须是绝对路径。' };
+      }
+
+      if (/[<>|]/.test(workspacePath)) {
+        return { valid: false, message: '路径中包含非法字符。' };
+      }
+
+      if (workspacePath.trim().length < 4) {
+        return { valid: false, message: '路径长度过短，无法作为工作目录。' };
+      }
+
+      if (workspacePath.includes('/System/') || workspacePath.includes('/private/var/')) {
+        return { valid: false, message: '这个目录不适合作为用户工作区，请选择项目目录。' };
+      }
+
+      return { valid: true, message: '' };
+    }
+
+    async function initializeWorkspace(workspace) {
+      const overlay = document.getElementById('initOverlay');
+      const progressBar = document.getElementById('initProgressBar');
+      const initText = document.getElementById('initText');
+      const stepsContainer = document.getElementById('initSteps');
+      const steps = [
+        '创建 .tweetpilot/data',
+        '创建 .tweetpilot/config/settings.json',
+        '创建 .tweetpilot/skills',
+        '创建 .tweetpilot/logs',
+      ];
+
+      overlay.classList.add('active');
+      progressBar.style.width = '0%';
+      stepsContainer.innerHTML = steps.map(step => `<div class="init-step">${step}</div>`).join('');
+
+      const stepNodes = stepsContainer.querySelectorAll('.init-step');
+
+      for (let i = 0; i < steps.length; i += 1) {
+        initText.textContent = `正在初始化：${steps[i]}`;
+        stepNodes[i].classList.add('active');
+        await MockData.delay(350);
+        stepNodes[i].classList.remove('active');
+        stepNodes[i].classList.add('done');
+        progressBar.style.width = `${((i + 1) / steps.length) * 100}%`;
+      }
+
+      workspace.hasMetadata = true;
+      workspace.updatedAt = new Date();
+      overlay.classList.remove('active');
+      loadWorkspaces(document.getElementById('searchInput').value);
+      selectWorkspaceCard(workspace.rootPath);
+    }
+
+    function removeWorkspace(workspacePath) {
+      const workspace = MockData.getWorkspaceByPath(workspacePath);
+      if (!workspace) return;
+      if (!confirm(`确定要从最近列表移除 ${MockData.getWorkspaceNameFromPath(workspacePath)} 吗？`)) return;
+
+      const index = MockData.workspaces.findIndex(item => item.rootPath === workspacePath);
+      if (index === -1) return;
+      MockData.workspaces.splice(index, 1);
+
+      if (selectedWorkspacePath === workspacePath) {
+        selectedWorkspacePath = null;
+        document.getElementById('detailName').textContent = '尚未选择目录';
+        document.getElementById('detailPath').textContent = '请选择一个工作目录后继续';
+        document.getElementById('detailStatus').textContent = '未开始';
+        document.getElementById('enterWorkspaceBtn').disabled = true;
+      }
+
+      loadWorkspaces(document.getElementById('searchInput').value);
+    }
+
     function openFolder() {
       const suggestedPath = '/Users/alex/Projects/new-tweetpilot-workspace';
       const workspacePath = window.prompt('输入要打开的本地工作目录路径', suggestedPath);
       if (!workspacePath) return;
+      const validation = validateWorkspacePath(workspacePath);
+      if (!validation.valid) {
+        alert(validation.message);
+        return;
+      }
 
       let workspace = MockData.getWorkspaceByPath(workspacePath);
       if (!workspace) {
@@ -542,6 +741,11 @@
 
       const targetPath = window.prompt('输入克隆后的目标目录', '/Users/alex/Projects/tweetpilot-demo');
       if (!targetPath) return;
+      const validation = validateWorkspacePath(targetPath);
+      if (!validation.valid) {
+        alert(validation.message);
+        return;
+      }
 
       let workspace = MockData.getWorkspaceByPath(targetPath);
       if (!workspace) {

@@ -11,6 +11,7 @@ const mockWorkspaces = [
     rootPath: '/Users/alex/Projects/tweetpilot-cli',
     accountId: 'account-1',
     hasMetadata: true,
+    isAccessible: true,
     source: 'folder',
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-04-13'),
@@ -21,6 +22,7 @@ const mockWorkspaces = [
     rootPath: '/Users/alex/Projects/ai-writer-studio',
     accountId: 'account-2',
     hasMetadata: true,
+    isAccessible: true,
     source: 'folder',
     createdAt: new Date('2026-02-15'),
     updatedAt: new Date('2026-04-10'),
@@ -31,6 +33,7 @@ const mockWorkspaces = [
     rootPath: '/Users/alex/Work/data-analytics-lab',
     accountId: 'account-3',
     hasMetadata: false,
+    isAccessible: true,
     source: 'folder',
     createdAt: new Date('2026-03-01'),
     updatedAt: new Date('2026-04-05'),
@@ -41,65 +44,11 @@ const mockWorkspaces = [
     rootPath: '/Users/alex/Code/content-engine',
     accountId: 'account-4',
     hasMetadata: true,
+    isAccessible: true,
     source: 'clone',
     createdAt: new Date('2025-12-01'),
     updatedAt: new Date('2026-03-20'),
     lastUsedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // 8 天前
-  },
-];
-
-// ==================== 产品数据 ====================
-
-const mockProducts = [
-  {
-    id: 'product-1',
-    name: '我的 SaaS 产品',
-    description: '一个很棒的 SaaS 产品，帮助用户提高生产力',
-    icon: '📦',
-    twitterAccountId: 'account-1',
-    createdAt: new Date('2026-01-01'),
-    updatedAt: new Date('2026-04-13'),
-    lastUsedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 小时前
-  },
-  {
-    id: 'product-2',
-    name: 'AI 写作助手',
-    description: '基于 AI 的智能写作工具',
-    icon: '✍️',
-    twitterAccountId: 'account-2',
-    createdAt: new Date('2026-02-15'),
-    updatedAt: new Date('2026-04-10'),
-    lastUsedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 天前
-  },
-  {
-    id: 'product-3',
-    name: '数据分析平台',
-    description: '企业级数据分析和可视化平台',
-    icon: '📊',
-    twitterAccountId: 'account-3',
-    createdAt: new Date('2026-03-01'),
-    updatedAt: new Date('2026-04-05'),
-    lastUsedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 天前
-  },
-  {
-    id: 'product-4',
-    name: '在线教育平台',
-    description: '面向开发者的在线编程教育平台',
-    icon: '🎓',
-    twitterAccountId: 'account-4',
-    createdAt: new Date('2025-12-01'),
-    updatedAt: new Date('2026-03-20'),
-    lastUsedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 天前
-  },
-  {
-    id: 'product-5',
-    name: '项目管理工具',
-    description: '敏捷团队的项目管理和协作工具',
-    icon: '📋',
-    twitterAccountId: 'account-5',
-    createdAt: new Date('2026-01-15'),
-    updatedAt: new Date('2026-02-28'),
-    lastUsedAt: new Date('2026-02-28'),
   },
 ];
 
@@ -163,7 +112,7 @@ const mockTwitterAccounts = {
 const mockTasks = [
   {
     id: 'task-1',
-    productId: 'product-1',
+    workspacePath: '/Users/alex/Projects/tweetpilot-cli',
     type: 'reply_comment',
     name: '自动回复评论',
     status: 'pending_review',
@@ -177,9 +126,9 @@ const mockTasks = [
   },
   {
     id: 'task-2',
-    productId: 'product-1',
+    workspacePath: '/Users/alex/Projects/tweetpilot-cli',
     type: 'create_tweet',
-    name: '生成产品更新推文',
+    name: '生成工作区更新推文',
     status: 'completed',
     config: {
       topic: '新功能发布',
@@ -191,7 +140,7 @@ const mockTasks = [
   },
   {
     id: 'task-3',
-    productId: 'product-1',
+    workspacePath: '/Users/alex/Projects/tweetpilot-cli',
     type: 'reply_comment',
     name: '回复用户反馈',
     status: 'in_progress',
@@ -202,7 +151,83 @@ const mockTasks = [
     createdAt: new Date(Date.now() - 30 * 60 * 1000), // 30 分钟前
     updatedAt: new Date(Date.now() - 10 * 60 * 1000),
   },
+  {
+    id: 'task-4',
+    workspacePath: '/Users/alex/Projects/ai-writer-studio',
+    type: 'create_tweet',
+    name: '生成周更内容草稿',
+    status: 'pending',
+    config: {
+      topic: 'AI 写作行业趋势',
+      style: 'professional',
+      count: 4,
+    },
+    createdAt: new Date(Date.now() - 90 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 90 * 60 * 1000),
+  },
+  {
+    id: 'task-5',
+    workspacePath: '/Users/alex/Code/content-engine',
+    type: 'analyze_data',
+    name: '分析上周互动数据',
+    status: 'completed',
+    config: {
+      window: '7d',
+      focus: 'engagement',
+    },
+    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
+  },
 ];
+
+// ==================== 任务执行历史 ====================
+
+const mockTaskExecutions = {
+  'task-1': [
+    {
+      id: 'exec-1-1',
+      status: 'completed',
+      summary: '已完成评论抓取，共生成 6 条候选回复。',
+      startedAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
+      endedAt: new Date(Date.now() - 4.5 * 60 * 60 * 1000),
+    },
+    {
+      id: 'exec-1-2',
+      status: 'pending_review',
+      summary: '等待人工审核后投递回复。',
+      startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      endedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    },
+  ],
+  'task-2': [
+    {
+      id: 'exec-2-1',
+      status: 'completed',
+      summary: '生成 3 条推文草稿并保存到当前工作区。',
+      startedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endedAt: new Date(Date.now() - 23.5 * 60 * 60 * 1000),
+    },
+  ],
+  'task-3': [
+    {
+      id: 'exec-3-1',
+      status: 'in_progress',
+      summary: '正在扫描 tweet-456 评论流。',
+      startedAt: new Date(Date.now() - 25 * 60 * 1000),
+      endedAt: null,
+    },
+  ],
+  'task-4': [],
+  'task-5': [
+    {
+      id: 'exec-5-1',
+      status: 'completed',
+      summary: '完成 7 天互动数据聚合和基础分析。',
+      startedAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
+      endedAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
+    },
+  ],
+};
 
 // ==================== 推文数据 ====================
 
@@ -366,26 +391,6 @@ function delay(ms = 300) {
 }
 
 /**
- * 搜索产品
- * @param {string} keyword - 搜索关键词
- * @returns {Array} - 匹配的产品列表
- */
-function searchProducts(keyword) {
-  if (!keyword) return mockProducts;
-
-  const lowerKeyword = keyword.toLowerCase();
-  return mockProducts.filter(product => {
-    const account = mockTwitterAccounts[product.twitterAccountId];
-    return (
-      product.name.toLowerCase().includes(lowerKeyword) ||
-      product.description?.toLowerCase().includes(lowerKeyword) ||
-      account.username.toLowerCase().includes(lowerKeyword) ||
-      account.displayName.toLowerCase().includes(lowerKeyword)
-    );
-  });
-}
-
-/**
  * 搜索工作区
  * @param {string} keyword - 搜索关键词
  * @returns {Array}
@@ -413,6 +418,24 @@ function getWorkspaceByPath(workspacePath) {
 }
 
 /**
+ * 获取工作区任务
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Array}
+ */
+function getTasksByWorkspacePath(workspacePath) {
+  return mockTasks.filter(task => task.workspacePath === workspacePath);
+}
+
+/**
+ * 获取任务执行历史
+ * @param {string} taskId - 任务 ID
+ * @returns {Array}
+ */
+function getTaskExecutions(taskId) {
+  return mockTaskExecutions[taskId] || [];
+}
+
+/**
  * 获取工作区绑定的 Twitter 账号
  * @param {string} workspacePath - 工作区路径
  * @returns {Object|null}
@@ -424,23 +447,45 @@ function getWorkspaceTwitterAccount(workspacePath) {
 }
 
 /**
- * 获取产品的 Twitter 账号信息
- * @param {string} productId - 产品 ID
- * @returns {Object|null} - Twitter 账号信息
+ * 获取工作区关联的推文数据
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Array}
  */
-function getProductTwitterAccount(productId) {
-  const product = mockProducts.find(p => p.id === productId);
-  if (!product) return null;
-  return mockTwitterAccounts[product.twitterAccountId];
+function getTweetsByWorkspacePath(workspacePath) {
+  const account = getWorkspaceTwitterAccount(workspacePath);
+  if (!account) return [];
+  return mockTweets.filter(tweet => tweet.accountId === account.id);
+}
+
+/**
+ * 获取工作区关联的评论数据
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Array}
+ */
+function getCommentsByWorkspacePath(workspacePath) {
+  const tweetIds = new Set(getTweetsByWorkspacePath(workspacePath).map(tweet => tweet.id));
+  return mockComments.filter(comment => tweetIds.has(comment.tweetId));
+}
+
+/**
+ * 获取工作区关联的用户画像
+ * @param {string} workspacePath - 工作区路径
+ * @returns {Array}
+ */
+function getUserProfilesByWorkspacePath(workspacePath) {
+  const authors = new Set(
+    getCommentsByWorkspacePath(workspacePath).map(comment => comment.author.replace(/^@/, ''))
+  );
+  return mockUserProfiles.filter(profile => authors.has(profile.username));
 }
 
 // ==================== 导出 ====================
 
 window.MockData = {
   workspaces: mockWorkspaces,
-  products: mockProducts,
   twitterAccounts: mockTwitterAccounts,
   tasks: mockTasks,
+  taskExecutions: mockTaskExecutions,
   tweets: mockTweets,
   comments: mockComments,
   userProfiles: mockUserProfiles,
@@ -451,9 +496,12 @@ window.MockData = {
   getWorkspaceNameFromPath,
   compactPath,
   delay,
-  searchProducts,
   searchWorkspaces,
   getWorkspaceByPath,
+  getTasksByWorkspacePath,
+  getTaskExecutions,
   getWorkspaceTwitterAccount,
-  getProductTwitterAccount,
+  getTweetsByWorkspacePath,
+  getCommentsByWorkspacePath,
+  getUserProfilesByWorkspacePath,
 };
