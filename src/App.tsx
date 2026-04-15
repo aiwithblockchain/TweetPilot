@@ -92,9 +92,11 @@ function App() {
                   onClick={async () => {
                     setShowWorkspaceDropdown(false)
                     try {
+                      // Just open a new window, don't change current workspace
                       await invoke('open_workspace_in_new_window')
                     } catch (error) {
                       console.error('Failed to open new window:', error)
+                      alert('打开新窗口失败: ' + (error as Error).message)
                     }
                   }}
                   className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors border-t border-[var(--color-border)]"

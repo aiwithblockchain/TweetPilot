@@ -25,6 +25,7 @@ const ALL_ACCOUNTS: &[(&str, &str, &str)] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TwitterAccount {
     pub screen_name: String,
     pub display_name: String,
@@ -34,6 +35,7 @@ pub struct TwitterAccount {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TwitterAccountInfo {
     pub screen_name: String,
     pub display_name: String,
@@ -74,11 +76,13 @@ pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> 
     // Simulate network delay
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
+    println!("Mapping account: {}", screen_name);
+
     // Find account info from ALL_ACCOUNTS
     let account_info = ALL_ACCOUNTS
         .iter()
         .find(|(sn, _, _)| *sn == screen_name)
-        .ok_or_else(|| "Account not found".to_string())?;
+        .ok_or_else(|| format!("Account not found: {}", screen_name))?;
 
     let new_account = TwitterAccount {
         screen_name: account_info.0.to_string(),
@@ -91,6 +95,7 @@ pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> 
     // Add to mapped accounts
     let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
     mapped.push(new_account.clone());
+    println!("Account mapped successfully. Total mapped: {}", mapped.len());
 
     Ok(new_account)
 }
