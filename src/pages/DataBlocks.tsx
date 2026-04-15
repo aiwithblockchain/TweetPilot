@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import DataCard from '../components/DataCard'
+import SortableDataCard from '../components/SortableDataCard'
 import AddCardDialog from '../components/AddCardDialog'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable'
 
 export interface Card {
   id: string
@@ -25,6 +27,13 @@ export default function DataBlocks() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<any[]>([])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   useEffect(() => {
     loadData()
@@ -90,6 +99,31 @@ export default function DataBlocks() {
       )
     } catch (error) {
       console.error('Failed to refresh card:', error)
+    }
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      setCards((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over.id)
+        const newItems = arrayMove(items, oldIndex, newIndex)
+
+        // Update positions and save layout
+        const updatedItems = newItems.map((item, index) => ({
+          ...item,
+          position: index,
+        }))
+
+        // Save layout to backend
+        invoke('save_layout', { layout: updatedItems }).catch((error) => {
+          console.error('Failed to save layout:', error)
+        })
+
+        return updatedItems
+      })
     }
   }
 
@@ -177,17 +211,25 @@ export default function DataBlocks() {
             <div className="text-xs text-secondary">点击"添加卡片"按钮添加第一个数据卡片</div>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
-            {cards.map((card) => (
-              <DataCard
-                key={card.id}
-                card={card}
-                selectedAccount={selectedAccount}
-                onRefresh={() => handleRefreshCard(card.id)}
-                onDelete={() => handleDeleteCard(card.id)}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={cards.map((c) => c.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-3 gap-4">
+                {cards.map((card) => (
+                  <SortableDataCard
+                    key={card.id}
+                    card={card}
+                    selectedAccount={selectedAccount}
+                    onRefresh={() => handleRefreshCard(card.id)}
+                    onDelete={() => handleDeleteCard(card.id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

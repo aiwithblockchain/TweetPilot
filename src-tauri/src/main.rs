@@ -5,7 +5,7 @@ mod commands;
 mod models;
 mod services;
 
-use commands::{workspace, account, task, data_blocks};
+use commands::{workspace, account, task, data_blocks, preferences};
 
 fn main() {
     tauri::Builder::default()
@@ -41,6 +41,9 @@ fn main() {
             data_blocks::delete_card,
             data_blocks::get_card_data,
             data_blocks::refresh_card_data,
+            // Preferences commands
+            preferences::save_preferences,
+            preferences::get_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

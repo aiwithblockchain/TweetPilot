@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "TweetPilot"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirm": "确认",
+    "add": "添加",
+    "edit": "编辑",
+    "refresh": "刷新",
+    "loading": "加载中..."
+  },
+  "settings": {
+    "title": "设置",
+    "accounts": "Twitter 账号",
+    "preferences": "系统偏好",
+    "language": "语言",
+    "theme": "主题",
+    "startup": "启动时行为",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "themeSystem": "跟随系统",
+    "startupLastWorkspace": "打开上次工作目录",
+    "startupShowSelector": "显示选择界面",
+    "saveSettings": "保存设置"
+  }
+}

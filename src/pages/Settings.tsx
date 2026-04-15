@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import AccountManagement from '../components/AccountManagement'
 
 type SettingsSection = 'accounts' | 'preferences'
@@ -54,9 +55,37 @@ function PreferencesSection() {
   const [theme, setTheme] = useState('dark')
   const [startup, setStartup] = useState('last-workspace')
 
-  const handleSave = () => {
-    // TODO: Save preferences
-    console.log('Saving preferences:', { language, theme, startup })
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme)
+
+    // Apply theme immediately
+    const root = document.documentElement
+    if (newTheme === 'light') {
+      root.classList.remove('dark')
+    } else if (newTheme === 'dark') {
+      root.classList.add('dark')
+    } else if (newTheme === 'system') {
+      // Follow system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      if (prefersDark) {
+        root.classList.add('dark')
+      } else {
+        root.classList.remove('dark')
+      }
+    }
+  }
+
+  const handleSave = async () => {
+    try {
+      // Save preferences to backend
+      await invoke('save_preferences', {
+        preferences: { language, theme, startup }
+      })
+      alert('设置已保存')
+    } catch (error) {
+      console.error('Failed to save preferences:', error)
+      alert('保存失败: ' + (error as Error).message)
+    }
   }
 
   return (
@@ -80,7 +109,7 @@ function PreferencesSection() {
           <label className="block text-sm font-medium mb-1.5">主题</label>
           <select
             value={theme}
-            onChange={(e) => setTheme(e.target.value)}
+            onChange={(e) => handleThemeChange(e.target.value)}
             className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
           >
             <option value="light">浅色</option>

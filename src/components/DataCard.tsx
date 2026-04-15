@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Card } from '../pages/DataBlocks'
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface DataCardProps {
   card: Card
@@ -133,10 +134,63 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
         )
 
       case 'tweet_time_distribution':
+        return (
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis
+                  dataKey="day"
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                  stroke="var(--color-border)"
+                />
+                <YAxis
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                  stroke="var(--color-border)"
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '6px',
+                    fontSize: '12px'
+                  }}
+                />
+                <Bar dataKey="count" fill="#6D5BF6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )
+
       case 'task_execution_stats':
         return (
-          <div className="flex items-center justify-center min-h-[200px]">
-            <div className="text-sm text-secondary">图表功能即将推出</div>
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data.data}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {data.data?.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={index === 0 ? '#6D5BF6' : '#EF4444'} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '6px',
+                    fontSize: '12px'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         )
 
