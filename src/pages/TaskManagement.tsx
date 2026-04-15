@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core'
 import TaskCard from '../components/TaskCard'
 import TaskConfigDialog from '../components/TaskConfigDialog'
 import TaskDetailSidebar from '../components/TaskDetailSidebar'
+import ExecutingModal from '../components/ExecutingModal'
+import ExecutionResultModal from '../components/ExecutionResultModal'
 
 export type TaskType = 'immediate' | 'scheduled'
 export type TaskStatus = 'idle' | 'running' | 'paused'
@@ -50,6 +52,8 @@ export default function TaskManagement() {
   const [currentFilter, setCurrentFilter] = useState<FilterType>('all')
   const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [executingTask, setExecutingTask] = useState<Task | null>(null)
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
 
   useEffect(() => {
     loadTasks()
@@ -108,11 +112,27 @@ export default function TaskManagement() {
   }
 
   const handleTaskExecute = async (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId)
+    if (!task) return
+
+    // Show executing modal
+    setExecutingTask(task)
+
     try {
-      await invoke('execute_task', { taskId })
+      // Call backend to execute task
+      const result = await invoke<ExecutionResult>('execute_task', { taskId })
+
+      // Close executing modal
+      setExecutingTask(null)
+
+      // Show result modal
+      setExecutionResult(result)
+
+      // Reload tasks to get updated status
       loadTasks()
     } catch (error) {
       console.error('Failed to execute task:', error)
+      setExecutingTask(null)
       alert('执行失败: ' + (error as Error).message)
     }
   }
@@ -241,6 +261,14 @@ export default function TaskManagement() {
           taskId={selectedTaskId}
           onClose={() => setSelectedTaskId(null)}
         />
+      )}
+
+      {/* Executing Modal */}
+      {executingTask && <ExecutingModal taskName={executingTask.name} />}
+
+      {/* Execution Result Modal */}
+      {executionResult && (
+        <ExecutionResultModal result={executionResult} onClose={() => setExecutionResult(null)} />
       )}
     </div>
   )

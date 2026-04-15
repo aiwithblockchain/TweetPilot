@@ -16,12 +16,16 @@ pub struct Task {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    #[serde(rename = "type")]
     pub task_type: TaskType,
     pub status: TaskStatus,
+    #[serde(rename = "scriptPath")]
     pub script_path: String,
     pub schedule: Option<String>,
     pub parameters: Option<HashMap<String, String>>,
+    #[serde(rename = "nextExecutionTime")]
     pub next_execution_time: Option<String>,
+    #[serde(rename = "lastExecutionTime")]
     pub last_execution_time: Option<String>,
 }
 
@@ -55,9 +59,14 @@ pub struct ExecutionRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
-    pub success: bool,
-    pub output: Option<String>,
+    #[serde(rename = "startTime")]
+    pub start_time: String,
+    #[serde(rename = "endTime")]
+    pub end_time: String,
+    pub status: String,
+    pub output: String,
     pub error: Option<String>,
+    pub duration: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,17 +146,68 @@ pub async fn get_tasks() -> Result<Vec<Task>, String> {
 #[tauri::command]
 pub async fn get_task_detail(_task_id: String) -> Result<TaskDetail, String> {
     // TODO: 获取任务详情
-    // Mock implementation
+    // Mock implementation with fake data
+
+    // Generate fake execution history
+    let mut execution_history = vec![];
+    for i in 0..5 {
+        let start = chrono::Utc::now() - chrono::Duration::hours(i as i64 * 2);
+        let success = i % 3 != 0; // 2 out of 3 succeed
+
+        execution_history.push(ExecutionResult {
+            start_time: start.to_rfc3339(),
+            end_time: (start + chrono::Duration::seconds(2)).to_rfc3339(),
+            status: if success { "success".to_string() } else { "failure".to_string() },
+            output: if success {
+                "Task completed successfully\nProcessed 50 items".to_string()
+            } else {
+                "Task started\nProcessing...".to_string()
+            },
+            error: if success {
+                None
+            } else {
+                Some("Connection timeout".to_string())
+            },
+            duration: 2.1 + (i as f32 * 0.3),
+        });
+    }
+
+    // Generate fake failure log (only failed executions)
+    let failure_log: Vec<ExecutionResult> = execution_history
+        .iter()
+        .filter(|e| e.status == "failure")
+        .cloned()
+        .collect();
+
     Ok(TaskDetail {
         task: Task {
-            id: "task_1".to_string(),
+            id: _task_id.clone(),
             name: "测试任务".to_string(),
             description: Some("这是一个测试任务".to_string()),
             task_type: TaskType::Immediate,
             status: TaskStatus::Idle,
             script_path: "/path/to/script.py".to_string(),
             schedule: None,
-            parameters: None,
+            parameters: Some({
+                let mut params = HashMap::new();
+                params.insert("name".to_string(), "value".to_string());
+                params.insert("count".to_string(), "100".to_string());
+                params
+            }),
+            next_execution_time: None,
+            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
+        },
+        statistics: TaskStatistics {
+            total_executions: 15,
+            success_count: 12,
+            failure_count: 3,
+            success_rate: 80.0,
+            average_duration: 2.5,
+        },
+        history: execution_history,
+        failure_log,
+    })
+}
             next_execution_time: None,
             last_execution_time: None,
         },
@@ -192,14 +252,33 @@ pub async fn resume_task(_task_id: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn execute_task(_task_id: String) -> Result<ExecutionResult, String> {
     // TODO: 执行任务
-    // Mock implementation with delay
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    // Mock implementation with delay to simulate execution
+    let start = chrono::Utc::now();
+    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+    let end = chrono::Utc::now();
 
-    Ok(ExecutionResult {
-        success: true,
-        output: Some("Task executed successfully".to_string()),
-        error: None,
-    })
+    // Randomly generate success or failure for testing
+    let success = rand::random::<bool>();
+
+    if success {
+        Ok(ExecutionResult {
+            start_time: start.to_rfc3339(),
+            end_time: end.to_rfc3339(),
+            status: "success".to_string(),
+            output: "Task executed successfully!\n\nProcessing data...\nCompleted 100 items\nAll operations finished.".to_string(),
+            error: None,
+            duration: 2.15,
+        })
+    } else {
+        Ok(ExecutionResult {
+            start_time: start.to_rfc3339(),
+            end_time: end.to_rfc3339(),
+            status: "failure".to_string(),
+            output: "Task started...\nProcessing data...".to_string(),
+            error: Some("Error: Connection timeout after 30 seconds\nFailed to connect to remote server".to_string()),
+            duration: 1.85,
+        })
+    }
 }
 
 #[tauri::command]

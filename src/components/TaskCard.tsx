@@ -33,23 +33,23 @@ export default function TaskCard({
   }
 
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 hover:border-[#6D5BF6] hover:shadow-sm transition-all">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 hover:border-[#6D5BF6] hover:shadow-sm transition-all">
       {/* Header */}
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex justify-between items-start mb-2">
         <div className="flex-1">
-          <div className="text-base font-semibold mb-1">{task.name}</div>
+          <div className="text-sm font-semibold mb-1">{task.name}</div>
           <div className="flex gap-1">
             <span
-              className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${
+              className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
                 task.type === 'scheduled'
-                  ? 'bg-blue-500/10 text-blue-500'
-                  : 'bg-purple-500/10 text-purple-500'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'bg-orange-50 text-orange-600'
               }`}
             >
               {task.type === 'scheduled' ? '定时任务' : '即时任务'}
             </span>
             <span
-              className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${
+              className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
                 task.status === 'running'
                   ? 'bg-green-500/10 text-green-500'
                   : task.status === 'paused'
@@ -68,7 +68,7 @@ export default function TaskCard({
       </div>
 
       {/* Meta Info */}
-      <div className="space-y-1 mb-3 text-xs text-[var(--color-text-secondary)]">
+      <div className="space-y-0.5 mb-2 text-xs text-[var(--color-text-secondary)]">
         {task.type === 'scheduled' ? (
           <>
             <div>执行规则：{task.schedule || '0 * * * *'}</div>
@@ -107,10 +107,10 @@ export default function TaskCard({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
         <button
           onClick={onViewDetail}
-          className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
+          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
         >
           查看详情
         </button>
@@ -118,28 +118,28 @@ export default function TaskCard({
           <button
             onClick={onExecute}
             disabled={task.status === 'running'}
-            className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors disabled:opacity-50"
+            className="h-6 px-2 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
           >
             立即执行
           </button>
         ) : task.status === 'running' ? (
           <button
             onClick={onPause}
-            className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
+            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
           >
             暂停
           </button>
         ) : (
           <button
             onClick={onResume}
-            className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
+            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
           >
             恢复
           </button>
         )}
         <button
           onClick={onDelete}
-          className="h-7 px-2 text-xs text-red-500 border border-red-500 rounded hover:bg-red-500/10 transition-colors"
+          className="h-6 px-2 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
         >
           删除
         </button>

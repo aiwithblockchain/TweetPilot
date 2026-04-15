@@ -9,8 +9,15 @@ interface TaskDetailSidebarProps {
 
 interface TaskDetail {
   task: Task
-  executionHistory?: ExecutionResult[]
-  failureLog?: ExecutionResult[]
+  statistics: {
+    totalExecutions: number
+    successCount: number
+    failureCount: number
+    successRate: number
+    averageDuration: number
+  }
+  history: ExecutionResult[]
+  failureLog: ExecutionResult[]
 }
 
 type TabType = 'config' | 'stats' | 'history' | 'last-execution' | 'failures'
@@ -61,7 +68,7 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
     )
   }
 
-  const { task, executionHistory = [], failureLog = [] } = detail
+  const { task, statistics, history = [], failureLog = [] } = detail
 
   const tabs: { key: TabType; label: string }[] =
     task.type === 'immediate'
@@ -144,37 +151,37 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
           </div>
         )}
 
-        {activeTab === 'stats' && task.statistics && (
+        {activeTab === 'stats' && statistics && (
           <div className="space-y-3 text-sm">
             <div>
               <div className="text-xs text-secondary mb-1">总执行次数</div>
-              <div>{task.statistics.totalExecutions}</div>
+              <div>{statistics.totalExecutions}</div>
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">成功次数</div>
-              <div className="text-green-500">{task.statistics.successCount}</div>
+              <div className="text-green-500">{statistics.successCount}</div>
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">失败次数</div>
-              <div className="text-red-500">{task.statistics.failureCount}</div>
+              <div className="text-red-500">{statistics.failureCount}</div>
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">成功率</div>
-              <div>{task.statistics.successRate}%</div>
+              <div>{statistics.successRate}%</div>
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">平均耗时</div>
-              <div>{task.statistics.averageDuration} 秒</div>
+              <div>{statistics.averageDuration} 秒</div>
             </div>
           </div>
         )}
 
         {activeTab === 'history' && (
           <div className="space-y-2">
-            {executionHistory.length === 0 ? (
+            {history.length === 0 ? (
               <div className="text-center text-sm text-secondary py-8">暂无执行历史</div>
             ) : (
-              executionHistory.map((exec, index) => (
+              history.map((exec, index) => (
                 <div
                   key={index}
                   className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-xs"
