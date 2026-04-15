@@ -94,6 +94,15 @@ class TaskManager {
     );
   }
 
+  updateTaskParameters(taskId, parameters) {
+    const task = this.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    task.parameters = parameters;
+    this.saveTasks();
+    window.dispatchEvent(new CustomEvent('tasks-changed'));
+  }
+
   async pauseTask(taskId) {
     const task = this.tasks.find(t => t.id === taskId);
     if (!task || task.type !== 'scheduled') return;
@@ -168,9 +177,6 @@ class TaskManager {
       this.saveTasks();
       window.dispatchEvent(new CustomEvent('tasks-changed'));
 
-      // 显示执行结果
-      this.showExecutionResult(task, execution);
-
     } catch (error) {
       const endTime = new Date().toISOString();
       const duration = (Date.now() - startTimestamp) / 1000;
@@ -193,8 +199,6 @@ class TaskManager {
       task.status = 'idle';
       this.saveTasks();
       window.dispatchEvent(new CustomEvent('tasks-changed'));
-
-      this.showExecutionResult(task, execution);
     }
   }
 

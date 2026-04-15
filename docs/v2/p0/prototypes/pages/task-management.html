@@ -126,7 +126,19 @@ window.init_task_management = function() {
 
       const executeBtn = card.querySelector('.execute-btn');
       if (executeBtn) {
-        executeBtn.onclick = () => taskManager.executeTask(taskId);
+        executeBtn.onclick = async () => {
+          // Show executing modal immediately
+          const executingModal = showExecutingModal(task);
+
+          // Execute task
+          await taskManager.executeTask(taskId);
+
+          // Close executing modal
+          executingModal.remove();
+
+          // Show result modal
+          showExecutionResultModal(task);
+        };
       }
 
       const pauseBtn = card.querySelector('.pause-btn');
@@ -211,7 +223,8 @@ window.init_task_management = function() {
   }
 
   function renderConfigTab(task) {
-    document.getElementById('tab-config').innerHTML = `
+    const configTab = document.getElementById('tab-config');
+    configTab.innerHTML = `
       <div class="form-group">
         <div class="form-label">任务名称</div>
         <div>${task.name}</div>
@@ -236,9 +249,79 @@ window.init_task_management = function() {
       ` : ''}
       <div class="form-group">
         <div class="form-label">任务参数</div>
-        <pre style="background: var(--color-bg-secondary); padding: 12px; border-radius: 4px; font-size: 12px;">${JSON.stringify(task.parameters, null, 2)}</pre>
+        <div id="params-editor" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;"></div>
+        <button type="button" class="secondary small" id="add-param-editor-btn">+ 添加参数</button>
+        <div class="form-help">参数将以 --key value 形式传递给脚本</div>
+      </div>
+      <div id="save-params-container" class="hidden" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <span style="color: var(--color-warning); font-size: 14px;">⚠️ 有未保存的修改</span>
+        </div>
+        <button id="save-params-btn" class="small">保存修改</button>
       </div>
     `;
+
+    const paramsEditor = configTab.querySelector('#params-editor');
+    let hasChanges = false;
+
+    // Render existing parameters
+    function renderParamRow(key, value) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 6px; align-items: center;';
+      row.innerHTML = `
+        <input type="text" placeholder="参数名" value="${key}" style="flex:1; font-family: monospace; font-size: 13px;">
+        <input type="text" placeholder="参数值" value="${value}" style="flex:1; font-size: 13px;">
+        <button type="button" class="secondary small" style="padding: 4px 8px;">×</button>
+      `;
+
+      row.querySelector('button').onclick = () => {
+        row.remove();
+        markAsChanged();
+      };
+
+      row.querySelectorAll('input').forEach(input => {
+        input.oninput = markAsChanged;
+      });
+
+      paramsEditor.appendChild(row);
+    }
+
+    // Load existing parameters
+    Object.entries(task.parameters || {}).forEach(([key, value]) => {
+      renderParamRow(key, value);
+    });
+
+    // Add parameter button
+    configTab.querySelector('#add-param-editor-btn').onclick = () => {
+      renderParamRow('', '');
+      markAsChanged();
+    };
+
+    // Mark as changed
+    function markAsChanged() {
+      if (!hasChanges) {
+        hasChanges = true;
+        configTab.querySelector('#save-params-container').classList.remove('hidden');
+      }
+    }
+
+    // Save parameters
+    configTab.querySelector('#save-params-btn').onclick = () => {
+      const newParams = {};
+      paramsEditor.querySelectorAll('div').forEach(row => {
+        const [keyInput, valInput] = row.querySelectorAll('input');
+        if (keyInput.value.trim()) {
+          newParams[keyInput.value.trim()] = valInput.value.trim();
+        }
+      });
+
+      taskManager.updateTaskParameters(task.id, newParams);
+      showToast('参数已保存', 'success');
+
+      // Re-render config tab to reset the UI state
+      const updatedTask = taskManager.getTask(task.id);
+      renderConfigTab(updatedTask);
+    };
   }
 
   function renderLastExecutionTab(task) {
@@ -359,6 +442,54 @@ window.init_task_management = function() {
     `;
   }
 
+  // Show executing modal
+  function showExecutingModal(task) {
+    const content = document.createElement('div');
+    content.style.cssText = 'text-align: center; padding: 20px;';
+    content.innerHTML = `
+      <div class="spinner" style="margin: 0 auto 16px;"></div>
+      <h3 style="margin-bottom: 8px;">正在执行任务</h3>
+      <p style="color: var(--color-text-secondary); font-size: 14px;">${task.name}</p>
+      <p style="color: var(--color-text-secondary); font-size: 12px; margin-top: 16px;">请稍候...</p>
+    `;
+    return showModal(content, '');
+  }
+
+  // Show execution result modal
+  function showExecutionResultModal(task) {
+    const lastExec = task.lastExecution;
+    if (!lastExec) return;
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+      <div style="margin-bottom: 16px;">
+        <div class="form-label">执行状态</div>
+        <div class="status ${lastExec.status}" style="display: inline-block; margin-top: 4px;">${lastExec.status === 'success' ? '✓ 成功' : '✗ 失败'}</div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div class="form-label">耗时</div>
+        <div>${lastExec.duration.toFixed(2)} 秒</div>
+      </div>
+      ${lastExec.output ? `
+        <div style="margin-bottom: 16px;">
+          <div class="form-label">输出</div>
+          <pre style="background: var(--color-bg-secondary); padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 300px;">${lastExec.output}</pre>
+        </div>
+      ` : ''}
+      ${lastExec.error ? `
+        <div style="margin-bottom: 16px;">
+          <div class="form-label">错误信息</div>
+          <pre style="background: #fee; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; color: var(--color-danger); max-height: 200px;">${lastExec.error}</pre>
+        </div>
+      ` : ''}
+      <div class="form-actions">
+        <button onclick="this.closest('.modal-overlay').remove()">关闭</button>
+      </div>
+    `;
+
+    showModal(content, '执行结果');
+  }
+
   // Create task
   document.getElementById('create-task-btn').onclick = () => {
     const content = document.createElement('div');
@@ -378,6 +509,12 @@ window.init_task_management = function() {
           <button type="button" class="secondary small" id="browse-script-btn">浏览</button>
         </div>
         <div class="form-help">点击"浏览"选择文件，或直接输入相对路径</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">任务参数</label>
+        <div id="params-list" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;"></div>
+        <button type="button" class="secondary small" id="add-param-btn">+ 添加参数</button>
+        <div class="form-help">参数将以 --key value 形式传递给脚本</div>
       </div>
       <div class="form-group">
         <label class="form-label">任务类型 *</label>
@@ -411,6 +548,21 @@ window.init_task_management = function() {
     `;
 
     const modal = showModal(content, '创建任务');
+
+    // Add param row
+    function addParamRow(key = '', value = '') {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; gap: 6px; align-items: center;';
+      row.innerHTML = `
+        <input type="text" placeholder="参数名" value="${key}" style="flex:1; font-family: monospace; font-size: 13px;">
+        <input type="text" placeholder="参数值" value="${value}" style="flex:1; font-size: 13px;">
+        <button type="button" class="secondary small" style="padding: 4px 8px;">×</button>
+      `;
+      row.querySelector('button').onclick = () => row.remove();
+      content.querySelector('#params-list').appendChild(row);
+    }
+
+    content.querySelector('#add-param-btn').onclick = () => addParamRow();
 
     // Browse script button
     content.querySelector('#browse-script-btn').onclick = () => {
@@ -461,6 +613,11 @@ window.init_task_management = function() {
       const description = content.querySelector('#task-desc').value;
       const scriptPath = content.querySelector('#task-script').value;
       const type = content.querySelector('#task-type').value;
+      const parameters = {};
+      content.querySelectorAll('#params-list > div').forEach(row => {
+        const [keyInput, valInput] = row.querySelectorAll('input');
+        if (keyInput.value.trim()) parameters[keyInput.value.trim()] = valInput.value.trim();
+      });
 
       console.log('Form values:', { name, description, scriptPath, type });
 
@@ -490,7 +647,7 @@ window.init_task_management = function() {
       console.log('Creating task with:', { name, description, scriptPath, type, schedule });
 
       try {
-        await taskManager.createTask({ name, description, scriptPath, type, schedule });
+        await taskManager.createTask({ name, description, scriptPath, type, schedule, parameters });
         console.log('Task created successfully, calling renderTasks()');
         renderTasks();
         console.log('renderTasks() called');
