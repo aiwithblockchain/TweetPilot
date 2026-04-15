@@ -1,5 +1,37 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+// Global task storage
+static TASKS: Lazy<Mutex<Vec<Task>>> = Lazy::new(|| {
+    Mutex::new(vec![
+        Task {
+            id: "task_1".to_string(),
+            name: "测试即时任务".to_string(),
+            description: Some("这是一个测试任务".to_string()),
+            task_type: TaskType::Immediate,
+            status: TaskStatus::Idle,
+            script_path: "/path/to/script.py".to_string(),
+            schedule: None,
+            parameters: None,
+            next_execution_time: None,
+            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
+        },
+        Task {
+            id: "task_2".to_string(),
+            name: "测试定时任务".to_string(),
+            description: Some("每小时执行一次".to_string()),
+            task_type: TaskType::Scheduled,
+            status: TaskStatus::Running,
+            script_path: "/path/to/scheduled.py".to_string(),
+            schedule: Some("0 * * * *".to_string()),
+            parameters: None,
+            next_execution_time: Some(chrono::Utc::now().to_rfc3339()),
+            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
+        },
+    ])
+});
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskConfig {
@@ -33,7 +65,9 @@ pub struct Task {
 pub struct TaskDetail {
     pub task: Task,
     pub statistics: TaskStatistics,
-    pub history: Vec<ExecutionRecord>,
+    pub history: Vec<ExecutionResult>,
+    #[serde(rename = "failureLog")]
+    pub failure_log: Vec<ExecutionResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,8 +122,7 @@ pub enum TaskStatus {
 
 #[tauri::command]
 pub async fn create_task(config: TaskConfig) -> Result<Task, String> {
-    // TODO: 创建任务
-    // Mock implementation
+    // Create new task with unique ID
     let task_id = format!("task_{}", chrono::Utc::now().timestamp());
 
     let status = match config.task_type {
@@ -97,7 +130,7 @@ pub async fn create_task(config: TaskConfig) -> Result<Task, String> {
         TaskType::Scheduled => TaskStatus::Paused,
     };
 
-    Ok(Task {
+    let new_task = Task {
         id: task_id,
         name: config.name,
         description: config.description,
@@ -108,45 +141,30 @@ pub async fn create_task(config: TaskConfig) -> Result<Task, String> {
         parameters: config.parameters,
         next_execution_time: None,
         last_execution_time: None,
-    })
+    };
+
+    // Add to global task list
+    let mut tasks = TASKS.lock().unwrap();
+    tasks.push(new_task.clone());
+
+    Ok(new_task)
 }
 
 #[tauri::command]
 pub async fn get_tasks() -> Result<Vec<Task>, String> {
-    // TODO: 获取任务列表
-    // Mock data for development
-    Ok(vec![
-        Task {
-            id: "task_1".to_string(),
-            name: "测试即时任务".to_string(),
-            description: Some("这是一个测试任务".to_string()),
-            task_type: TaskType::Immediate,
-            status: TaskStatus::Idle,
-            script_path: "/path/to/script.py".to_string(),
-            schedule: None,
-            parameters: None,
-            next_execution_time: None,
-            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
-        },
-        Task {
-            id: "task_2".to_string(),
-            name: "测试定时任务".to_string(),
-            description: Some("每小时执行一次".to_string()),
-            task_type: TaskType::Scheduled,
-            status: TaskStatus::Running,
-            script_path: "/path/to/scheduled.py".to_string(),
-            schedule: Some("0 * * * *".to_string()),
-            parameters: None,
-            next_execution_time: Some(chrono::Utc::now().to_rfc3339()),
-            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
-        },
-    ])
+    // Return tasks from global storage
+    let tasks = TASKS.lock().unwrap();
+    Ok(tasks.clone())
 }
 
 #[tauri::command]
 pub async fn get_task_detail(_task_id: String) -> Result<TaskDetail, String> {
-    // TODO: 获取任务详情
-    // Mock implementation with fake data
+    // Get the actual task from global storage
+    let tasks = TASKS.lock().unwrap();
+    let task = tasks.iter().find(|t| t.id == _task_id)
+        .ok_or_else(|| "Task not found".to_string())?
+        .clone();
+    drop(tasks);
 
     // Generate fake execution history
     let mut execution_history = vec![];
@@ -180,23 +198,7 @@ pub async fn get_task_detail(_task_id: String) -> Result<TaskDetail, String> {
         .collect();
 
     Ok(TaskDetail {
-        task: Task {
-            id: _task_id.clone(),
-            name: "测试任务".to_string(),
-            description: Some("这是一个测试任务".to_string()),
-            task_type: TaskType::Immediate,
-            status: TaskStatus::Idle,
-            script_path: "/path/to/script.py".to_string(),
-            schedule: None,
-            parameters: Some({
-                let mut params = HashMap::new();
-                params.insert("name".to_string(), "value".to_string());
-                params.insert("count".to_string(), "100".to_string());
-                params
-            }),
-            next_execution_time: None,
-            last_execution_time: Some(chrono::Utc::now().to_rfc3339()),
-        },
+        task,
         statistics: TaskStatistics {
             total_executions: 15,
             success_count: 12,
@@ -208,19 +210,6 @@ pub async fn get_task_detail(_task_id: String) -> Result<TaskDetail, String> {
         failure_log,
     })
 }
-            next_execution_time: None,
-            last_execution_time: None,
-        },
-        statistics: TaskStatistics {
-            total_executions: 10,
-            success_count: 8,
-            failure_count: 2,
-            success_rate: 80.0,
-            average_duration: 2.5,
-        },
-        history: vec![],
-    })
-}
 
 #[tauri::command]
 pub async fn update_task(_task_id: String, _config: TaskConfig) -> Result<(), String> {
@@ -229,9 +218,10 @@ pub async fn update_task(_task_id: String, _config: TaskConfig) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn delete_task(_task_id: String) -> Result<(), String> {
-    // TODO: 删除任务
-    println!("Deleting task: {}", _task_id);
+pub async fn delete_task(task_id: String) -> Result<(), String> {
+    // Remove task from global storage
+    let mut tasks = TASKS.lock().unwrap();
+    tasks.retain(|t| t.id != task_id);
     Ok(())
 }
 

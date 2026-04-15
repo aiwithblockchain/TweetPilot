@@ -26,6 +26,8 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabType>('config')
+  const [parameters, setParameters] = useState<Record<string, string>>({})
+  const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
     loadTaskDetail()
@@ -35,12 +37,8 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
     try {
       const result = await invoke<TaskDetail>('get_task_detail', { taskId })
       setDetail(result)
-      // Set default tab based on task type
-      if (result.task.type === 'immediate') {
-        setActiveTab('config')
-      } else {
-        setActiveTab('config')
-      }
+      setParameters(result.task.parameters || {})
+      setActiveTab('config')
     } catch (error) {
       console.error('Failed to load task detail:', error)
     } finally {
@@ -58,6 +56,48 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
       minute: '2-digit',
       second: '2-digit',
     })
+  }
+
+  const handleParamChange = (oldKey: string, newKey: string, value: string) => {
+    setParameters((prev) => {
+      const updated = { ...prev }
+      if (oldKey !== newKey && oldKey in updated) {
+        delete updated[oldKey]
+      }
+      if (newKey.trim()) {
+        updated[newKey] = value
+      }
+      return updated
+    })
+    setHasChanges(true)
+  }
+
+  const handleParamDelete = (key: string) => {
+    setParameters((prev) => {
+      const updated = { ...prev }
+      delete updated[key]
+      return updated
+    })
+    setHasChanges(true)
+  }
+
+  const handleAddParam = () => {
+    const newKey = `param${Object.keys(parameters).length + 1}`
+    setParameters((prev) => ({ ...prev, [newKey]: '' }))
+    setHasChanges(true)
+  }
+
+  const handleSaveParams = async () => {
+    try {
+      // TODO: Call backend to update task parameters
+      console.log('Saving parameters:', parameters)
+      setHasChanges(false)
+      // Show success message
+      alert('参数已保存')
+    } catch (error) {
+      console.error('Failed to save parameters:', error)
+      alert('保存失败')
+    }
   }
 
   if (loading || !detail) {
@@ -127,51 +167,98 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
               <div>{task.description || '无'}</div>
             </div>
             <div>
+              <div className="text-xs text-secondary mb-1">脚本路径</div>
+              <div className="text-xs break-all font-mono">{task.scriptPath}</div>
+            </div>
+            <div>
               <div className="text-xs text-secondary mb-1">任务类型</div>
               <div>{task.type === 'scheduled' ? '定时任务' : '即时任务'}</div>
             </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">脚本路径</div>
-              <div className="text-xs break-all">{task.scriptPath}</div>
-            </div>
-            {task.type === 'scheduled' && (
+            {task.type === 'scheduled' && task.schedule && (
               <div>
                 <div className="text-xs text-secondary mb-1">执行规则</div>
                 <div>{task.schedule}</div>
               </div>
             )}
-            {task.parameters && Object.keys(task.parameters).length > 0 && (
-              <div>
-                <div className="text-xs text-secondary mb-1">参数</div>
-                <div className="text-xs bg-[var(--color-surface)] p-2 rounded">
-                  <pre>{JSON.stringify(task.parameters, null, 2)}</pre>
-                </div>
+            <div>
+              <div className="text-xs text-secondary mb-1">任务参数</div>
+              <div className="flex flex-col gap-1.5 mb-2">
+                {Object.entries(parameters).map(([key, value]) => (
+                  <div key={key} className="flex gap-1.5 items-center">
+                    <input
+                      type="text"
+                      value={key}
+                      onChange={(e) => handleParamChange(key, e.target.value, value)}
+                      placeholder="参数名"
+                      className="flex-1 px-2 py-1 text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
+                    />
+                    <input
+                      type="text"
+                      value={value}
+                      onChange={(e) => handleParamChange(key, key, e.target.value)}
+                      placeholder="参数值"
+                      className="flex-1 px-2 py-1 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
+                    />
+                    <button
+                      onClick={() => handleParamDelete(key)}
+                      className="px-2 py-1 text-xs bg-[var(--color-surface)] hover:bg-red-500/10 hover:text-red-500 border border-[var(--color-border)] rounded transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
-            )}
+              <button
+                onClick={handleAddParam}
+                className="w-full px-2 py-1 text-xs bg-[var(--color-surface)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] rounded transition-colors"
+              >
+                + 添加参数
+              </button>
+              <div className="text-xs text-secondary mt-1">
+                参数将以 --key value 形式传递给脚本
+              </div>
+              {hasChanges && (
+                <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-orange-500">⚠️ 有未保存的修改</span>
+                  </div>
+                  <button
+                    onClick={handleSaveParams}
+                    className="w-full h-7 px-3 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+                  >
+                    保存修改
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {activeTab === 'stats' && statistics && (
-          <div className="space-y-3 text-sm">
-            <div>
-              <div className="text-xs text-secondary mb-1">总执行次数</div>
-              <div>{statistics.totalExecutions}</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-[var(--color-surface)] rounded text-center">
+              <div className="text-2xl font-semibold mb-1">{statistics.totalExecutions}</div>
+              <div className="text-xs text-secondary">总执行次数</div>
             </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">成功次数</div>
-              <div className="text-green-500">{statistics.successCount}</div>
+            <div className="p-3 bg-[var(--color-surface)] rounded text-center">
+              <div className="text-2xl font-semibold mb-1 text-green-500">
+                {statistics.successCount}
+              </div>
+              <div className="text-xs text-secondary">成功次数</div>
             </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">失败次数</div>
-              <div className="text-red-500">{statistics.failureCount}</div>
+            <div className="p-3 bg-[var(--color-surface)] rounded text-center">
+              <div className="text-2xl font-semibold mb-1 text-red-500">
+                {statistics.failureCount}
+              </div>
+              <div className="text-xs text-secondary">失败次数</div>
             </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">成功率</div>
-              <div>{statistics.successRate}%</div>
+            <div className="p-3 bg-[var(--color-surface)] rounded text-center">
+              <div className="text-2xl font-semibold mb-1">{statistics.successRate}%</div>
+              <div className="text-xs text-secondary">成功率</div>
             </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">平均耗时</div>
-              <div>{statistics.averageDuration} 秒</div>
+            <div className="p-3 bg-[var(--color-surface)] rounded text-center col-span-2">
+              <div className="text-2xl font-semibold mb-1">{statistics.averageDuration}s</div>
+              <div className="text-xs text-secondary">平均时长</div>
             </div>
           </div>
         )}
@@ -184,26 +271,21 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
               history.map((exec, index) => (
                 <div
                   key={index}
-                  className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-xs"
+                  className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
                 >
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-2 text-xs">
                     <span className="text-secondary">{formatDate(exec.startTime)}</span>
-                    <span
-                      className={`px-2 py-0.5 rounded ${
-                        exec.status === 'success'
-                          ? 'bg-green-500/10 text-green-500'
-                          : 'bg-red-500/10 text-red-500'
-                      }`}
-                    >
-                      {exec.status === 'success' ? '成功' : '失败'}
-                    </span>
+                    <span className="text-secondary">{exec.duration.toFixed(1)}s</span>
                   </div>
-                  <div className="text-secondary">耗时：{exec.duration.toFixed(2)} 秒</div>
-                  {exec.error && (
-                    <div className="mt-2 p-2 bg-red-500/10 rounded text-red-500">
-                      {exec.error}
-                    </div>
-                  )}
+                  <div
+                    className={`inline-block px-2 py-0.5 text-xs rounded ${
+                      exec.status === 'success'
+                        ? 'bg-green-500/10 text-green-500'
+                        : 'bg-red-500/10 text-red-500'
+                    }`}
+                  >
+                    {exec.status === 'success' ? '成功' : '失败'}
+                  </div>
                 </div>
               ))
             )}
@@ -227,8 +309,12 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
                   </span>
                 </div>
                 <div>
-                  <div className="text-xs text-secondary mb-1">执行时间</div>
+                  <div className="text-xs text-secondary mb-1">开始时间</div>
                   <div>{formatDate(task.lastExecution.startTime)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-secondary mb-1">结束时间</div>
+                  <div>{formatDate(task.lastExecution.endTime)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-secondary mb-1">耗时</div>
@@ -237,7 +323,7 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
                 {task.lastExecution.output && (
                   <div>
                     <div className="text-xs text-secondary mb-1">输出</div>
-                    <pre className="text-xs bg-[var(--color-surface)] p-2 rounded overflow-x-auto">
+                    <pre className="text-xs bg-[var(--color-surface)] p-2 rounded overflow-x-auto whitespace-pre-wrap">
                       {task.lastExecution.output}
                     </pre>
                   </div>
@@ -245,7 +331,7 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
                 {task.lastExecution.error && (
                   <div>
                     <div className="text-xs text-secondary mb-1">错误信息</div>
-                    <pre className="text-xs bg-red-500/10 text-red-500 p-2 rounded overflow-x-auto">
+                    <pre className="text-xs bg-red-500/10 text-red-500 p-2 rounded overflow-x-auto whitespace-pre-wrap">
                       {task.lastExecution.error}
                     </pre>
                   </div>
@@ -265,17 +351,17 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
               failureLog.map((exec, index) => (
                 <div
                   key={index}
-                  className="p-3 bg-red-500/10 border border-red-500 rounded text-xs"
+                  className="p-3 bg-red-500/10 border border-red-500 rounded"
                 >
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-2 text-xs">
                     <span className="text-secondary">{formatDate(exec.startTime)}</span>
-                    <span className="text-red-500">失败</span>
+                    <span className="text-secondary">{exec.duration.toFixed(1)}s</span>
                   </div>
-                  <div className="text-secondary mb-2">耗时：{exec.duration.toFixed(2)} 秒</div>
+                  <div className="text-xs text-red-500 mb-2">失败</div>
                   {exec.error && (
-                    <div className="p-2 bg-red-500/20 rounded text-red-500">
+                    <pre className="text-xs bg-red-500/20 text-red-500 p-2 rounded overflow-x-auto whitespace-pre-wrap">
                       {exec.error}
-                    </div>
+                    </pre>
                   )}
                 </div>
               ))
