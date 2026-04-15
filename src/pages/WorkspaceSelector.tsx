@@ -31,8 +31,8 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
     <div className="h-screen flex items-center justify-center bg-[var(--color-bg)]">
       <div className="max-w-2xl w-full px-8">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">TweetPilot</h1>
-          <p className="text-lg text-secondary">
+          <h1 className="text-2xl font-semibold mb-3">TweetPilot</h1>
+          <p className="text-base text-secondary">
             选择一个工作目录开始使用
           </p>
         </div>
@@ -43,8 +43,8 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
             disabled={loading}
             className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
           >
-            <div className="text-lg font-semibold mb-2">📁 选择本地目录</div>
-            <div className="text-sm text-secondary">
+            <div className="text-base font-medium mb-1">📁 选择本地目录</div>
+            <div className="text-xs text-secondary">
               选择一个现有的目录作为工作目录
             </div>
           </button>
@@ -53,8 +53,8 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
             disabled
             className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg opacity-50 text-left cursor-not-allowed"
           >
-            <div className="text-lg font-semibold mb-2">🔗 从 GitHub 克隆</div>
-            <div className="text-sm text-secondary">
+            <div className="text-base font-medium mb-1">🔗 从 GitHub 克隆</div>
+            <div className="text-xs text-secondary">
               克隆一个 GitHub 仓库作为工作目录（即将推出）
             </div>
           </button>
@@ -63,8 +63,8 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
             disabled
             className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg opacity-50 text-left cursor-not-allowed"
           >
-            <div className="text-lg font-semibold mb-2">🕐 最近使用</div>
-            <div className="text-sm text-secondary">
+            <div className="text-base font-medium mb-1">🕐 最近使用</div>
+            <div className="text-xs text-secondary">
               从最近使用的工作目录中选择（即将推出）
             </div>
           </button>
