@@ -41,7 +41,7 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
           <button
             onClick={handleSelectDirectory}
             disabled={loading}
-            className="p-6 bg-[var(--color-surface)] border rounded-lg hover:border-brand-primary transition-colors text-left disabled:opacity-50"
+            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
           >
             <div className="text-lg font-semibold mb-2">📁 选择本地目录</div>
             <div className="text-sm text-secondary">
@@ -51,7 +51,7 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
 
           <button
             disabled
-            className="p-6 bg-[var(--color-surface)] border rounded-lg opacity-50 text-left cursor-not-allowed"
+            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg opacity-50 text-left cursor-not-allowed"
           >
             <div className="text-lg font-semibold mb-2">🔗 从 GitHub 克隆</div>
             <div className="text-sm text-secondary">
@@ -61,7 +61,7 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
 
           <button
             disabled
-            className="p-6 bg-[var(--color-surface)] border rounded-lg opacity-50 text-left cursor-not-allowed"
+            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg opacity-50 text-left cursor-not-allowed"
           >
             <div className="text-lg font-semibold mb-2">🕐 最近使用</div>
             <div className="text-sm text-secondary">

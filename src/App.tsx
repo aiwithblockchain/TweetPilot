@@ -7,6 +7,9 @@ function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // 设置默认 Dark 主题
+    document.documentElement.classList.add('dark')
+
     // 检查是否已有工作目录
     invoke<string | null>('get_current_workspace')
       .then((workspace) => {
