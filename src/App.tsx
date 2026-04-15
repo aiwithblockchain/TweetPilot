@@ -46,7 +46,7 @@ function App() {
       {/* Header */}
       <header className="h-12 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center px-4">
         <div className="flex items-center gap-3">
-          <div className="text-lg">🐦</div>
+          <img src="/logo.png" alt="TweetPilot" className="w-6 h-6" />
           <h1 className="text-base font-semibold">TweetPilot</h1>
         </div>
         <div className="flex-1 flex justify-center">

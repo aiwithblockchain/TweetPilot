@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { CardType } from '../pages/DataBlocks'
+import { CardType, Card } from '../pages/DataBlocks'
 
 interface AddCardDialogProps {
   onClose: () => void
   onAddCard: (cardType: string) => void
+  existingCards: Card[]
 }
 
 const CARD_TYPES: CardType[] = [
@@ -39,8 +40,12 @@ const CARD_TYPES: CardType[] = [
   },
 ]
 
-export default function AddCardDialog({ onClose, onAddCard }: AddCardDialogProps) {
+export default function AddCardDialog({ onClose, onAddCard, existingCards }: AddCardDialogProps) {
   const [selectedType, setSelectedType] = useState<string | null>(null)
+
+  // Filter out card types that are already added
+  const existingCardTypes = new Set(existingCards.map((card) => card.type))
+  const availableCardTypes = CARD_TYPES.filter((type) => !existingCardTypes.has(type.id))
 
   const handleAdd = () => {
     if (selectedType) {
@@ -64,30 +69,38 @@ export default function AddCardDialog({ onClose, onAddCard }: AddCardDialogProps
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-4">
-          <p className="text-sm text-secondary mb-3">选择要添加的卡片类型：</p>
-          <div className="grid gap-3">
-            {CARD_TYPES.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setSelectedType(type.id)}
-                className={`p-4 text-left border rounded-lg transition-all ${
-                  selectedType === type.id
-                    ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
-                    : 'border-[var(--color-border)] hover:border-[#6D5BF6] hover:bg-[var(--color-surface)]'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold mb-1">{type.name}</div>
-                    <div className="text-xs text-secondary">{type.description}</div>
-                  </div>
-                  {selectedType === type.id && (
-                    <span className="text-[#6D5BF6] ml-2">✓</span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
+          {availableCardTypes.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-sm text-secondary">所有卡片类型都已添加</div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-secondary mb-3">选择要添加的卡片类型：</p>
+              <div className="grid gap-3">
+                {availableCardTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    onClick={() => setSelectedType(type.id)}
+                    className={`p-4 text-left border rounded-lg transition-all ${
+                      selectedType === type.id
+                        ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
+                        : 'border-[var(--color-border)] hover:border-[#6D5BF6] hover:bg-[var(--color-surface)]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold mb-1">{type.name}</div>
+                        <div className="text-xs text-secondary">{type.description}</div>
+                      </div>
+                      {selectedType === type.id && (
+                        <span className="text-[#6D5BF6] ml-2">✓</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}
@@ -100,7 +113,7 @@ export default function AddCardDialog({ onClose, onAddCard }: AddCardDialogProps
           </button>
           <button
             onClick={handleAdd}
-            disabled={!selectedType}
+            disabled={!selectedType || availableCardTypes.length === 0}
             className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
           >
             添加

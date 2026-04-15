@@ -238,6 +238,7 @@ export default function DataBlocks() {
         <AddCardDialog
           onClose={() => setShowAddDialog(false)}
           onAddCard={handleAddCard}
+          existingCards={cards}
         />
       )}
     </div>
