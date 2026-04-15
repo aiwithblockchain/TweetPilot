@@ -1,7 +1,20 @@
 <div class="page-container">
   <div class="page-header">
     <h2 class="page-title">数据积木</h2>
-    <button id="add-card-btn">添加卡片</button>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <!-- Account Selector -->
+      <div id="account-selector" style="position: relative;">
+        <button id="account-selector-btn" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;">
+          <img id="selected-account-avatar" src="" alt="" style="width: 24px; height: 24px; border-radius: 50%;">
+          <span id="selected-account-name"></span>
+          <span style="font-size: 12px;">▼</span>
+        </button>
+        <div id="account-dropdown" class="hidden" style="position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); min-width: 200px; z-index: 1000;">
+          <!-- Account list will be rendered here -->
+        </div>
+      </div>
+      <button id="add-card-btn">添加卡片</button>
+    </div>
   </div>
 
   <!-- Cards Grid -->
@@ -17,6 +30,65 @@
 
 <script>
 window.init_data_blocks = function() {
+  // Render account selector
+  function renderAccountSelector() {
+    const selectedAccountId = dataBlocksManager.getSelectedAccount();
+    const accounts = accountManager.getAccounts();
+    const selectedAccount = accounts.find(a => a.screenName === selectedAccountId);
+
+    if (!selectedAccount) {
+      document.getElementById('account-selector').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('account-selector').style.display = 'block';
+    document.getElementById('selected-account-avatar').src = selectedAccount.avatar;
+    document.getElementById('selected-account-name').textContent = selectedAccount.displayName;
+
+    // Render dropdown
+    const dropdown = document.getElementById('account-dropdown');
+    dropdown.innerHTML = accounts.map(account => `
+      <div class="account-dropdown-item ${account.screenName === selectedAccountId ? 'active' : ''}" data-account-id="${account.screenName}" style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; ${account.screenName === selectedAccountId ? 'background: var(--color-bg-hover);' : ''}">
+        <img src="${account.avatar}" alt="${account.displayName}" style="width: 24px; height: 24px; border-radius: 50%;">
+        <div style="flex: 1;">
+          <div style="font-weight: 500; font-size: 14px;">${account.displayName}</div>
+          <div style="font-size: 12px; color: var(--color-text-secondary);">${account.screenName}</div>
+        </div>
+        ${account.screenName === selectedAccountId ? '<span style="color: var(--color-primary);">✓</span>' : ''}
+      </div>
+    `).join('');
+
+    // Attach event listeners
+    dropdown.querySelectorAll('.account-dropdown-item').forEach(item => {
+      item.onmouseenter = () => {
+        if (!item.classList.contains('active')) {
+          item.style.background = 'var(--color-bg-hover)';
+        }
+      };
+      item.onmouseleave = () => {
+        if (!item.classList.contains('active')) {
+          item.style.background = '';
+        }
+      };
+      item.onclick = () => {
+        dataBlocksManager.setSelectedAccount(item.dataset.accountId);
+        dropdown.classList.add('hidden');
+      };
+    });
+  }
+
+  // Toggle account dropdown
+  document.getElementById('account-selector-btn').onclick = (e) => {
+    e.stopPropagation();
+    const dropdown = document.getElementById('account-dropdown');
+    dropdown.classList.toggle('hidden');
+  };
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', () => {
+    document.getElementById('account-dropdown').classList.add('hidden');
+  });
+
   // Render cards
   function renderCards() {
     const cards = dataBlocksManager.getCards();
@@ -32,6 +104,7 @@ window.init_data_blocks = function() {
     emptyState.classList.add('hidden');
     cardsGrid.innerHTML = cards.map(card => {
       const cardType = dataBlocksManager.getCardTypes().find(t => t.id === card.type);
+      if (!cardType) return '';
       return `
         <div class="data-card" data-card-id="${card.id}" draggable="true">
           <div class="data-card-header">
@@ -112,9 +185,6 @@ window.init_data_blocks = function() {
     const data = dataBlocksManager.getCardData(card);
 
     switch (card.type) {
-      case 'account_tweet_stats':
-        renderAccountTweetStats(contentEl, data);
-        break;
       case 'latest_tweets':
         renderLatestTweets(contentEl, data);
         break;
@@ -131,24 +201,6 @@ window.init_data_blocks = function() {
         renderTaskExecutionStats(contentEl, data);
         break;
     }
-  }
-
-  function renderAccountTweetStats(el, data) {
-    if (!data || data.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="empty-state-title">暂无数据</div></div>';
-      return;
-    }
-
-    el.innerHTML = data.map(account => `
-      <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border-bottom: 1px solid var(--color-border);">
-        <img src="${account.avatar}" alt="${account.displayName}" style="width: 32px; height: 32px; border-radius: 50%;">
-        <div style="flex: 1;">
-          <div style="font-weight: 500;">${account.displayName}</div>
-          <div style="font-size: 12px; color: var(--color-text-secondary);">${account.screenName}</div>
-        </div>
-        <div style="font-size: 24px; font-weight: 600; color: var(--color-primary);">${account.tweetCount.toLocaleString()}</div>
-      </div>
-    `).join('');
   }
 
   function renderLatestTweets(el, data) {
@@ -309,7 +361,16 @@ window.init_data_blocks = function() {
     renderCardContent(e.detail.cardId);
   });
 
+  // Listen for account changes
+  window.addEventListener('selected-account-changed', () => {
+    renderAccountSelector();
+    // Refresh all cards when account changes
+    const cards = dataBlocksManager.getCards();
+    cards.forEach(card => renderCardContent(card.id));
+  });
+
   // Initial render
+  renderAccountSelector();
   renderCards();
 };
 </script>

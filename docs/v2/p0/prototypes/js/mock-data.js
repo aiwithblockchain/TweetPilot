@@ -33,19 +33,20 @@ const mockAccounts = [
 
 // Mock Tasks
 const mockTasks = [
+  // 定时任务 1
   {
     id: 'task_001',
     name: '每日推文发布',
     description: '每天早上 9 点发布一条推文',
     type: 'scheduled',
-    scriptPath: 'daily-tweet.py',
-    schedule: '0 9 * * *',
+    scriptPath: 'scripts/daily-tweet.py',
+    schedule: 'every 24 hours',
     parameters: {
       'target-user': 'elonmusk',
       'max-tweets': '100'
     },
     status: 'running',
-    nextExecutionTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    nextExecutionTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     lastExecutionTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     statistics: {
       totalExecutions: 30,
@@ -55,35 +56,35 @@ const mockTasks = [
       averageDuration: 5.2
     }
   },
+  // 即时任务 1
   {
     id: 'task_002',
     name: '推文数据抓取',
     description: '抓取指定用户的最新推文',
     type: 'immediate',
-    scriptPath: 'fetch-tweets.py',
-    schedule: null,
+    scriptPath: 'scripts/fetch-tweets.py',
     parameters: {
       'user': 'BillGates',
       'count': '50'
     },
-    status: 'paused',
-    nextExecutionTime: null,
-    lastExecutionTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    statistics: {
-      totalExecutions: 15,
-      successCount: 15,
-      failureCount: 0,
-      successRate: 100,
-      averageDuration: 3.8
+    status: 'idle',
+    lastExecution: {
+      startTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 2 * 60 * 60 * 1000 + 3800).toISOString(),
+      status: 'success',
+      output: 'Successfully fetched 50 tweets from @BillGates\nTotal likes: 15234\nTotal retweets: 3421',
+      error: null,
+      duration: 3.8
     }
   },
+  // 定时任务 2
   {
     id: 'task_003',
     name: '互动数据统计',
     description: '统计账号的互动数据',
     type: 'scheduled',
-    scriptPath: 'stats-collector.py',
-    schedule: '0 */6 * * *',
+    scriptPath: 'scripts/stats-collector.py',
+    schedule: 'every 6 hours',
     parameters: {},
     status: 'running',
     nextExecutionTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
@@ -95,42 +96,92 @@ const mockTasks = [
       successRate: 98.3,
       averageDuration: 8.5
     }
+  },
+  // 即时任务 2（有失败记录）
+  {
+    id: 'task_004',
+    name: '账号验证检查',
+    description: '检查账号是否需要重新验证',
+    type: 'immediate',
+    scriptPath: 'scripts/verify-account.py',
+    parameters: {
+      'account': '@sundarpichai'
+    },
+    status: 'idle',
+    lastExecution: {
+      startTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 30 * 60 * 1000 + 2100).toISOString(),
+      status: 'failure',
+      output: 'Connecting to Twitter API...\nChecking account status...',
+      error: 'Error: Account @sundarpichai is offline. Cannot verify.',
+      duration: 2.1
+    }
   }
 ];
 
-// Mock Execution History
-const mockExecutionHistory = [
-  {
-    id: 'exec_001',
-    taskId: 'task_001',
-    startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    endTime: new Date(Date.now() - 60 * 60 * 1000 + 5200).toISOString(),
-    duration: 5.2,
-    status: 'success',
-    output: 'Tweet published successfully: https://twitter.com/elonmusk/status/123456789',
-    exitCode: 0
-  },
-  {
-    id: 'exec_002',
-    taskId: 'task_001',
-    startTime: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-    endTime: new Date(Date.now() - 25 * 60 * 60 * 1000 + 4800).toISOString(),
-    duration: 4.8,
-    status: 'success',
-    output: 'Tweet published successfully: https://twitter.com/elonmusk/status/123456788',
-    exitCode: 0
-  },
-  {
-    id: 'exec_003',
-    taskId: 'task_001',
-    startTime: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
-    endTime: new Date(Date.now() - 49 * 60 * 60 * 1000 + 15000).toISOString(),
-    duration: 15.0,
-    status: 'failure',
-    output: 'Error: Twitter API rate limit exceeded',
-    exitCode: 1
-  }
-];
+// Mock Execution History (仅定时任务)
+const mockExecutionHistory = {
+  'task_001': [
+    {
+      startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 60 * 60 * 1000 + 5200).toISOString(),
+      status: 'success',
+      output: 'Tweet published successfully: https://twitter.com/elonmusk/status/123456789',
+      error: null,
+      duration: 5.2
+    },
+    {
+      startTime: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 25 * 60 * 60 * 1000 + 4800).toISOString(),
+      status: 'success',
+      output: 'Tweet published successfully: https://twitter.com/elonmusk/status/123456788',
+      error: null,
+      duration: 4.8
+    },
+    {
+      startTime: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 49 * 60 * 60 * 1000 + 15000).toISOString(),
+      status: 'failure',
+      output: 'Connecting to Twitter API...\nAuthenticating...\nError occurred.',
+      error: 'Error: Twitter API rate limit exceeded. Please try again later.',
+      duration: 15.0
+    }
+  ],
+  'task_003': [
+    {
+      startTime: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 3 * 60 * 60 * 1000 + 8500).toISOString(),
+      status: 'success',
+      output: 'Collected stats for 3 accounts\nTotal views: 15.8B\nTotal likes: 1.2B',
+      error: null,
+      duration: 8.5
+    }
+  ]
+};
+
+// Mock Failure Log (所有任务的失败记录)
+const mockFailureLog = {
+  'task_001': [
+    {
+      startTime: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 49 * 60 * 60 * 1000 + 15000).toISOString(),
+      output: 'Connecting to Twitter API...\nAuthenticating...\nError occurred.',
+      error: 'Error: Twitter API rate limit exceeded. Please try again later.',
+      duration: 15.0,
+      taskType: 'scheduled'
+    }
+  ],
+  'task_004': [
+    {
+      startTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      endTime: new Date(Date.now() - 30 * 60 * 1000 + 2100).toISOString(),
+      output: 'Connecting to Twitter API...\nChecking account status...',
+      error: 'Error: Account @sundarpichai is offline. Cannot verify.',
+      duration: 2.1,
+      taskType: 'immediate'
+    }
+  ]
+};
 
 // Mock Tweets
 const mockTweets = [

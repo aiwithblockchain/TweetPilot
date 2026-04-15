@@ -27,15 +27,9 @@
           <div class="welcome-option-title">从 GitHub 克隆</div>
           <div class="welcome-option-desc">克隆 GitHub 仓库作为工作目录</div>
         </div>
-
-        <div class="welcome-option" id="show-recent">
-          <div class="welcome-option-icon">🕐</div>
-          <div class="welcome-option-title">最近使用</div>
-          <div class="welcome-option-desc">从历史记录中选择</div>
-        </div>
       </div>
 
-      <div id="recent-list" class="recent-list hidden"></div>
+      <div id="recent-workspaces-section" class="recent-workspaces-section"></div>
     </div>
   </div>
 
@@ -43,6 +37,13 @@
   <script src="js/mock-data.js"></script>
   <script src="js/workspace.js"></script>
   <script>
+    // Check startup behavior preference
+    const preferences = Storage.getGlobal('preferences') || {
+      language: 'zh-CN',
+      theme: 'light',
+      startup: 'show-selector'  // Default to showing selector
+    };
+
     // Check if workspace is already selected (from URL parameter)
     const urlParams = new URLSearchParams(window.location.search);
     const workspaceParam = urlParams.get('workspace');
@@ -50,10 +51,11 @@
     if (workspaceParam) {
       workspaceManager.setCurrentWorkspace(workspaceParam);
       window.location.href = 'main.html';
-    } else if (workspaceManager.getCurrentWorkspace()) {
-      // Already has a workspace, go to main
+    } else if (preferences.startup === 'last-workspace' && workspaceManager.getCurrentWorkspace()) {
+      // Only auto-open last workspace if user preference is set
       window.location.href = 'main.html';
     }
+    // Otherwise, show the workspace selector (default behavior)
 
     // Select local directory
     document.getElementById('select-local').addEventListener('click', async () => {
@@ -106,17 +108,22 @@
     });
 
     // Show recent workspaces
-    document.getElementById('show-recent').addEventListener('click', () => {
-      const recentList = document.getElementById('recent-list');
+    function renderRecentWorkspaces() {
+      const recentSection = document.getElementById('recent-workspaces-section');
       const recent = workspaceManager.getRecentWorkspaces();
 
       if (recent.length === 0) {
-        showToast('暂无历史记录', 'info');
+        recentSection.innerHTML = '';
         return;
       }
 
-      recentList.innerHTML = '';
-      recent.forEach(workspace => {
+      recentSection.innerHTML = `
+        <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 16px; color: var(--color-text-secondary);">最近使用</h3>
+        <div class="recent-list"></div>
+      `;
+
+      const recentList = recentSection.querySelector('.recent-list');
+      recent.slice(0, 5).forEach(workspace => {
         const item = document.createElement('div');
         item.className = 'recent-item';
         item.innerHTML = `
@@ -134,9 +141,10 @@
 
         recentList.appendChild(item);
       });
+    }
 
-      recentList.classList.remove('hidden');
-    });
+    // Initial render
+    renderRecentWorkspaces();
   </script>
 </body>
 </html>

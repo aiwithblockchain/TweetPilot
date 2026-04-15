@@ -3,36 +3,37 @@
 class DataBlocksManager {
   constructor() {
     this.cards = [];
+    this.selectedAccountId = null; // 当前选中的账号
     this.cardTypes = [
-      {
-        id: 'account_tweet_stats',
-        name: '账号推文统计',
-        description: '显示每个账号的推文总数'
-      },
       {
         id: 'latest_tweets',
         name: '最新推文列表',
-        description: '显示账号最新的 10 条推文'
+        description: '显示账号最新的 10 条推文',
+        requiresAccount: true
       },
       {
         id: 'account_basic_data',
-        name: '账号基础数据',
-        description: '显示关注数、被关注数等基础信息'
+        name: '粉丝统计',
+        description: '显示关注数、被关注数等基础信息',
+        requiresAccount: true
       },
       {
         id: 'account_interaction_data',
-        name: '账号互动数据',
-        description: '显示总浏览量、点赞数、转推数'
+        name: '推文互动数据',
+        description: '显示总浏览量、点赞数、转推数',
+        requiresAccount: true
       },
       {
         id: 'tweet_time_distribution',
         name: '推文时间分布',
-        description: '显示最近 7 天的推文发布数量'
+        description: '显示最近 7 天的推文发布数量',
+        requiresAccount: true
       },
       {
         id: 'task_execution_stats',
         name: '任务执行统计',
-        description: '显示最近 24 小时的任务执行情况'
+        description: '显示最近 24 小时的任务执行情况',
+        requiresAccount: false
       }
     ];
     this.init();
@@ -40,7 +41,27 @@ class DataBlocksManager {
 
   init() {
     // Load cards from storage
-    this.cards = Storage.get('data-blocks-layout') || [];
+    const saved = Storage.get('data-blocks-layout') || [];
+    const validTypes = this.cardTypes.map(t => t.id);
+    this.cards = saved.filter(c => validTypes.includes(c.type));
+
+    // Load selected account (default to first online account)
+    this.selectedAccountId = Storage.get('data-blocks-selected-account');
+    if (!this.selectedAccountId) {
+      const accounts = accountManager.getAccounts();
+      const onlineAccount = accounts.find(a => a.status === 'online');
+      this.selectedAccountId = onlineAccount?.screenName || accounts[0]?.screenName;
+    }
+  }
+
+  setSelectedAccount(accountId) {
+    this.selectedAccountId = accountId;
+    Storage.set('data-blocks-selected-account', accountId);
+    window.dispatchEvent(new CustomEvent('selected-account-changed'));
+  }
+
+  getSelectedAccount() {
+    return this.selectedAccountId;
   }
 
   addCard(typeId, config = {}) {
@@ -121,17 +142,18 @@ class DataBlocksManager {
   }
 
   getCardData(card) {
+    // 使用当前选中的账号，而不是卡片配置中的账号
+    const accountId = this.selectedAccountId;
+
     switch (card.type) {
-      case 'account_tweet_stats':
-        return this.getAccountTweetStats();
       case 'latest_tweets':
-        return this.getLatestTweets(card.config.accountId);
+        return this.getLatestTweets(accountId);
       case 'account_basic_data':
-        return this.getAccountBasicData(card.config.accountId);
+        return this.getAccountBasicData(accountId);
       case 'account_interaction_data':
-        return this.getAccountInteractionData(card.config.accountId);
+        return this.getAccountInteractionData(accountId);
       case 'tweet_time_distribution':
-        return this.getTweetTimeDistribution(card.config.accountId);
+        return this.getTweetTimeDistribution(accountId);
       case 'task_execution_stats':
         return this.getTaskExecutionStats();
       default:
@@ -139,37 +161,18 @@ class DataBlocksManager {
     }
   }
 
-  getAccountTweetStats() {
-    const accounts = accountManager.getAccounts();
-    return accounts.map(account => ({
-      screenName: account.screenName,
-      displayName: account.displayName,
-      avatar: account.avatar,
-      tweetCount: mockAccountStats[account.screenName]?.totalTweets || 0
-    }));
-  }
-
   getLatestTweets(accountId) {
-    if (!accountId) {
-      const accounts = accountManager.getAccounts();
-      accountId = accounts[0]?.screenName;
-    }
+    if (!accountId) return [];
     return mockTweets.filter(t => t.accountId === accountId).slice(0, 10);
   }
 
   getAccountBasicData(accountId) {
-    if (!accountId) {
-      const accounts = accountManager.getAccounts();
-      accountId = accounts[0]?.screenName;
-    }
+    if (!accountId) return null;
     return mockAccountStats[accountId] || null;
   }
 
   getAccountInteractionData(accountId) {
-    if (!accountId) {
-      const accounts = accountManager.getAccounts();
-      accountId = accounts[0]?.screenName;
-    }
+    if (!accountId) return null;
     const stats = mockAccountStats[accountId];
     if (!stats) return null;
 
@@ -181,10 +184,7 @@ class DataBlocksManager {
   }
 
   getTweetTimeDistribution(accountId) {
-    if (!accountId) {
-      const accounts = accountManager.getAccounts();
-      accountId = accounts[0]?.screenName;
-    }
+    if (!accountId) return null;
     return mockTweetDistribution[accountId] || [];
   }
 

@@ -59,9 +59,9 @@
   <script src="js/task.js"></script>
   <script src="js/data-blocks.js"></script>
   <script>
-    // Check if workspace is selected
+    // Check if workspace is selected, use default for prototype
     if (!workspaceManager.getCurrentWorkspace()) {
-      window.location.href = 'index.html';
+      workspaceManager.setCurrentWorkspace('/mock/tweetpilot-workspace');
     }
 
     // Display workspace path
@@ -184,7 +184,7 @@
         }
       } catch (error) {
         console.error('Page load error:', error);
-        content.innerHTML = '<div class="empty-state"><div class="empty-state-title">页面加载失败</div></div>';
+        content.innerHTML = `<div class="empty-state"><div class="empty-state-title">页面加载失败</div><div class="empty-state-desc" style="color:red;font-size:12px;">${error.message}</div></div>`;
       }
     }
 

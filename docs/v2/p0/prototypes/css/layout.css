@@ -196,7 +196,118 @@
 }
 
 .welcome-logo {
-  font-size: 48px;
+  font-size: 64px;
+  margin-bottom: var(--spacing-md);
+}
+
+.welcome-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+}
+
+.welcome-subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xl);
+}
+
+.welcome-options {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.welcome-option {
+  flex: 1;
+  padding: var(--spacing-lg);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+
+.welcome-option:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.welcome-option-icon {
+  font-size: 32px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.welcome-option-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.welcome-option-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Recent Workspaces Section */
+.recent-workspaces-section {
+  width: 100%;
+  margin-top: var(--spacing-xl);
+}
+
+.recent-workspaces-section h3 {
+  text-align: left;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.recent-item:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-hover);
+}
+
+.recent-item-info {
+  flex: 1;
+}
+
+.recent-item-name {
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  margin-bottom: var(--spacing-xs);
+}
+
+.recent-item-path {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+
+.recent-item-time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
   margin-bottom: var(--spacing-lg);
 }
 

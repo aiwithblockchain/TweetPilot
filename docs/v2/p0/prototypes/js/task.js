@@ -3,7 +3,8 @@
 class TaskManager {
   constructor() {
     this.tasks = [];
-    this.executionHistory = {};
+    this.executionHistory = {}; // 仅定时任务
+    this.failureLog = {}; // 所有任务的失败记录
     this.init();
   }
 
@@ -11,34 +12,51 @@ class TaskManager {
     // Load tasks from storage
     this.tasks = Storage.get('tasks') || [];
     this.executionHistory = Storage.get('execution-history') || {};
+    this.failureLog = Storage.get('failure-log') || {};
 
     // Start task scheduler
     this.startScheduler();
   }
 
   async createTask(config) {
-    const task = {
+    const baseTask = {
       id: generateId(),
       name: config.name,
       description: config.description || '',
       type: config.type,
       scriptPath: config.scriptPath,
-      schedule: config.schedule || null,
-      parameters: config.parameters || {},
-      status: 'paused',
-      nextExecutionTime: config.type === 'scheduled' ? this.calculateNextExecution(config.schedule) : null,
-      lastExecutionTime: null,
-      statistics: {
-        totalExecutions: 0,
-        successCount: 0,
-        failureCount: 0,
-        successRate: 0,
-        averageDuration: 0
-      }
+      parameters: config.parameters || {}
     };
 
+    let task;
+    if (config.type === 'immediate') {
+      // 即时任务
+      task = {
+        ...baseTask,
+        status: 'idle', // idle | running
+        lastExecution: null
+      };
+    } else {
+      // 定时任务
+      task = {
+        ...baseTask,
+        schedule: config.schedule,
+        status: 'paused', // running | paused
+        nextExecutionTime: this.calculateNextExecution(config.schedule),
+        lastExecutionTime: null,
+        statistics: {
+          totalExecutions: 0,
+          successCount: 0,
+          failureCount: 0,
+          successRate: 0,
+          averageDuration: 0
+        }
+      };
+      this.executionHistory[task.id] = [];
+    }
+
     this.tasks.push(task);
-    this.executionHistory[task.id] = [];
+    this.failureLog[task.id] = [];
     this.saveTasks();
 
     showToast('任务创建成功', 'success');
@@ -68,6 +86,7 @@ class TaskManager {
       () => {
         this.tasks = this.tasks.filter(t => t.id !== taskId);
         delete this.executionHistory[taskId];
+        delete this.failureLog[taskId];
         this.saveTasks();
         showToast('任务已删除', 'success');
         window.dispatchEvent(new CustomEvent('tasks-changed'));
@@ -77,7 +96,7 @@ class TaskManager {
 
   async pauseTask(taskId) {
     const task = this.tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || task.type !== 'scheduled') return;
 
     task.status = 'paused';
     this.saveTasks();
@@ -87,10 +106,10 @@ class TaskManager {
 
   async resumeTask(taskId) {
     const task = this.tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task || task.type !== 'scheduled') return;
 
     task.status = 'running';
-    if (task.type === 'scheduled' && !task.nextExecutionTime) {
+    if (!task.nextExecutionTime) {
       task.nextExecutionTime = this.calculateNextExecution(task.schedule);
     }
     this.saveTasks();
@@ -102,127 +121,210 @@ class TaskManager {
     const task = this.tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    // Check if account is online
-    const accounts = accountManager.getAccounts();
-    if (accounts.length === 0) {
-      showToast('请先映射 Twitter 账号', 'error');
-      return;
+    if (task.type === 'immediate') {
+      // 即时任务：立即执行并显示结果
+      await this.executeImmediateTask(task);
+    } else {
+      // 定时任务：手动触发执行
+      await this.executeScheduledTask(task, true);
     }
-
-    const onlineAccounts = accounts.filter(a => a.status === 'online');
-    if (onlineAccounts.length === 0) {
-      showToast('没有在线的 Twitter 账号', 'error');
-      return;
-    }
-
-    // Show execution modal
-    this.showExecutionModal(task);
   }
 
-  showExecutionModal(task) {
+  async executeImmediateTask(task) {
+    // 更新状态为执行中
+    task.status = 'running';
+    window.dispatchEvent(new CustomEvent('tasks-changed'));
+
+    const startTime = new Date().toISOString();
+    const startTimestamp = Date.now();
+
+    try {
+      // 模拟执行
+      const result = await mockTaskExecution(task.scriptPath, task.parameters);
+      const endTime = new Date().toISOString();
+      const duration = (Date.now() - startTimestamp) / 1000;
+
+      const execution = {
+        startTime,
+        endTime,
+        status: result.success ? 'success' : 'failure',
+        output: result.output,
+        error: result.error || null,
+        duration
+      };
+
+      // 保存最后一次执行结果
+      task.lastExecution = execution;
+
+      // 如果失败，记录到失败日志
+      if (!result.success) {
+        this.failureLog[task.id].unshift({
+          ...execution,
+          taskType: 'immediate'
+        });
+      }
+
+      task.status = 'idle';
+      this.saveTasks();
+      window.dispatchEvent(new CustomEvent('tasks-changed'));
+
+      // 显示执行结果
+      this.showExecutionResult(task, execution);
+
+    } catch (error) {
+      const endTime = new Date().toISOString();
+      const duration = (Date.now() - startTimestamp) / 1000;
+
+      const execution = {
+        startTime,
+        endTime,
+        status: 'failure',
+        output: '',
+        error: error.message,
+        duration
+      };
+
+      task.lastExecution = execution;
+      this.failureLog[task.id].unshift({
+        ...execution,
+        taskType: 'immediate'
+      });
+
+      task.status = 'idle';
+      this.saveTasks();
+      window.dispatchEvent(new CustomEvent('tasks-changed'));
+
+      this.showExecutionResult(task, execution);
+    }
+  }
+
+  async executeScheduledTask(task, isManual = false) {
+    const startTime = new Date().toISOString();
+    const startTimestamp = Date.now();
+
+    try {
+      // 模拟执行
+      const result = await mockTaskExecution(task.scriptPath, task.parameters);
+      const endTime = new Date().toISOString();
+      const duration = (Date.now() - startTimestamp) / 1000;
+
+      const execution = {
+        startTime,
+        endTime,
+        status: result.success ? 'success' : 'failure',
+        output: result.output,
+        error: result.error || null,
+        duration
+      };
+
+      // 记录到执行历史
+      this.executionHistory[task.id].unshift(execution);
+
+      // 如果失败，记录到失败日志
+      if (!result.success) {
+        this.failureLog[task.id].unshift({
+          ...execution,
+          taskType: 'scheduled'
+        });
+      }
+
+      // 更新统计数据
+      task.statistics.totalExecutions++;
+      if (result.success) {
+        task.statistics.successCount++;
+      } else {
+        task.statistics.failureCount++;
+      }
+      task.statistics.successRate = ((task.statistics.successCount / task.statistics.totalExecutions) * 100).toFixed(1);
+
+      // 更新平均耗时
+      const totalDuration = task.statistics.averageDuration * (task.statistics.totalExecutions - 1) + duration;
+      task.statistics.averageDuration = (totalDuration / task.statistics.totalExecutions).toFixed(1);
+
+      // 更新执行时间
+      task.lastExecutionTime = endTime;
+      if (!isManual && task.status === 'running') {
+        task.nextExecutionTime = this.calculateNextExecution(task.schedule);
+      }
+
+      this.saveTasks();
+      window.dispatchEvent(new CustomEvent('tasks-changed'));
+
+      if (isManual) {
+        showToast(result.success ? '任务执行成功' : '任务执行失败', result.success ? 'success' : 'error');
+      }
+
+    } catch (error) {
+      const endTime = new Date().toISOString();
+      const duration = (Date.now() - startTimestamp) / 1000;
+
+      const execution = {
+        startTime,
+        endTime,
+        status: 'failure',
+        output: '',
+        error: error.message,
+        duration
+      };
+
+      this.executionHistory[task.id].unshift(execution);
+      this.failureLog[task.id].unshift({
+        ...execution,
+        taskType: 'scheduled'
+      });
+
+      task.statistics.totalExecutions++;
+      task.statistics.failureCount++;
+      task.statistics.successRate = ((task.statistics.successCount / task.statistics.totalExecutions) * 100).toFixed(1);
+
+      task.lastExecutionTime = endTime;
+      if (!isManual && task.status === 'running') {
+        task.nextExecutionTime = this.calculateNextExecution(task.schedule);
+      }
+
+      this.saveTasks();
+      window.dispatchEvent(new CustomEvent('tasks-changed'));
+
+      if (isManual) {
+        showToast('任务执行失败', 'error');
+      }
+    }
+  }
+
+  showExecutionResult(task, execution) {
     const content = document.createElement('div');
     content.innerHTML = `
-      <div class="mb-lg">
-        <h3 class="mb-sm">任务：${task.name}</h3>
-        <p class="text-secondary text-small">脚本：${task.scriptPath}</p>
+      <div class="form-group">
+        <div class="form-label">任务名称</div>
+        <div>${task.name}</div>
       </div>
-      <div class="mb-lg">
-        <div class="form-label">执行输出：</div>
-        <div id="execution-output" style="
-          background-color: #1e1e1e;
-          color: #d4d4d4;
-          padding: 12px;
-          border-radius: 4px;
-          font-family: monospace;
-          font-size: 12px;
-          min-height: 200px;
-          max-height: 400px;
-          overflow-y: auto;
-          white-space: pre-wrap;
-        ">等待执行...</div>
+      <div class="form-group">
+        <div class="form-label">执行状态</div>
+        <div class="status ${execution.status}">${execution.status === 'success' ? '成功' : '失败'}</div>
       </div>
-      <div id="execution-actions" class="form-actions">
-        <button id="start-execution-btn">开始执行</button>
+      <div class="form-group">
+        <div class="form-label">执行时间</div>
+        <div>${formatDate(execution.startTime)}</div>
       </div>
+      <div class="form-group">
+        <div class="form-label">耗时</div>
+        <div>${execution.duration.toFixed(2)} 秒</div>
+      </div>
+      ${execution.output ? `
+        <div class="form-group">
+          <div class="form-label">输出</div>
+          <pre style="background: var(--color-bg-secondary); padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${execution.output}</pre>
+        </div>
+      ` : ''}
+      ${execution.error ? `
+        <div class="form-group">
+          <div class="form-label">错误信息</div>
+          <pre style="background: #fee; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; color: var(--color-danger);">${execution.error}</pre>
+        </div>
+      ` : ''}
     `;
 
-    const modal = showModal(content, '执行任务');
-    const outputEl = content.querySelector('#execution-output');
-    const actionsEl = content.querySelector('#execution-actions');
-    const startBtn = content.querySelector('#start-execution-btn');
-
-    startBtn.onclick = async () => {
-      startBtn.disabled = true;
-      outputEl.textContent = '正在执行...\n';
-
-      try {
-        const result = await mockTaskExecution(task.id);
-
-        outputEl.textContent += result.output + '\n';
-        outputEl.textContent += `\n退出码: ${result.exitCode}\n`;
-        outputEl.textContent += `执行时长: ${result.duration.toFixed(1)}s\n`;
-
-        // Record execution
-        this.recordExecution(task.id, result);
-
-        if (result.success) {
-          outputEl.textContent += '\n✓ 执行成功';
-          showToast('任务执行成功', 'success');
-        } else {
-          outputEl.textContent += '\n✗ 执行失败';
-          showToast('任务执行失败', 'error');
-        }
-
-        actionsEl.innerHTML = '<button onclick="this.closest(\'.modal-overlay\').remove()">关闭</button>';
-      } catch (error) {
-        outputEl.textContent += `\n错误: ${error.message}`;
-        showToast('执行出错', 'error');
-        startBtn.disabled = false;
-      }
-    };
-  }
-
-  recordExecution(taskId, result) {
-    const task = this.tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    const execution = {
-      id: generateId(),
-      taskId: taskId,
-      startTime: new Date().toISOString(),
-      endTime: new Date(Date.now() + result.duration * 1000).toISOString(),
-      duration: result.duration,
-      status: result.success ? 'success' : 'failure',
-      output: result.output,
-      exitCode: result.exitCode
-    };
-
-    // Add to history
-    if (!this.executionHistory[taskId]) {
-      this.executionHistory[taskId] = [];
-    }
-    this.executionHistory[taskId].unshift(execution);
-
-    // Keep only last 20
-    this.executionHistory[taskId] = this.executionHistory[taskId].slice(0, 20);
-
-    // Update task statistics
-    task.statistics.totalExecutions++;
-    if (result.success) {
-      task.statistics.successCount++;
-    } else {
-      task.statistics.failureCount++;
-    }
-    task.statistics.successRate = (task.statistics.successCount / task.statistics.totalExecutions * 100).toFixed(1);
-
-    // Update average duration
-    const totalDuration = task.statistics.averageDuration * (task.statistics.totalExecutions - 1) + result.duration;
-    task.statistics.averageDuration = (totalDuration / task.statistics.totalExecutions).toFixed(1);
-
-    task.lastExecutionTime = execution.endTime;
-
-    this.saveTasks();
-    window.dispatchEvent(new CustomEvent('tasks-changed'));
+    showModal(content, '执行结果');
   }
 
   calculateNextExecution(schedule) {
@@ -259,28 +361,23 @@ class TaskManager {
       const now = new Date();
 
       this.tasks.forEach(task => {
-        if (task.status === 'running' && task.type === 'scheduled' && task.nextExecutionTime) {
-          const nextExec = new Date(task.nextExecutionTime);
-          if (now >= nextExec) {
-            // Execute task
-            this.executeTaskInBackground(task.id);
-
-            // Calculate next execution
-            task.nextExecutionTime = this.calculateNextExecution(task.schedule);
-            this.saveTasks();
+        if (task.type === 'scheduled' && task.status === 'running' && task.nextExecutionTime) {
+          const nextExecution = new Date(task.nextExecutionTime);
+          if (now >= nextExecution) {
+            this.executeScheduledTask(task, false);
           }
         }
       });
-    }, 60 * 1000);
+    }, 60000); // Check every minute
   }
 
-  async executeTaskInBackground(taskId) {
+  // Background execution (for testing)
+  async executeInBackground(taskId) {
     const task = this.tasks.find(t => t.id === taskId);
     if (!task) return;
 
     try {
-      const result = await mockTaskExecution(taskId);
-      this.recordExecution(taskId, result);
+      await this.executeTask(taskId);
     } catch (error) {
       console.error('Background execution failed:', error);
     }
@@ -288,12 +385,13 @@ class TaskManager {
 
   getTasks(filter = 'all') {
     if (filter === 'all') return this.tasks;
-    if (filter === 'running') return this.tasks.filter(t => t.status === 'running');
-    if (filter === 'paused') return this.tasks.filter(t => t.status === 'paused');
+    if (filter === 'immediate') return this.tasks.filter(t => t.type === 'immediate');
+    if (filter === 'scheduled') return this.tasks.filter(t => t.type === 'scheduled');
     if (filter === 'failed') {
+      // 返回有失败记录的任务
       return this.tasks.filter(t => {
-        const history = this.executionHistory[t.id] || [];
-        return history.length > 0 && history[0].status === 'failure';
+        const failures = this.failureLog[t.id] || [];
+        return failures.length > 0;
       });
     }
     return this.tasks;
@@ -307,9 +405,14 @@ class TaskManager {
     return (this.executionHistory[taskId] || []).slice(0, limit);
   }
 
+  getFailureLog(taskId, limit = 20) {
+    return (this.failureLog[taskId] || []).slice(0, limit);
+  }
+
   saveTasks() {
     Storage.set('tasks', this.tasks);
     Storage.set('execution-history', this.executionHistory);
+    Storage.set('failure-log', this.failureLog);
   }
 }
 

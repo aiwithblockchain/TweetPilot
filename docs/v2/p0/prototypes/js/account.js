@@ -7,8 +7,8 @@ class AccountManager {
   }
 
   init() {
-    // Load accounts from storage
-    this.accounts = Storage.get('accounts') || [];
+    // Load accounts from storage, fall back to mock data for prototype
+    this.accounts = Storage.get('accounts') || mockAccounts;
 
     // Start periodic status check (every 5 minutes)
     this.startStatusCheck();
