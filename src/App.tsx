@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import WorkspaceSelector from './pages/WorkspaceSelector'
+import TaskManagement from './pages/TaskManagement'
 import Settings from './pages/Settings'
 
 type Page = 'task-management' | 'data-blocks' | 'settings'
@@ -109,15 +110,7 @@ function App() {
 
         {/* Content Area */}
         <main className="flex-1 overflow-hidden">
-          {currentPage === 'task-management' && (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-4xl mb-3">📋</div>
-                <div className="text-base font-medium mb-1">任务管理</div>
-                <div className="text-xs text-secondary">即将推出</div>
-              </div>
-            </div>
-          )}
+          {currentPage === 'task-management' && <TaskManagement />}
           {currentPage === 'data-blocks' && (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
