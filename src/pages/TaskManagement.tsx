@@ -17,6 +17,7 @@ export interface Task {
   status: TaskStatus
   // Immediate task fields
   lastExecution?: ExecutionResult
+  lastExecutionStatus?: 'success' | 'failure'
   // Scheduled task fields
   schedule?: string
   nextExecutionTime?: string

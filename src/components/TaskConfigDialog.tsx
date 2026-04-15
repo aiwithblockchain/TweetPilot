@@ -19,6 +19,7 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
     interval: '1',
     unit: 'hours',
   })
+  const [parameters, setParameters] = useState<Record<string, string>>({})
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -87,7 +88,7 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
         taskType,
         scriptPath,
         schedule: taskType === 'scheduled' ? buildScheduleExpression() : undefined,
-        parameters: {},
+        parameters,
       }
 
       await invoke('create_task', { config })
@@ -182,6 +183,61 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
               >
                 浏览
               </button>
+            </div>
+          </div>
+
+          {/* Task Parameters */}
+          <div>
+            <label className="block text-sm font-medium mb-1.5">任务参数</label>
+            <div id="params-list" className="flex flex-col gap-2 mb-2">
+              {Object.entries(parameters).map(([key, value], index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="参数名"
+                    value={key}
+                    onChange={(e) => {
+                      const newParams = { ...parameters }
+                      delete newParams[key]
+                      newParams[e.target.value] = value
+                      setParameters(newParams)
+                    }}
+                    className="flex-1 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none font-mono"
+                  />
+                  <input
+                    type="text"
+                    placeholder="参数值"
+                    value={value}
+                    onChange={(e) => {
+                      setParameters({ ...parameters, [key]: e.target.value })
+                    }}
+                    className="flex-1 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      const newParams = { ...parameters }
+                      delete newParams[key]
+                      setParameters(newParams)
+                    }}
+                    className="h-8 w-8 flex items-center justify-center text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const newKey = `param${Object.keys(parameters).length + 1}`
+                setParameters({ ...parameters, [newKey]: '' })
+              }}
+              className="h-8 px-3 text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+            >
+              + 添加参数
+            </button>
+            <div className="mt-1.5 text-xs text-secondary">
+              参数将以 --key value 形式传递给脚本
             </div>
           </div>
 

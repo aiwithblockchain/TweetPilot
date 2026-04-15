@@ -69,17 +69,39 @@ export default function TaskCard({
 
       {/* Meta Info */}
       <div className="space-y-1 mb-3 text-xs text-[var(--color-text-secondary)]">
-        {task.type === 'immediate' ? (
+        {task.type === 'scheduled' ? (
           <>
-            <div>执行规则：</div>
-            <div>尚未执行</div>
+            <div>执行规则：{task.schedule || '0 * * * *'}</div>
+            {task.nextExecutionTime && (
+              <div>下次执行：{formatRelativeTime(task.nextExecutionTime)}</div>
+            )}
+            {task.lastExecutionTime ? (
+              <div>最后执行：{formatRelativeTime(task.lastExecutionTime)}</div>
+            ) : (
+              <div>尚未执行</div>
+            )}
             <div>成功率：{task.statistics?.successRate || 0}%</div>
           </>
         ) : (
           <>
-            <div>执行规则：{task.schedule || '0 * * * *'}</div>
-            <div>尚未执行</div>
-            <div>成功率：{task.statistics?.successRate || 0}%</div>
+            <div>描述：{task.description || '无'}</div>
+            <div>脚本：{task.scriptPath}</div>
+            {task.lastExecutionTime ? (
+              <div>
+                最后执行：{formatRelativeTime(task.lastExecutionTime)}{' '}
+                <span
+                  className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
+                    task.lastExecutionStatus === 'success'
+                      ? 'bg-green-500/10 text-green-500'
+                      : 'bg-red-500/10 text-red-500'
+                  }`}
+                >
+                  {task.lastExecutionStatus === 'success' ? '成功' : '失败'}
+                </span>
+              </div>
+            ) : (
+              <div>尚未执行</div>
+            )}
           </>
         )}
       </div>
