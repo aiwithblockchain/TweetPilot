@@ -1,4 +1,28 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+// Global storage for mapped accounts
+static MAPPED_ACCOUNTS: Lazy<Mutex<Vec<TwitterAccount>>> = Lazy::new(|| {
+    Mutex::new(vec![
+        TwitterAccount {
+            screen_name: "@testuser1".to_string(),
+            display_name: "Test User 1".to_string(),
+            avatar: "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg".to_string(),
+            status: AccountStatus::Online,
+            last_verified: chrono::Utc::now().to_rfc3339(),
+        },
+    ])
+});
+
+// All available Twitter accounts (5 total)
+const ALL_ACCOUNTS: &[(&str, &str, &str)] = &[
+    ("@elonmusk", "Elon Musk", "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg"),
+    ("@jack", "Jack Dorsey", "https://pbs.twimg.com/profile_images/1115644092329758721/AFjOr-K8_400x400.jpg"),
+    ("@naval", "Naval", "https://pbs.twimg.com/profile_images/1469381207701483520/0ye3FdXq_400x400.jpg"),
+    ("@pmarca", "Marc Andreessen", "https://pbs.twimg.com/profile_images/1455185376876826625/s1lXSWdX_400x400.jpg"),
+    ("@sama", "Sam Altman", "https://pbs.twimg.com/profile_images/804990434455887872/BG0Xh7Oa_400x400.jpg"),
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TwitterAccount {
@@ -26,63 +50,67 @@ pub enum AccountStatus {
 
 #[tauri::command]
 pub async fn get_available_accounts() -> Result<Vec<TwitterAccountInfo>, String> {
-    // TODO: 通过 LocalBridge 查询可映射的账号
-    // Mock data for development
-    Ok(vec![
-        TwitterAccountInfo {
-            screen_name: "@elonmusk".to_string(),
-            display_name: "Elon Musk".to_string(),
-            avatar: "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg".to_string(),
-        },
-        TwitterAccountInfo {
-            screen_name: "@jack".to_string(),
-            display_name: "jack".to_string(),
-            avatar: "https://pbs.twimg.com/profile_images/1115644092329758721/AFjOr-K8_400x400.jpg".to_string(),
-        },
-    ])
+    // Get currently mapped accounts
+    let mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    let mapped_screen_names: Vec<String> = mapped.iter().map(|a| a.screen_name.clone()).collect();
+    drop(mapped);
+
+    // Filter out already mapped accounts
+    let available: Vec<TwitterAccountInfo> = ALL_ACCOUNTS
+        .iter()
+        .filter(|(screen_name, _, _)| !mapped_screen_names.contains(&screen_name.to_string()))
+        .map(|(screen_name, display_name, avatar)| TwitterAccountInfo {
+            screen_name: screen_name.to_string(),
+            display_name: display_name.to_string(),
+            avatar: avatar.to_string(),
+        })
+        .collect();
+
+    Ok(available)
 }
 
 #[tauri::command]
 pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> {
-    // TODO: 建立账号映射
-    // Mock implementation
+    // Simulate network delay
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-    Ok(TwitterAccount {
-        screen_name: screen_name.clone(),
-        display_name: screen_name.trim_start_matches('@').to_string(),
-        avatar: "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg".to_string(),
+    // Find account info from ALL_ACCOUNTS
+    let account_info = ALL_ACCOUNTS
+        .iter()
+        .find(|(sn, _, _)| *sn == screen_name)
+        .ok_or_else(|| "Account not found".to_string())?;
+
+    let new_account = TwitterAccount {
+        screen_name: account_info.0.to_string(),
+        display_name: account_info.1.to_string(),
+        avatar: account_info.2.to_string(),
         status: AccountStatus::Online,
         last_verified: chrono::Utc::now().to_rfc3339(),
-    })
+    };
+
+    // Add to mapped accounts
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.push(new_account.clone());
+
+    Ok(new_account)
 }
 
 #[tauri::command]
 pub async fn delete_account_mapping(screen_name: String) -> Result<(), String> {
-    // TODO: 删除账号映射
-    println!("Deleting account mapping: {}", screen_name);
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_mapped_accounts() -> Result<Vec<TwitterAccount>, String> {
-    // TODO: 获取已映射的账号列表
-    // Mock data for development
-    Ok(vec![
-        TwitterAccount {
-            screen_name: "@testuser1".to_string(),
-            display_name: "Test User 1".to_string(),
-            avatar: "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg".to_string(),
-            status: AccountStatus::Online,
-            last_verified: chrono::Utc::now().to_rfc3339(),
-        },
-    ])
+    let mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    Ok(mapped.clone())
 }
 
 #[tauri::command]
 pub async fn verify_account_status(screen_name: String) -> Result<AccountStatus, String> {
-    // TODO: 验证账号状态
-    // Mock implementation with delay
+    // Simulate network delay
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     println!("Verifying account status: {}", screen_name);
     Ok(AccountStatus::Online)

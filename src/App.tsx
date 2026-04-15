@@ -11,6 +11,7 @@ function App() {
   const [currentWorkspace, setCurrentWorkspace] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState<Page>('task-management')
+  const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false)
 
   useEffect(() => {
     // 设置默认 Dark 主题
@@ -27,6 +28,15 @@ function App() {
       .finally(() => {
         setLoading(false)
       })
+
+    // Close dropdown when clicking outside
+    const handleClickOutside = () => {
+      setShowWorkspaceDropdown(false)
+    }
+    document.addEventListener('click', handleClickOutside)
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+    }
   }, [])
 
   if (loading) {
@@ -53,12 +63,47 @@ function App() {
           <div className="text-xs text-secondary">{currentWorkspace}</div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setCurrentWorkspace(null)}
-            className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
-          >
-            打开工作目录
-          </button>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowWorkspaceDropdown(!showWorkspaceDropdown)
+              }}
+              className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
+            >
+              打开工作目录
+            </button>
+
+            {showWorkspaceDropdown && (
+              <div
+                className="absolute top-full right-0 mt-1 bg-[var(--color-bg)] border border-[var(--color-border)] rounded shadow-lg min-w-[160px] z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => {
+                    setShowWorkspaceDropdown(false)
+                    setCurrentWorkspace(null)
+                  }}
+                  className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors"
+                >
+                  在当前窗口打开
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowWorkspaceDropdown(false)
+                    try {
+                      await invoke('open_workspace_in_new_window')
+                    } catch (error) {
+                      console.error('Failed to open new window:', error)
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors border-t border-[var(--color-border)]"
+                >
+                  在新窗口打开
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setCurrentPage('settings')}
             className="h-7 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"

@@ -17,6 +17,7 @@ fn main() {
             workspace::get_recent_workspaces,
             workspace::set_current_workspace,
             workspace::get_current_workspace,
+            workspace::open_workspace_in_new_window,
             // Account commands
             account::get_available_accounts,
             account::map_account,

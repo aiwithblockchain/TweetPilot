@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceHistory {
@@ -37,4 +37,22 @@ pub async fn set_current_workspace(path: String) -> Result<(), String> {
 pub async fn get_current_workspace() -> Result<Option<String>, String> {
     // TODO: 读取 ~/.tweetpilot/config.json
     Ok(None)
+}
+
+#[tauri::command]
+pub async fn open_workspace_in_new_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    // Create a new window
+    let _window = WebviewWindowBuilder::new(
+        &app,
+        format!("workspace-{}", chrono::Utc::now().timestamp()),
+        tauri::WebviewUrl::App("/".into())
+    )
+    .title("TweetPilot")
+    .inner_size(1280.0, 800.0)
+    .build()
+    .map_err(|e| format!("Failed to create window: {}", e))?;
+
+    Ok(())
 }
