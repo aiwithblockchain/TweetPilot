@@ -127,6 +127,20 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn reconnect_account(screen_name: String) -> Result<(), String> {
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    let account = mapped
+        .iter_mut()
+        .find(|a| a.screen_name == screen_name)
+        .ok_or_else(|| format!("Account not found: {}", screen_name))?;
+
+    account.status = AccountStatus::Online;
+    account.last_verified = chrono::Utc::now().to_rfc3339();
+
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSettings {

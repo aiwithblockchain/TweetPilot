@@ -14,6 +14,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Workspace commands
             workspace::select_local_directory,
+            workspace::clone_from_github,
             workspace::get_recent_workspaces,
             workspace::set_current_workspace,
             workspace::get_current_workspace,
@@ -25,6 +26,7 @@ fn main() {
             account::get_mapped_accounts,
             account::verify_account_status,
             account::refresh_all_accounts_status,
+            account::reconnect_account,
             account::get_account_settings,
             account::save_account_personality,
             account::unlink_account,
@@ -49,6 +51,8 @@ fn main() {
             // Preferences commands
             preferences::save_preferences,
             preferences::get_preferences,
+            preferences::get_local_bridge_config,
+            preferences::update_local_bridge_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

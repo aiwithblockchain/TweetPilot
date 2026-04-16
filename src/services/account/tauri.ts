@@ -91,8 +91,8 @@ export const accountTauriService: AccountService = {
     await tauriInvoke<void>('refresh_all_accounts_status')
   },
 
-  async reconnectAccount() {
-    throw new Error('reconnect_account command is not available yet')
+  async reconnectAccount(screenName) {
+    await tauriInvoke<void>('reconnect_account', { screenName })
   },
 
   async getAccountSettings(screenName) {

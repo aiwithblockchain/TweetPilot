@@ -20,8 +20,8 @@ export const workspaceTauriService: WorkspaceService = {
     return tauriInvoke<string | null>('select_local_directory')
   },
 
-  async cloneFromGithub() {
-    throw new Error('clone_from_github command is not available yet')
+  async cloneFromGithub(repositoryUrl) {
+    return tauriInvoke<string>('clone_from_github', { repositoryUrl })
   },
 
   async getRecentWorkspaces() {
