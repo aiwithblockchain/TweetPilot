@@ -9,6 +9,7 @@ export interface WorkspaceService {
   cloneFromGithub(repositoryUrl: string): Promise<string>
   getRecentWorkspaces(): Promise<WorkspaceHistory[]>
   setCurrentWorkspace(path: string): Promise<void>
+  clearCurrentWorkspace(): Promise<void>
   getCurrentWorkspace(): Promise<string | null>
   openWorkspaceInNewWindow(): Promise<void>
 }

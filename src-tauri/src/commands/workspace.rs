@@ -64,15 +64,25 @@ fn persist_current_workspace(path: String) -> Result<(), String> {
     update_recent_workspaces(&path)
 }
 
+fn clear_current_workspace() -> Result<(), String> {
+    let mut config = load_workspace_config()?;
+    config.current_workspace = None;
+    save_workspace_config(&config)
+}
+
 #[tauri::command]
 pub async fn select_local_directory(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
+
+    println!("[workspace] select_local_directory called");
 
     let path = app
         .dialog()
         .file()
         .set_title("选择工作目录")
         .blocking_pick_folder();
+
+    println!("[workspace] select_local_directory result: {:?}", path);
 
     Ok(path.map(|p| p.to_string()))
 }
@@ -112,6 +122,11 @@ pub async fn set_current_workspace(path: String) -> Result<(), String> {
     }
 
     persist_current_workspace(path)
+}
+
+#[tauri::command]
+pub async fn clear_current_workspace_command() -> Result<(), String> {
+    clear_current_workspace()
 }
 
 #[tauri::command]

@@ -65,6 +65,11 @@ export const workspaceMockService: WorkspaceService = {
     updateRecentWorkspaces(path)
   },
 
+  async clearCurrentWorkspace() {
+    await randomDelay(50, 150)
+    currentWorkspace = null
+  },
+
   async getCurrentWorkspace() {
     await randomDelay(50, 150)
     return currentWorkspace

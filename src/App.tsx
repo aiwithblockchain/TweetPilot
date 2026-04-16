@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import WorkspaceSelector from './pages/WorkspaceSelector'
 import TaskManagement from './pages/TaskManagement'
 import DataBlocks from './pages/DataBlocks'
@@ -12,19 +12,23 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState<Page>('task-management')
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false)
+  const isSwitchingWorkspaceRef = useRef(false)
 
   useEffect(() => {
     // 设置默认 Dark 主题
     document.documentElement.classList.add('dark')
 
-    // 检查是否已有工作目录
+    // 启动时始终回到起始页，避免直接进入上次工作目录
     workspaceService
-      .getCurrentWorkspace()
-      .then((workspace) => {
-        setCurrentWorkspace(workspace)
+      .clearCurrentWorkspace()
+      .then(() => {
+        if (isSwitchingWorkspaceRef.current) {
+          return
+        }
+        setCurrentWorkspace(null)
       })
       .catch((error) => {
-        console.error('Failed to get current workspace:', error)
+        console.error('Failed to clear current workspace on startup:', error)
       })
       .finally(() => {
         setLoading(false)
@@ -88,16 +92,31 @@ function App() {
                 <button
                   onClick={async () => {
                     setShowWorkspaceDropdown(false)
+                    console.log('[workspace] current-window open clicked')
+                    isSwitchingWorkspaceRef.current = true
+                    setCurrentWorkspace(null)
+
                     try {
+                      console.log('[workspace] requesting folder picker')
                       const path = await workspaceService.selectLocalDirectory()
+                      console.log('[workspace] folder picker returned:', path)
                       if (!path) {
+                        const existingWorkspace = await workspaceService.getCurrentWorkspace()
+                        console.log('[workspace] restore existing workspace after cancel:', existingWorkspace)
+                        setCurrentWorkspace(existingWorkspace)
                         return
                       }
                       await workspaceService.setCurrentWorkspace(path)
+                      console.log('[workspace] switched current workspace to:', path)
                       setCurrentWorkspace(path)
                     } catch (error) {
                       console.error('Failed to open workspace:', error)
                       alert('打开工作目录失败: ' + (error as Error).message)
+                      const existingWorkspace = await workspaceService.getCurrentWorkspace()
+                      console.log('[workspace] restore existing workspace after error:', existingWorkspace)
+                      setCurrentWorkspace(existingWorkspace)
+                    } finally {
+                      isSwitchingWorkspaceRef.current = false
                     }
                   }}
                   className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors"

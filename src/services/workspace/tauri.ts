@@ -33,6 +33,10 @@ export const workspaceTauriService: WorkspaceService = {
     await tauriInvoke<void>('set_current_workspace', { path })
   },
 
+  async clearCurrentWorkspace() {
+    await tauriInvoke<void>('clear_current_workspace_command')
+  },
+
   async getCurrentWorkspace() {
     return tauriInvoke<string | null>('get_current_workspace')
   },

@@ -17,6 +17,7 @@ fn main() {
             workspace::clone_from_github,
             workspace::get_recent_workspaces,
             workspace::set_current_workspace,
+            workspace::clear_current_workspace_command,
             workspace::get_current_workspace,
             workspace::open_workspace_in_new_window,
             // Account commands
