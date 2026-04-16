@@ -1,7 +1,8 @@
-use once_cell::sync::Lazy;
+use crate::services::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::Mutex;
+
+const LAYOUT_FILE: &str = "data-blocks-layout.json";
 
 fn default_cards() -> Vec<Card> {
     let now = chrono::Utc::now().to_rfc3339();
@@ -24,7 +25,13 @@ fn default_cards() -> Vec<Card> {
     ]
 }
 
-static CARDS: Lazy<Mutex<Vec<Card>>> = Lazy::new(|| Mutex::new(default_cards()));
+fn load_cards() -> Result<Vec<Card>, String> {
+    storage::read_json(LAYOUT_FILE, default_cards())
+}
+
+fn save_cards(cards: &[Card]) -> Result<(), String> {
+    storage::write_json(LAYOUT_FILE, cards)
+}
 
 fn get_card_or_error(cards: &[Card], card_id: &str) -> Result<Card, String> {
     cards.iter()
@@ -53,10 +60,9 @@ pub struct Card {
 
 #[tauri::command]
 pub async fn get_layout() -> Result<Vec<Card>, String> {
-    let cards = CARDS.lock().unwrap();
-    let mut result = cards.clone();
-    result.sort_by_key(|card| card.position);
-    Ok(result)
+    let mut cards = load_cards()?;
+    cards.sort_by_key(|card| card.position);
+    Ok(cards)
 }
 
 #[tauri::command]
@@ -71,9 +77,7 @@ pub async fn save_layout(layout: Vec<Card>) -> Result<(), String> {
     let mut next_layout = layout;
     normalize_positions(&mut next_layout);
 
-    let mut cards = CARDS.lock().unwrap();
-    *cards = next_layout;
-    Ok(())
+    save_cards(&next_layout)
 }
 
 #[tauri::command]
@@ -82,7 +86,7 @@ pub async fn add_card(card_type: String, config: Option<Value>) -> Result<Card, 
         return Err("卡片类型不能为空".to_string());
     }
 
-    let mut cards = CARDS.lock().unwrap();
+    let mut cards = load_cards()?;
     if cards.iter().any(|card| card.card_type == card_type) {
         return Err("该卡片类型已存在".to_string());
     }
@@ -96,19 +100,20 @@ pub async fn add_card(card_type: String, config: Option<Value>) -> Result<Card, 
     };
 
     cards.push(next_card.clone());
+    save_cards(&cards)?;
     Ok(next_card)
 }
 
 #[tauri::command]
 pub async fn delete_card(card_id: String) -> Result<(), String> {
-    let mut cards = CARDS.lock().unwrap();
+    let mut cards = load_cards()?;
     let original_len = cards.len();
     cards.retain(|card| card.id != card_id);
     if cards.len() == original_len {
         return Err("卡片不存在".to_string());
     }
     normalize_positions(&mut cards);
-    Ok(())
+    save_cards(&cards)
 }
 
 #[tauri::command]
@@ -117,12 +122,10 @@ pub async fn get_card_data(
     card_type: String,
     _account_id: Option<String>,
 ) -> Result<Value, String> {
-    {
-        let cards = CARDS.lock().unwrap();
-        let card = get_card_or_error(&cards, &card_id)?;
-        if card.card_type != card_type {
-            return Err("卡片类型不匹配".to_string());
-        }
+    let cards = load_cards()?;
+    let card = get_card_or_error(&cards, &card_id)?;
+    if card.card_type != card_type {
+        return Err("卡片类型不匹配".to_string());
     }
 
     match card_type.as_str() {
@@ -184,11 +187,11 @@ pub async fn get_card_data(
 pub async fn refresh_card_data(card_id: String) -> Result<(), String> {
     tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
 
-    let mut cards = CARDS.lock().unwrap();
+    let mut cards = load_cards()?;
     let card = cards
         .iter_mut()
         .find(|item| item.id == card_id)
         .ok_or_else(|| "卡片不存在".to_string())?;
     card.last_updated = chrono::Utc::now().to_rfc3339();
-    Ok(())
+    save_cards(&cards)
 }

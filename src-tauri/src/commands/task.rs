@@ -1,7 +1,10 @@
-use once_cell::sync::Lazy;
+use crate::services::storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+
+const TASKS_FILE: &str = "tasks.json";
+const TASK_DETAILS_FILE: &str = "task-details.json";
+const TASK_HISTORY_FILE: &str = "task-history.json";
 
 fn default_tasks() -> Vec<Task> {
     let now = chrono::Utc::now();
@@ -166,12 +169,60 @@ fn default_task_history() -> HashMap<String, Vec<ExecutionRecord>> {
     ])
 }
 
-// Global task storage
-static TASKS: Lazy<Mutex<Vec<Task>>> = Lazy::new(|| Mutex::new(default_tasks()));
-static TASK_DETAILS: Lazy<Mutex<HashMap<String, TaskDetail>>> =
-    Lazy::new(|| Mutex::new(default_task_details()));
-static TASK_HISTORY: Lazy<Mutex<HashMap<String, Vec<ExecutionRecord>>>> =
-    Lazy::new(|| Mutex::new(default_task_history()));
+// Global task storage (loaded from disk on first access)
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+static TASKS: Lazy<Mutex<Vec<Task>>> = Lazy::new(|| {
+    Mutex::new(load_tasks().unwrap_or_else(|_| default_tasks()))
+});
+
+static TASK_DETAILS: Lazy<Mutex<HashMap<String, TaskDetail>>> = Lazy::new(|| {
+    Mutex::new(load_task_details().unwrap_or_else(|_| default_task_details()))
+});
+
+static TASK_HISTORY: Lazy<Mutex<HashMap<String, Vec<ExecutionRecord>>>> = Lazy::new(|| {
+    Mutex::new(load_task_history().unwrap_or_else(|_| default_task_history()))
+});
+
+fn persist_tasks() -> Result<(), String> {
+    let tasks = TASKS.lock().unwrap();
+    save_tasks(&tasks)
+}
+
+fn persist_task_details() -> Result<(), String> {
+    let details = TASK_DETAILS.lock().unwrap();
+    save_task_details(&details)
+}
+
+fn persist_task_history() -> Result<(), String> {
+    let history = TASK_HISTORY.lock().unwrap();
+    save_task_history(&history)
+}
+
+fn load_tasks() -> Result<Vec<Task>, String> {
+    storage::read_json(TASKS_FILE, default_tasks())
+}
+
+fn save_tasks(tasks: &[Task]) -> Result<(), String> {
+    storage::write_json(TASKS_FILE, tasks)
+}
+
+fn load_task_details() -> Result<HashMap<String, TaskDetail>, String> {
+    storage::read_json(TASK_DETAILS_FILE, default_task_details())
+}
+
+fn save_task_details(details: &HashMap<String, TaskDetail>) -> Result<(), String> {
+    storage::write_json(TASK_DETAILS_FILE, details)
+}
+
+fn load_task_history() -> Result<HashMap<String, Vec<ExecutionRecord>>, String> {
+    storage::read_json(TASK_HISTORY_FILE, default_task_history())
+}
+
+fn save_task_history(history: &HashMap<String, Vec<ExecutionRecord>>) -> Result<(), String> {
+    storage::write_json(TASK_HISTORY_FILE, history)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskConfig {
@@ -430,6 +481,7 @@ pub async fn create_task(config: TaskConfig) -> Result<Task, String> {
     drop(tasks);
 
     upsert_task_detail(new_task.clone());
+    persist_tasks()?;
 
     Ok(new_task)
 }
@@ -501,6 +553,11 @@ pub async fn delete_task(task_id: String) -> Result<(), String> {
 
     TASK_DETAILS.lock().unwrap().remove(&task_id);
     TASK_HISTORY.lock().unwrap().remove(&task_id);
+
+    persist_tasks()?;
+    persist_task_details()?;
+    persist_task_history()?;
+
     Ok(())
 }
 
@@ -518,6 +575,7 @@ pub async fn pause_task(task_id: String) -> Result<(), String> {
     drop(tasks);
 
     upsert_task_detail(updated_task);
+    persist_tasks()?;
     Ok(())
 }
 
@@ -535,6 +593,8 @@ pub async fn resume_task(task_id: String) -> Result<(), String> {
     drop(tasks);
 
     upsert_task_detail(updated_task);
+    persist_tasks()?;
+    Ok(())
     Ok(())
 }
 
