@@ -177,7 +177,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {data.data?.map((entry: any, index: number) => (
+                  {data.data?.map((_: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={index === 0 ? '#6D5BF6' : '#EF4444'} />
                   ))}
                 </Pie>

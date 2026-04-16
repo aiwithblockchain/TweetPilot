@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { useEffect, useState } from 'react'
 import AccountManagement from '../components/AccountManagement'
+import { settingsService } from '@/services'
+import type { AppSettings } from '@/services/settings'
 
 type SettingsSection = 'accounts' | 'preferences'
 
@@ -14,7 +15,6 @@ export default function Settings() {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar Navigation */}
         <aside className="w-[200px] flex-shrink-0 border-r border-[var(--color-border)] p-3">
           <nav className="flex flex-col gap-1">
             <button
@@ -40,7 +40,6 @@ export default function Settings() {
           </nav>
         </aside>
 
-        {/* Right Content Area */}
         <main className="flex-1 overflow-auto p-6">
           {activeSection === 'accounts' && <AccountManagement />}
           {activeSection === 'preferences' && <PreferencesSection />}
@@ -50,56 +49,140 @@ export default function Settings() {
   )
 }
 
+function applyTheme(theme: AppSettings['theme']) {
+  const root = document.documentElement
+
+  if (theme === 'light') {
+    root.classList.remove('dark')
+    return
+  }
+
+  if (theme === 'dark') {
+    root.classList.add('dark')
+    return
+  }
+
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (prefersDark) {
+    root.classList.add('dark')
+  } else {
+    root.classList.remove('dark')
+  }
+}
+
+function parseEndpoint(endpoint: string): { ip: string; port: string } {
+  try {
+    const parsed = new URL(endpoint)
+    const protocolDefaultPort = parsed.protocol === 'https:' ? '443' : '80'
+
+    return {
+      ip: parsed.hostname || '127.0.0.1',
+      port: parsed.port || protocolDefaultPort,
+    }
+  } catch {
+    return {
+      ip: '127.0.0.1',
+      port: '8000',
+    }
+  }
+}
+
 function PreferencesSection() {
   const [language, setLanguage] = useState('zh-CN')
-  const [theme, setTheme] = useState('dark')
+  const [theme, setTheme] = useState<AppSettings['theme']>('dark')
   const [localBridgeIp, setLocalBridgeIp] = useState('127.0.0.1')
-  const [localBridgePort, setLocalBridgePort] = useState('10088')
+  const [localBridgePort, setLocalBridgePort] = useState('8000')
+  const [localBridgeApiKey, setLocalBridgeApiKey] = useState('')
+  const [localBridgeTimeoutMs, setLocalBridgeTimeoutMs] = useState(30000)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme)
+  useEffect(() => {
+    const loadSettings = async () => {
+      setLoading(true)
+      setLoadError(null)
 
-    // Apply theme immediately
-    const root = document.documentElement
-    if (newTheme === 'light') {
-      root.classList.remove('dark')
-    } else if (newTheme === 'dark') {
-      root.classList.add('dark')
-    } else if (newTheme === 'system') {
-      // Follow system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      if (prefersDark) {
-        root.classList.add('dark')
-      } else {
-        root.classList.remove('dark')
+      try {
+        const [appSettings, localBridgeConfig] = await Promise.all([
+          settingsService.getSettings(),
+          settingsService.getLocalBridgeConfig(),
+        ])
+
+        setLanguage(appSettings.language)
+        setTheme(appSettings.theme)
+        applyTheme(appSettings.theme)
+
+        const { ip, port } = parseEndpoint(localBridgeConfig.endpoint)
+        setLocalBridgeIp(ip)
+        setLocalBridgePort(port)
+        setLocalBridgeApiKey(localBridgeConfig.apiKey)
+        setLocalBridgeTimeoutMs(localBridgeConfig.timeoutMs)
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : '读取设置失败')
+      } finally {
+        setLoading(false)
       }
     }
+
+    void loadSettings()
+  }, [])
+
+  const handleThemeChange = (newTheme: AppSettings['theme']) => {
+    setTheme(newTheme)
+    applyTheme(newTheme)
   }
 
   const handleSave = async () => {
+    if (!localBridgeIp.trim()) {
+      alert('IP 地址不能为空')
+      return
+    }
+
+    const port = Number(localBridgePort)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      alert('端口必须是 1-65535 的整数')
+      return
+    }
+
+    setSaving(true)
+
     try {
-      // Save preferences to backend
-      await invoke('save_preferences', {
-        preferences: {
-          language,
-          theme,
-          localBridgeIp,
-          localBridgePort: parseInt(localBridgePort)
-        }
+      await settingsService.updateSettings({
+        language: language.trim(),
+        theme,
       })
+
+      await settingsService.updateLocalBridgeConfig({
+        endpoint: `http://${localBridgeIp.trim()}:${port}`,
+        apiKey: localBridgeApiKey,
+        timeoutMs: localBridgeTimeoutMs,
+      })
+
       alert('设置已保存')
     } catch (error) {
-      console.error('Failed to save preferences:', error)
+      console.error('Failed to save settings:', error)
       alert('保存失败: ' + (error as Error).message)
+    } finally {
+      setSaving(false)
     }
+  }
+
+  if (loading) {
+    return <div className="text-sm text-secondary">读取设置中...</div>
   }
 
   return (
     <div>
       <h3 className="text-base font-semibold mb-4">系统偏好</h3>
 
+      {loadError && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500 rounded-lg text-sm text-red-500">
+          {loadError}
+        </div>
+      )}
+
       <div className="max-w-md space-y-6">
-        {/* General Settings */}
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1.5">语言</label>
@@ -117,7 +200,7 @@ function PreferencesSection() {
             <label className="block text-sm font-medium mb-1.5">主题</label>
             <select
               value={theme}
-              onChange={(e) => handleThemeChange(e.target.value)}
+              onChange={(e) => handleThemeChange(e.target.value as AppSettings['theme'])}
               className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
             >
               <option value="light">浅色</option>
@@ -127,7 +210,6 @@ function PreferencesSection() {
           </div>
         </div>
 
-        {/* LocalBridge Settings */}
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
           <div className="text-sm font-semibold mb-3">LocalBridge 设置</div>
 
@@ -156,9 +238,10 @@ function PreferencesSection() {
 
         <button
           onClick={handleSave}
-          className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+          disabled={saving}
+          className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
         >
-          保存设置
+          {saving ? '保存中...' : '保存设置'}
         </button>
       </div>
     </div>

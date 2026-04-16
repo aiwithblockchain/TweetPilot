@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { workspaceService } from '@/services'
 
 interface WorkspaceSelectorProps {
   onWorkspaceSelected: (path: string) => void
@@ -14,10 +14,10 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
     setError(null)
 
     try {
-      const path = await invoke<string | null>('select_local_directory')
+      const path = await workspaceService.selectLocalDirectory()
 
       if (path) {
-        await invoke('set_current_workspace', { path })
+        await workspaceService.setCurrentWorkspace(path)
         onWorkspaceSelected(path)
       }
     } catch (err) {

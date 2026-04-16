@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import WorkspaceSelector from './pages/WorkspaceSelector'
 import TaskManagement from './pages/TaskManagement'
 import DataBlocks from './pages/DataBlocks'
 import Settings from './pages/Settings'
+import { workspaceService } from './services'
 
 type Page = 'task-management' | 'data-blocks' | 'settings'
 
@@ -18,7 +18,8 @@ function App() {
     document.documentElement.classList.add('dark')
 
     // 检查是否已有工作目录
-    invoke<string | null>('get_current_workspace')
+    workspaceService
+      .getCurrentWorkspace()
       .then((workspace) => {
         setCurrentWorkspace(workspace)
       })
@@ -93,7 +94,7 @@ function App() {
                     setShowWorkspaceDropdown(false)
                     try {
                       // Just open a new window, don't change current workspace
-                      await invoke('open_workspace_in_new_window')
+                      await workspaceService.openWorkspaceInNewWindow()
                     } catch (error) {
                       console.error('Failed to open new window:', error)
                       alert('打开新窗口失败: ' + (error as Error).message)

@@ -1,21 +1,11 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { accountService } from '@/services'
+import type { AccountSettings } from '@/services/account'
 
 interface AccountSettingsDialogProps {
   screenName: string
   onClose: () => void
   onAccountDeleted: () => void
-}
-
-interface AccountSettings {
-  twitterId: string
-  name: string
-  screenName: string
-  avatar: string
-  isLinked: boolean
-  extensionId?: string
-  extensionName?: string
-  personality: string
 }
 
 export default function AccountSettingsDialog({
@@ -36,7 +26,7 @@ export default function AccountSettingsDialog({
 
   const loadAccountSettings = async () => {
     try {
-      const result = await invoke<AccountSettings>('get_account_settings', { screenName })
+      const result = await accountService.getAccountSettings(screenName)
       setSettings(result)
       setPersonality(result.personality)
     } catch (error) {
@@ -56,10 +46,7 @@ export default function AccountSettingsDialog({
 
     setSaving(true)
     try {
-      await invoke('save_account_personality', {
-        screenName,
-        personality,
-      })
+      await accountService.saveAccountPersonality(screenName, personality)
       setSettings({ ...settings, personality })
       setHasChanges(false)
     } catch (error) {
@@ -81,7 +68,7 @@ export default function AccountSettingsDialog({
     }
 
     try {
-      await invoke('unlink_account', { screenName })
+      await accountService.unlinkAccount(screenName)
       onAccountDeleted()
     } catch (error) {
       console.error('Failed to unlink account:', error)
@@ -102,7 +89,7 @@ export default function AccountSettingsDialog({
 
     // Step 2: Actually delete
     try {
-      await invoke('delete_account_completely', { screenName })
+      await accountService.deleteAccountCompletely(screenName)
       onAccountDeleted()
     } catch (error) {
       console.error('Failed to delete account:', error)

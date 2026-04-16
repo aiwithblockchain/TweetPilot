@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import SortableDataCard from '../components/SortableDataCard'
 import AddCardDialog from '../components/AddCardDialog'
+import { accountService } from '@/services'
+import type { MappedAccount } from '@/services/account'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable'
 
@@ -25,7 +27,7 @@ export default function DataBlocks() {
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
-  const [accounts, setAccounts] = useState<any[]>([])
+  const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
 
   const sensors = useSensors(
@@ -42,7 +44,7 @@ export default function DataBlocks() {
   const loadData = async () => {
     try {
       // Load accounts
-      const accountsResult = await invoke<any[]>('get_mapped_accounts')
+      const accountsResult = await accountService.getMappedAccounts()
       setAccounts(accountsResult)
 
       // Set default selected account

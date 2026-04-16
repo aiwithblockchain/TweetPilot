@@ -1,19 +1,14 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import AccountCard from './AccountCard'
 import AccountMappingDialog from './AccountMappingDialog'
 import AccountSettingsDialog from './AccountSettingsDialog'
+import { accountService } from '@/services'
+import type { MappedAccount } from '@/services/account'
 
-export interface TwitterAccount {
-  screenName: string
-  displayName: string
-  avatar: string
-  status: 'online' | 'offline' | 'verifying'
-  lastVerified: string
-}
+export type TwitterAccount = MappedAccount
 
 export default function AccountManagement() {
-  const [accounts, setAccounts] = useState<TwitterAccount[]>([])
+  const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [showMappingDialog, setShowMappingDialog] = useState(false)
   const [settingsScreenName, setSettingsScreenName] = useState<string | null>(null)
@@ -28,7 +23,7 @@ export default function AccountManagement() {
 
   const loadAccounts = async () => {
     try {
-      const result = await invoke<TwitterAccount[]>('get_mapped_accounts')
+      const result = await accountService.getMappedAccounts()
       setAccounts(result)
     } catch (error) {
       console.error('Failed to load accounts:', error)
@@ -52,9 +47,7 @@ export default function AccountManagement() {
         )
       )
 
-      const status = await invoke<'online' | 'offline'>('verify_account_status', {
-        screenName,
-      })
+      const status = await accountService.verifyAccountStatus(screenName)
 
       setAccounts((prev) =>
         prev.map((acc) =>
@@ -73,19 +66,6 @@ export default function AccountManagement() {
     }
   }
 
-  const handleDeleteAccount = async (screenName: string) => {
-    if (!confirm(`确定要删除账号 ${screenName} 的映射吗？`)) {
-      return
-    }
-
-    try {
-      await invoke('delete_account_mapping', { screenName })
-      setAccounts((prev) => prev.filter((acc) => acc.screenName !== screenName))
-    } catch (error) {
-      console.error('Failed to delete account:', error)
-      alert('删除失败: ' + (error as Error).message)
-    }
-  }
 
   const handleAccountMapped = () => {
     setShowMappingDialog(false)

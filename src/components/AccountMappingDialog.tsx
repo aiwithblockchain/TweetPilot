@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-
-interface AvailableAccount {
-  screenName: string
-  displayName: string
-  avatar: string
-}
+import { accountService } from '@/services'
+import type { AvailableAccount } from '@/services/account'
 
 interface AccountMappingDialogProps {
   onClose: () => void
@@ -27,7 +22,7 @@ export default function AccountMappingDialog({
 
   const loadAvailableAccounts = async () => {
     try {
-      const result = await invoke<AvailableAccount[]>('get_available_accounts')
+      const result = await accountService.getAvailableAccounts()
       setAccounts(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : '查询失败')
@@ -39,7 +34,7 @@ export default function AccountMappingDialog({
   const handleMapAccount = async (account: AvailableAccount) => {
     setMappingAccount(account.screenName)
     try {
-      await invoke('map_account', { screenName: account.screenName })
+      await accountService.mapAccount(account.screenName)
       onAccountMapped()
     } catch (err) {
       alert('映射失败: ' + (err instanceof Error ? err.message : '未知错误'))
