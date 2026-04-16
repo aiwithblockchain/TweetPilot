@@ -1,10 +1,10 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import DataCard from './DataCard'
-import { Card } from '../pages/DataBlocks'
+import type { DataBlockCard } from '@/services/data-blocks'
 
 interface SortableDataCardProps {
-  card: Card
+  card: DataBlockCard
   selectedAccount: string | null
   onRefresh: () => void
   onDelete: () => void

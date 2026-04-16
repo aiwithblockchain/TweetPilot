@@ -26,7 +26,13 @@ export type {
 } from './task'
 
 export { dataBlocksService } from './data-blocks'
-export type { DataBlocksService } from './data-blocks'
+export type {
+  DataBlockCard,
+  DataBlockCardData,
+  DataBlockCardType,
+  DataBlocksService,
+  KnownDataBlockCardType,
+} from './data-blocks'
 
 export { settingsService } from './settings'
 export type { SettingsService } from './settings'

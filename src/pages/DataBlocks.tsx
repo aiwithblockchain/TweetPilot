@@ -1,29 +1,29 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import SortableDataCard from '../components/SortableDataCard'
 import AddCardDialog from '../components/AddCardDialog'
-import { accountService } from '@/services'
+import { accountService, dataBlocksService } from '@/services'
 import type { MappedAccount } from '@/services/account'
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable'
+import type { DataBlockCard } from '@/services/data-blocks'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable'
 
-export interface Card {
-  id: string
-  type: string
-  position: number
-  config?: Record<string, any>
-  lastUpdated: string
-}
-
-export interface CardType {
-  id: string
-  name: string
-  description: string
-  requiresAccount: boolean
-}
+export type Card = DataBlockCard
 
 export default function DataBlocks() {
-  const [cards, setCards] = useState<Card[]>([])
+  const [cards, setCards] = useState<DataBlockCard[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
@@ -38,22 +38,19 @@ export default function DataBlocks() {
   )
 
   useEffect(() => {
-    loadData()
+    void loadData()
   }, [])
 
   const loadData = async () => {
     try {
-      // Load accounts
       const accountsResult = await accountService.getMappedAccounts()
       setAccounts(accountsResult)
 
-      // Set default selected account
       if (accountsResult.length > 0 && !selectedAccount) {
         setSelectedAccount(accountsResult[0].screenName)
       }
 
-      // Load cards layout
-      const layout = await invoke<Card[]>('get_layout')
+      const layout = await dataBlocksService.getLayout()
       setCards(layout)
     } catch (error) {
       console.error('Failed to load data:', error)
@@ -64,10 +61,7 @@ export default function DataBlocks() {
 
   const handleAddCard = async (cardType: string) => {
     try {
-      const newCard = await invoke<Card>('add_card', {
-        cardType,
-        config: {},
-      })
+      const newCard = await dataBlocksService.addCard(cardType, {})
       setCards((prev) => [...prev, newCard])
       setShowAddDialog(false)
     } catch (error) {
@@ -82,8 +76,8 @@ export default function DataBlocks() {
     }
 
     try {
-      await invoke('delete_card', { cardId })
-      setCards((prev) => prev.filter((c) => c.id !== cardId))
+      await dataBlocksService.deleteCard(cardId)
+      setCards((prev) => prev.filter((card) => card.id !== cardId))
     } catch (error) {
       console.error('Failed to delete card:', error)
       alert('删除失败: ' + (error as Error).message)
@@ -92,11 +86,10 @@ export default function DataBlocks() {
 
   const handleRefreshCard = async (cardId: string) => {
     try {
-      await invoke('refresh_card_data', { cardId })
-      // Update lastUpdated timestamp
+      await dataBlocksService.refreshCardData(cardId)
       setCards((prev) =>
-        prev.map((c) =>
-          c.id === cardId ? { ...c, lastUpdated: new Date().toISOString() } : c
+        prev.map((card) =>
+          card.id === cardId ? { ...card, lastUpdated: new Date().toISOString() } : card
         )
       )
     } catch (error) {
@@ -107,25 +100,28 @@ export default function DataBlocks() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
 
-    if (over && active.id !== over.id) {
-      setCards((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id)
-        const newIndex = items.findIndex((item) => item.id === over.id)
-        const newItems = arrayMove(items, oldIndex, newIndex)
+    if (!over || active.id === over.id) {
+      return
+    }
 
-        // Update positions and save layout
-        const updatedItems = newItems.map((item, index) => ({
-          ...item,
-          position: index,
-        }))
+    const oldIndex = cards.findIndex((item) => item.id === active.id)
+    const newIndex = cards.findIndex((item) => item.id === over.id)
 
-        // Save layout to backend
-        invoke('save_layout', { layout: updatedItems }).catch((error) => {
-          console.error('Failed to save layout:', error)
-        })
+    if (oldIndex === -1 || newIndex === -1) {
+      return
+    }
 
-        return updatedItems
-      })
+    const reordered = arrayMove(cards, oldIndex, newIndex).map((item, index) => ({
+      ...item,
+      position: index,
+    }))
+
+    setCards(reordered)
+
+    try {
+      await dataBlocksService.saveLayout(reordered)
+    } catch (error) {
+      console.error('Failed to save layout:', error)
     }
   }
 
@@ -137,15 +133,13 @@ export default function DataBlocks() {
     )
   }
 
-  const selectedAccountData = accounts.find((a) => a.screenName === selectedAccount)
+  const selectedAccountData = accounts.find((account) => account.screenName === selectedAccount)
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)]">
         <h2 className="text-lg font-semibold">数据积木</h2>
         <div className="flex items-center gap-3">
-          {/* Account Selector */}
           {accounts.length > 0 && selectedAccountData && (
             <div className="relative">
               <button
@@ -171,9 +165,7 @@ export default function DataBlocks() {
                         setShowAccountDropdown(false)
                       }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--color-surface)] transition-colors ${
-                        account.screenName === selectedAccount
-                          ? 'bg-[var(--color-surface)]'
-                          : ''
+                        account.screenName === selectedAccount ? 'bg-[var(--color-surface)]' : ''
                       }`}
                     >
                       <img
@@ -204,7 +196,6 @@ export default function DataBlocks() {
         </div>
       </div>
 
-      {/* Cards Grid */}
       <div className="flex-1 overflow-auto p-4">
         {cards.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -218,7 +209,7 @@ export default function DataBlocks() {
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext items={cards.map((c) => c.id)} strategy={rectSortingStrategy}>
+            <SortableContext items={cards.map((card) => card.id)} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-3 gap-4">
                 {cards.map((card) => (
                   <SortableDataCard
@@ -235,7 +226,6 @@ export default function DataBlocks() {
         )}
       </div>
 
-      {/* Add Card Dialog */}
       {showAddDialog && (
         <AddCardDialog
           onClose={() => setShowAddDialog(false)}

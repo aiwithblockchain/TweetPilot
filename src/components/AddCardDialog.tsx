@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { CardType, Card } from '../pages/DataBlocks'
+import type { DataBlockCard } from '@/services/data-blocks'
 
 interface AddCardDialogProps {
   onClose: () => void
   onAddCard: (cardType: string) => void
-  existingCards: Card[]
+  existingCards: DataBlockCard[]
+}
+
+interface CardType {
+  id: string
+  name: string
+  description: string
+  requiresAccount: boolean
 }
 
 const CARD_TYPES: CardType[] = [
@@ -43,7 +50,6 @@ const CARD_TYPES: CardType[] = [
 export default function AddCardDialog({ onClose, onAddCard, existingCards }: AddCardDialogProps) {
   const [selectedType, setSelectedType] = useState<string | null>(null)
 
-  // Filter out card types that are already added
   const existingCardTypes = new Set(existingCards.map((card) => card.type))
   const availableCardTypes = CARD_TYPES.filter((type) => !existingCardTypes.has(type.id))
 
@@ -56,7 +62,6 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
           <h3 className="text-base font-semibold">添加数据卡片</h3>
           <button
@@ -67,7 +72,6 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-4">
           {availableCardTypes.length === 0 ? (
             <div className="text-center py-8">
@@ -92,9 +96,7 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
                         <div className="text-sm font-semibold mb-1">{type.name}</div>
                         <div className="text-xs text-secondary">{type.description}</div>
                       </div>
-                      {selectedType === type.id && (
-                        <span className="text-[#6D5BF6] ml-2">✓</span>
-                      )}
+                      {selectedType === type.id && <span className="text-[#6D5BF6] ml-2">✓</span>}
                     </div>
                   </button>
                 ))}
@@ -103,7 +105,6 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end gap-2 p-4 border-t border-[var(--color-border)]">
           <button
             onClick={onClose}

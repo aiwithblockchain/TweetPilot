@@ -1,32 +1,39 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-import { Card } from '../pages/DataBlocks'
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { dataBlocksService } from '@/services'
+import type { DataBlockCard } from '@/services/data-blocks'
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 
 interface DataCardProps {
-  card: Card
+  card: DataBlockCard
   selectedAccount: string | null
   onRefresh: () => void
   onDelete: () => void
 }
 
 export default function DataCard({ card, selectedAccount, onRefresh, onDelete }: DataCardProps) {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<Record<string, any> | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadCardData()
-  }, [card.id, selectedAccount])
+    void loadCardData()
+  }, [card.id, card.type, selectedAccount])
 
   const loadCardData = async () => {
     setLoading(true)
     try {
-      const result = await invoke('get_card_data', {
-        cardId: card.id,
-        cardType: card.type,
-        accountId: selectedAccount,
-      })
-      setData(result)
+      const result = await dataBlocksService.getCardData(card.id, card.type, selectedAccount)
+      setData(result as Record<string, any>)
     } catch (error) {
       console.error('Failed to load card data:', error)
     } finally {
@@ -75,7 +82,6 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
       )
     }
 
-    // Render different content based on card type
     switch (card.type) {
       case 'latest_tweets':
         return (
@@ -153,7 +159,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
                     backgroundColor: 'var(--color-surface)',
                     border: '1px solid var(--color-border)',
                     borderRadius: '6px',
-                    fontSize: '12px'
+                    fontSize: '12px',
                   }}
                 />
                 <Bar dataKey="count" fill="#6D5BF6" radius={[4, 4, 0, 0]} />
@@ -186,7 +192,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
                     backgroundColor: 'var(--color-surface)',
                     border: '1px solid var(--color-border)',
                     borderRadius: '6px',
-                    fontSize: '12px'
+                    fontSize: '12px',
                   }}
                 />
               </PieChart>
@@ -205,7 +211,6 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
 
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg overflow-hidden hover:border-[#6D5BF6] hover:shadow-sm transition-all">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-[var(--color-border)]">
         <div className="text-sm font-semibold">{getCardTitle()}</div>
         <div className="flex gap-1">
@@ -226,10 +231,8 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-3">{renderCardContent()}</div>
 
-      {/* Footer */}
       <div className="px-3 py-2 border-t border-[var(--color-border)] text-xs text-secondary">
         最后更新: {formatRelativeTime(card.lastUpdated)}
       </div>
