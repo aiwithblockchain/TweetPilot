@@ -195,10 +195,9 @@ pub async fn get_mapped_accounts() -> Result<Vec<TwitterAccount>, String> {
 }
 
 #[tauri::command]
-pub async fn verify_account_status(screen_name: String) -> Result<AccountStatus, String> {
+pub async fn verify_account_status(_screen_name: String) -> Result<AccountStatus, String> {
     // Simulate network delay
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    println!("Verifying account status: {}", screen_name);
     Ok(AccountStatus::Online)
 }
 

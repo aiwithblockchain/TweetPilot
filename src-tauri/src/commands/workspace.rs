@@ -74,15 +74,11 @@ fn clear_current_workspace() -> Result<(), String> {
 pub async fn select_local_directory(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    println!("[workspace] select_local_directory called");
-
     let path = app
         .dialog()
         .file()
         .set_title("选择工作目录")
         .blocking_pick_folder();
-
-    println!("[workspace] select_local_directory result: {:?}", path);
 
     Ok(path.map(|p| p.to_string()))
 }

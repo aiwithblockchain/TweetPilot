@@ -283,3 +283,82 @@ Data Blocks：
 - **M6（基础持久化）**：P2 完成，关键配置可回读
 - **M7（行为闭环）**：P3 完成，Task/DataBlocks/Account 状态流可预测
 - **M8（tauri可用）**：P4 完成，tauri 模式通过核心回归
+
+---
+
+## 10. P0-06 完成总结
+
+### 10.1 已完成
+
+#### P1 命令面补齐
+
+- 已补齐并接通以下 Tauri 命令链路：
+  - `clone_from_github`
+  - `reconnect_account`
+  - `get_local_bridge_config`
+  - `update_local_bridge_config`
+- 前端 `src/services/*/tauri.ts` 中本轮计划涉及的占位抛错已清理完成。
+- `src-tauri/src/main.rs` 已完成相关命令注册，前端服务调用与 Rust 命令面保持一致。
+
+#### P2 基础持久化落地
+
+- Workspace：已实现 `current_workspace` 与 `recent_workspaces` 的读写与更新。
+- Preferences：已实现系统偏好与 Local Bridge 配置读写。
+- Account：已实现 personality 保存与读取。
+- 持久化数据已统一落到 `~/.tweetpilot/` 目录下的 JSON 文件。
+
+#### P3 行为 TODO 清理
+
+- Task：创建、更新、删除、暂停、恢复、执行、历史读取已形成真实状态链路。
+- Data Blocks：布局保存、卡片新增删除、卡片数据读取与刷新已接通。
+- Account：状态刷新、重新连接、彻底删除的本地行为已落地。
+- 前端关键页面已从“假保存/假刷新”切换为重新读取 Tauri 后端状态。
+
+#### P4 收口与回归
+
+- 已完成 `npm run build` 构建通过。
+- 已产出并执行 `docs/v2/p0/P0-06-P4-Tauri模式快速回归测试清单.md`。
+- 你刚刚确认该测试清单内项目已测试通过，可作为本阶段人工验收结果。
+- 启动工作区逻辑已调整为：启动先回到起始页，再由用户主动选择工作目录进入主界面。
+
+### 10.2 已验证
+
+以下能力已通过本轮代码实现加人工回归验证：
+
+- 任务执行后列表状态、执行结果、详情统计、历史记录保持一致。
+- 任务参数保存后重新打开仍能回显。
+- 定时任务 pause / resume 状态切换正常。
+- 数据积木新增、删除、拖拽排序、刷新后展示正常。
+- 数据积木布局刷新后不回弹。
+- preferences / local bridge config 可保存并回读。
+- account personality 可保存并回读。
+- current workspace / recent workspaces 可更新。
+- Tauri 模式下核心路径不再依赖占位抛错才能运行。
+
+### 10.3 本次收尾清理
+
+本轮收尾已额外完成：
+
+- 删除 `src/App.tsx` 中工作目录切换调试日志。
+- 删除 `src-tauri/src/commands/workspace.rs` 中目录选择调试输出。
+- 删除 `src-tauri/src/commands/account.rs` 中账号状态验证调试输出。
+- 为 workspace service 增加 `clearCurrentWorkspace()` 正式接口，避免仅靠前端局部状态绕过持久化。
+
+### 10.4 当前遗留
+
+以下内容不阻塞 P0-06 完成，但仍属于后续可继续优化项：
+
+- 仍保留 `mock`/`tauri` 双实现结构，这是架构刻意保留，不视为残留垃圾代码。
+- `src/services/runtime.ts` 仍支持 `mock | tauri` 切换，这是为了后续开发与隔离测试，不建议在本轮删除。
+- 当前以人工回归为主，尚未补齐自动化测试用例。
+- `dev-with-log.sh` 中保留了较完整的开发诊断日志能力，后续可按团队需要继续精简。
+
+### 10.5 结论
+
+P0-06「Tauri 占位接口清理与命令落地」可以认定为已完成。
+
+更准确地说：
+
+- 计划范围内的命令补齐、持久化落地、行为闭环、Tauri 回归已完成。
+- 测试清单内项目已人工验收通过。
+- 当前阶段应从“继续补接口”转入“文档同步 / 自动化补强 / 下一阶段开发”。
