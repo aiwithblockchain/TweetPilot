@@ -1,5 +1,44 @@
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::sync::Mutex;
+
+fn default_cards() -> Vec<Card> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    vec![
+        Card {
+            id: "card_1".to_string(),
+            card_type: "account_basic_data".to_string(),
+            position: 0,
+            config: Some(json!({})),
+            last_updated: now.clone(),
+        },
+        Card {
+            id: "card_2".to_string(),
+            card_type: "latest_tweets".to_string(),
+            position: 1,
+            config: Some(json!({})),
+            last_updated: now,
+        },
+    ]
+}
+
+static CARDS: Lazy<Mutex<Vec<Card>>> = Lazy::new(|| Mutex::new(default_cards()));
+
+fn get_card_or_error(cards: &[Card], card_id: &str) -> Result<Card, String> {
+    cards.iter()
+        .find(|card| card.id == card_id)
+        .cloned()
+        .ok_or_else(|| "卡片不存在".to_string())
+}
+
+fn normalize_positions(cards: &mut [Card]) {
+    for (index, card) in cards.iter_mut().enumerate() {
+        card.position = index as u32;
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
@@ -14,58 +53,78 @@ pub struct Card {
 
 #[tauri::command]
 pub async fn get_layout() -> Result<Vec<Card>, String> {
-    // TODO: 获取卡片布局
-    // Mock data for development
-    Ok(vec![
-        Card {
-            id: "card_1".to_string(),
-            card_type: "account_basic_data".to_string(),
-            position: 0,
-            config: None,
-            last_updated: chrono::Utc::now().to_rfc3339(),
-        },
-        Card {
-            id: "card_2".to_string(),
-            card_type: "latest_tweets".to_string(),
-            position: 1,
-            config: None,
-            last_updated: chrono::Utc::now().to_rfc3339(),
-        },
-    ])
+    let cards = CARDS.lock().unwrap();
+    let mut result = cards.clone();
+    result.sort_by_key(|card| card.position);
+    Ok(result)
 }
 
 #[tauri::command]
-pub async fn save_layout(_layout: Vec<Card>) -> Result<(), String> {
-    // TODO: 保存卡片布局
+pub async fn save_layout(layout: Vec<Card>) -> Result<(), String> {
+    let mut ids = std::collections::HashSet::new();
+    for card in &layout {
+        if !ids.insert(card.id.clone()) {
+            return Err("布局中存在重复卡片".to_string());
+        }
+    }
+
+    let mut next_layout = layout;
+    normalize_positions(&mut next_layout);
+
+    let mut cards = CARDS.lock().unwrap();
+    *cards = next_layout;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn add_card(card_type: String, _config: Option<Value>) -> Result<Card, String> {
-    // TODO: 添加卡片
-    // Mock implementation
-    let card_id = format!("card_{}", chrono::Utc::now().timestamp());
+pub async fn add_card(card_type: String, config: Option<Value>) -> Result<Card, String> {
+    if card_type.trim().is_empty() {
+        return Err("卡片类型不能为空".to_string());
+    }
 
-    Ok(Card {
-        id: card_id,
+    let mut cards = CARDS.lock().unwrap();
+    if cards.iter().any(|card| card.card_type == card_type) {
+        return Err("该卡片类型已存在".to_string());
+    }
+
+    let next_card = Card {
+        id: format!("card_{}", chrono::Utc::now().timestamp_millis()),
         card_type,
-        position: 0,
-        config: None,
+        position: cards.len() as u32,
+        config: config.or_else(|| Some(json!({}))),
         last_updated: chrono::Utc::now().to_rfc3339(),
-    })
+    };
+
+    cards.push(next_card.clone());
+    Ok(next_card)
 }
 
 #[tauri::command]
-pub async fn delete_card(_card_id: String) -> Result<(), String> {
-    // TODO: 删除卡片
-    println!("Deleting card: {}", _card_id);
+pub async fn delete_card(card_id: String) -> Result<(), String> {
+    let mut cards = CARDS.lock().unwrap();
+    let original_len = cards.len();
+    cards.retain(|card| card.id != card_id);
+    if cards.len() == original_len {
+        return Err("卡片不存在".to_string());
+    }
+    normalize_positions(&mut cards);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_card_data(_card_id: String, card_type: String, _account_id: Option<String>) -> Result<Value, String> {
-    // TODO: 获取卡片数据
-    // Mock data based on card type
+pub async fn get_card_data(
+    card_id: String,
+    card_type: String,
+    _account_id: Option<String>,
+) -> Result<Value, String> {
+    {
+        let cards = CARDS.lock().unwrap();
+        let card = get_card_or_error(&cards, &card_id)?;
+        if card.card_type != card_type {
+            return Err("卡片类型不匹配".to_string());
+        }
+    }
+
     match card_type.as_str() {
         "latest_tweets" => Ok(json!({
             "tweets": [
@@ -117,13 +176,19 @@ pub async fn get_card_data(_card_id: String, card_type: String, _account_id: Opt
                 { "name": "失败", "value": 15 }
             ]
         })),
-        _ => Ok(json!({}))
+        _ => Ok(json!({})),
     }
 }
 
 #[tauri::command]
-pub async fn refresh_card_data(_card_id: String) -> Result<(), String> {
-    // TODO: 刷新卡片数据
-    println!("Refreshing card data: {}", _card_id);
+pub async fn refresh_card_data(card_id: String) -> Result<(), String> {
+    tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+
+    let mut cards = CARDS.lock().unwrap();
+    let card = cards
+        .iter_mut()
+        .find(|item| item.id == card_id)
+        .ok_or_else(|| "卡片不存在".to_string())?;
+    card.last_updated = chrono::Utc::now().to_rfc3339();
     Ok(())
 }

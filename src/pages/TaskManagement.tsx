@@ -94,7 +94,7 @@ export default function TaskManagement() {
       setExecutionResult(result)
 
       // Reload tasks to get updated status
-      loadTasks()
+      await loadTasks()
     } catch (error) {
       console.error('Failed to execute task:', error)
       setExecutingTask(null)
@@ -105,7 +105,7 @@ export default function TaskManagement() {
   const handleTaskPause = async (taskId: string) => {
     try {
       await taskService.pauseTask(taskId)
-      loadTasks()
+      await loadTasks()
     } catch (error) {
       console.error('Failed to pause task:', error)
     }
@@ -114,7 +114,7 @@ export default function TaskManagement() {
   const handleTaskResume = async (taskId: string) => {
     try {
       await taskService.resumeTask(taskId)
-      loadTasks()
+      await loadTasks()
     } catch (error) {
       console.error('Failed to resume task:', error)
     }

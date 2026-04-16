@@ -77,7 +77,8 @@ export default function DataBlocks() {
 
     try {
       await dataBlocksService.deleteCard(cardId)
-      setCards((prev) => prev.filter((card) => card.id !== cardId))
+      const layout = await dataBlocksService.getLayout()
+      setCards(layout)
     } catch (error) {
       console.error('Failed to delete card:', error)
       alert('删除失败: ' + (error as Error).message)
@@ -120,8 +121,11 @@ export default function DataBlocks() {
 
     try {
       await dataBlocksService.saveLayout(reordered)
+      const layout = await dataBlocksService.getLayout()
+      setCards(layout)
     } catch (error) {
       console.error('Failed to save layout:', error)
+      await loadData()
     }
   }
 

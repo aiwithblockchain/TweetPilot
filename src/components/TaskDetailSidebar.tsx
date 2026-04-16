@@ -75,15 +75,28 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
   }
 
   const handleSaveParams = async () => {
+    if (!detail) {
+      return
+    }
+
     try {
-      // TODO: Call backend to update task parameters
-      console.log('Saving parameters:', parameters)
+      await taskService.updateTask(taskId, {
+        name: detail.task.name,
+        description: detail.task.description,
+        taskType: detail.task.type,
+        scriptPath: detail.task.scriptPath,
+        schedule: detail.task.schedule,
+        parameters,
+      })
+
+      const result = await taskService.getTaskDetail(taskId)
+      setDetail(result)
+      setParameters(result.task.parameters || {})
       setHasChanges(false)
-      // Show success message
       alert('参数已保存')
     } catch (error) {
       console.error('Failed to save parameters:', error)
-      alert('保存失败')
+      alert('保存失败: ' + (error as Error).message)
     }
   }
 
