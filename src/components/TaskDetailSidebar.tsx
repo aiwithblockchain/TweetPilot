@@ -1,23 +1,10 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-import { Task, ExecutionResult } from '../pages/TaskManagement'
+import { taskService } from '@/services'
+import type { TaskDetail } from '@/services/task'
 
 interface TaskDetailSidebarProps {
   taskId: string
   onClose: () => void
-}
-
-interface TaskDetail {
-  task: Task
-  statistics: {
-    totalExecutions: number
-    successCount: number
-    failureCount: number
-    successRate: number
-    averageDuration: number
-  }
-  history: ExecutionResult[]
-  failureLog: ExecutionResult[]
 }
 
 type TabType = 'config' | 'stats' | 'history' | 'last-execution' | 'failures'
@@ -35,7 +22,7 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
 
   const loadTaskDetail = async () => {
     try {
-      const result = await invoke<TaskDetail>('get_task_detail', { taskId })
+      const result = await taskService.getTaskDetail(taskId)
       setDetail(result)
       setParameters(result.task.parameters || {})
       setActiveTab('config')

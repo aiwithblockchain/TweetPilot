@@ -3,12 +3,15 @@ import { taskMockService } from './mock'
 import { taskTauriService } from './tauri'
 
 export type {
-  TaskConfig,
+  ExecutionResult,
+  Task,
+  TaskConfigInput,
   TaskDetail,
   TaskExecutionRecord,
-  TaskItem,
   TaskService,
   TaskStats,
+  TaskStatus,
+  TaskType,
 } from './types'
 
 export const taskService = serviceMode === 'tauri' ? taskTauriService : taskMockService

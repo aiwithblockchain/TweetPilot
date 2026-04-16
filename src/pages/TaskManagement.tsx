@@ -1,48 +1,13 @@
 import { useState, useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import TaskCard from '../components/TaskCard'
 import TaskConfigDialog from '../components/TaskConfigDialog'
 import TaskDetailSidebar from '../components/TaskDetailSidebar'
 import ExecutingModal from '../components/ExecutingModal'
 import ExecutionResultModal from '../components/ExecutionResultModal'
+import { taskService } from '@/services'
+import type { ExecutionResult, Task } from '@/services/task'
 
-export type TaskType = 'immediate' | 'scheduled'
-export type TaskStatus = 'idle' | 'running' | 'paused'
-
-export interface Task {
-  id: string
-  name: string
-  description?: string
-  type: TaskType
-  scriptPath: string
-  parameters?: Record<string, string>
-  status: TaskStatus
-  // Immediate task fields
-  lastExecution?: ExecutionResult
-  lastExecutionStatus?: 'success' | 'failure'
-  // Scheduled task fields
-  schedule?: string
-  nextExecutionTime?: string
-  lastExecutionTime?: string
-  statistics?: TaskStatistics
-}
-
-export interface ExecutionResult {
-  startTime: string
-  endTime: string
-  status: 'success' | 'failure'
-  output: string
-  error?: string
-  duration: number
-}
-
-export interface TaskStatistics {
-  totalExecutions: number
-  successCount: number
-  failureCount: number
-  successRate: number
-  averageDuration: number
-}
+export type { ExecutionResult, Task }
 
 type FilterType = 'all' | 'immediate' | 'scheduled' | 'failed'
 
@@ -61,7 +26,7 @@ export default function TaskManagement() {
 
   const loadTasks = async () => {
     try {
-      const result = await invoke<Task[]>('get_tasks')
+      const result = await taskService.getTasks()
       setTasks(result)
     } catch (error) {
       console.error('Failed to load tasks:', error)
@@ -100,7 +65,7 @@ export default function TaskManagement() {
     }
 
     try {
-      await invoke('delete_task', { taskId })
+      await taskService.deleteTask(taskId)
       setTasks((prev) => prev.filter((t) => t.id !== taskId))
       if (selectedTaskId === taskId) {
         setSelectedTaskId(null)
@@ -120,7 +85,7 @@ export default function TaskManagement() {
 
     try {
       // Call backend to execute task
-      const result = await invoke<ExecutionResult>('execute_task', { taskId })
+      const result = await taskService.executeTask(taskId)
 
       // Close executing modal
       setExecutingTask(null)
@@ -139,7 +104,7 @@ export default function TaskManagement() {
 
   const handleTaskPause = async (taskId: string) => {
     try {
-      await invoke('pause_task', { taskId })
+      await taskService.pauseTask(taskId)
       loadTasks()
     } catch (error) {
       console.error('Failed to pause task:', error)
@@ -148,7 +113,7 @@ export default function TaskManagement() {
 
   const handleTaskResume = async (taskId: string) => {
     try {
-      await invoke('resume_task', { taskId })
+      await taskService.resumeTask(taskId)
       loadTasks()
     } catch (error) {
       console.error('Failed to resume task:', error)

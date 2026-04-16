@@ -1,4 +1,4 @@
-import { ExecutionResult } from '../pages/TaskManagement'
+import type { ExecutionResult } from '@/services/task'
 
 interface ExecutionResultModalProps {
   result: ExecutionResult

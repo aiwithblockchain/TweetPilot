@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { TaskType } from '../pages/TaskManagement'
+import type { TaskType } from '@/services/task'
+import { taskService } from '@/services'
 
 interface TaskConfigDialogProps {
   onClose: () => void
@@ -91,7 +91,7 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
         parameters,
       }
 
-      await invoke('create_task', { config })
+      await taskService.createTask(config)
       onTaskCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')

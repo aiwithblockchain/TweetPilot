@@ -13,7 +13,17 @@ export type {
 } from './account'
 
 export { taskService } from './task'
-export type { TaskService } from './task'
+export type {
+  ExecutionResult,
+  Task,
+  TaskConfigInput,
+  TaskDetail,
+  TaskExecutionRecord,
+  TaskService,
+  TaskStats,
+  TaskStatus,
+  TaskType,
+} from './task'
 
 export { dataBlocksService } from './data-blocks'
 export type { DataBlocksService } from './data-blocks'

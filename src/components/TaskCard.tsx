@@ -1,4 +1,4 @@
-import { Task } from '../pages/TaskManagement'
+import type { Task } from '@/services/task'
 
 interface TaskCardProps {
   task: Task

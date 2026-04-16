@@ -1,28 +1,65 @@
-export interface TaskConfig {
-  name: string
-  accountScreenName: string
-  contentTemplate: string
-  scheduleType: 'immediate' | 'scheduled'
-  cronExpression?: string
+export type TaskType = 'immediate' | 'scheduled'
+
+export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
+
+export interface ExecutionResult {
+  startTime: string
+  endTime: string
+  status: 'success' | 'failure'
+  output: string
+  error?: string
+  duration: number
 }
 
-export interface TaskItem {
+export interface TaskStatistics {
+  totalExecutions: number
+  successCount: number
+  failureCount: number
+  successRate: number
+  averageDuration: number
+}
+
+export interface Task {
   id: string
   name: string
-  status: 'idle' | 'running' | 'paused' | 'failed' | 'completed'
-  updatedAt: string
+  description?: string
+  type: TaskType
+  scriptPath: string
+  parameters?: Record<string, string>
+  status: TaskStatus
+  lastExecution?: ExecutionResult
+  lastExecutionStatus?: 'success' | 'failure'
+  schedule?: string
+  nextExecutionTime?: string
+  lastExecutionTime?: string
+  statistics?: TaskStatistics
 }
 
-export interface TaskDetail extends TaskItem {
-  config: TaskConfig
+export interface TaskDetail {
+  task: Task
+  statistics: TaskStatistics
+  history: ExecutionResult[]
+  failureLog: ExecutionResult[]
+}
+
+export interface TaskConfigInput {
+  name: string
+  description?: string
+  taskType: TaskType
+  scriptPath: string
+  schedule?: string
+  parameters?: Record<string, string>
 }
 
 export interface TaskExecutionRecord {
   id: string
   taskId: string
-  status: 'success' | 'failure'
-  message: string
-  executedAt: string
+  startTime: string
+  endTime?: string
+  duration?: number
+  status: TaskStatus
+  output?: string
+  exitCode?: number
 }
 
 export interface TaskStats {
@@ -33,14 +70,14 @@ export interface TaskStats {
 }
 
 export interface TaskService {
-  getTasks(): Promise<TaskItem[]>
+  getTasks(): Promise<Task[]>
   getTaskDetail(taskId: string): Promise<TaskDetail>
-  createTask(config: TaskConfig): Promise<void>
-  updateTask(taskId: string, config: TaskConfig): Promise<void>
+  createTask(config: TaskConfigInput): Promise<Task>
+  updateTask(taskId: string, config: TaskConfigInput): Promise<void>
   deleteTask(taskId: string): Promise<void>
   pauseTask(taskId: string): Promise<void>
   resumeTask(taskId: string): Promise<void>
-  executeTask(taskId: string): Promise<void>
-  getExecutionHistory(taskId: string): Promise<TaskExecutionRecord[]>
+  executeTask(taskId: string): Promise<ExecutionResult>
+  getExecutionHistory(taskId: string, limit?: number): Promise<TaskExecutionRecord[]>
   getTaskStats(): Promise<TaskStats>
 }
