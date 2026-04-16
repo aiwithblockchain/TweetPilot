@@ -2,9 +2,42 @@
 
 ## 文档信息
 
-- 版本：1.0
+- 版本：2.0
 - 创建日期：2026-04-15
 - 路径：docs/v2/p0/DESIGN-04-组件规范.md
+- 状态：规范基线（部分条目尚未在代码中完全落地）
+
+---
+
+## 使用说明（先读）
+
+本文件是组件设计规范，不是“当前实现快照”。
+
+请按以下优先级理解：
+
+1. **当前代码行为**优先（避免误改已上线交互）
+2. **本规范**用于后续迭代收敛和统一风格
+3. 如果规范与实现冲突，先在文档里记录偏差，再决定是否改代码
+
+关联文档：
+- `P0-03-接口设计规范.md`
+- `NEXT_PHASE_MODULE_ABSTRACTION.md`
+- `DESIGN-02-色彩体系.md`
+- `DESIGN-03-排版与间距.md`
+
+---
+
+## 当前落地偏差（必须知晓）
+
+以下是当前阶段的已知偏差：
+
+1. 部分页面仍有 emoji 图标，尚未完全替换为 Lucide
+2. 部分按钮和卡片存在硬编码颜色，尚未完全切换语义化 token
+3. 部分弹窗交互已根据实际需求定制（例如删除二次确认流程），与通用模态描述略有差异
+4. 部分页面布局已经在真实实现中迭代，不再和早期原型一一对应
+
+结论：
+- 这份文档用于统一方向，不应强行覆盖所有当前实现细节。
 
 ---
 
@@ -14,69 +47,51 @@
 
 | 变体 | 背景 | 文字 | 边框 | 场景 |
 |------|------|------|------|------|
-| **Primary** | `--color-primary` | `--color-text-inverse` (white) | none | 主要操作（创建任务、确认） |
-| **Secondary** | `transparent` | `--color-text` | `1px solid var(--color-border)` | 次要操作（取消、返回） |
-| **Ghost** | `transparent` | `--color-text-secondary` | none | 最低优先操作 |
+| **Primary** | `--color-primary` | `--color-text-inverse` | none | 主要操作（创建、确认） |
+| **Secondary** | transparent | `--color-text` | `1px solid var(--color-border)` | 次要操作（取消、返回） |
+| **Ghost** | transparent | `--color-text-secondary` | none | 低优先操作 |
 | **Danger** | `--color-danger` | white | none | 删除、不可逆操作 |
-| **Danger-ghost** | `transparent` | `--color-danger` | none | 删除确认前的警示态 |
+| **Danger-ghost** | transparent | `--color-danger` | none | 删除前提示态 |
 
 ### 1.2 尺寸
 
 | 尺寸 | 高度 | Padding | 字号 | 图标间距 |
 |------|------|---------|------|----------|
-| `sm` | 28px | `0 8px` | `--text-xs` (12px) | 4px |
-| `md` (默认) | 32px | `0 12px` | `--text-sm` (13px) | 6px |
-| `lg` | 40px | `0 16px` | `--text-base` (14px) | 8px |
+| `sm` | 28px | `0 8px` | 12px | 4px |
+| `md` | 32px | `0 12px` | 13-14px | 6px |
+| `lg` | 40px | `0 16px` | 14px | 8px |
 
 ### 1.3 状态
 
-- **Hover**：Primary 变亮 `--color-primary-hover`，Secondary 边框变亮 `--color-border-hover`
-- **Active**：Primary 变深 `--primary-700`，`transform: scale(0.98)`
-- **Disabled**：`opacity: 0.4; cursor: not-allowed`
-- **Focus**：`box-shadow: var(--shadow-ring)`，仅在键盘导航时显示（`focus-visible`）
-
-### 1.4 图标按钮
-
-纯图标按钮为正方形，宽高 = 对应尺寸高度。图标大小：`sm` 用 14px，`md` 用 16px。
+- Hover：Primary 使用 `--color-primary-hover`
+- Active：可用轻微缩放（`scale(0.98)`）
+- Disabled：`opacity: 0.4; cursor: not-allowed`
+- Focus：`focus-visible` 显示 ring
 
 ---
 
 ## 2. Input
 
-### 2.1 变体
+### 2.1 类型
 
-| 变体 | 用途 |
-|------|------|
-| **Text** | 单行输入 |
-| **Textarea** | 多行输入（可自动增高） |
-| **Select** | 下拉选择 |
-| **Search** | 搜索框（左侧带 search 图标） |
+- Text
+- Textarea
+- Select
+- Search
 
 ### 2.2 规格
 
-- 高度：32px（与 button md 一致）
-- Padding：`0 var(--space-3)`
-- 字号：`--text-base` (14px)
+- 高度：32px（单行）
 - 边框：`1px solid var(--color-border)`
-- 圆角：`var(--radius-md)` (6px)
+- 圆角：`var(--radius-md)`
 - 背景：`var(--color-bg-elevated)`
 
 ### 2.3 状态
 
-- **Placeholder**：`--color-text-tertiary`
-- **Focus**：边框变为 `--color-primary`，`box-shadow: var(--shadow-ring)`
-- **Error**：边框变为 `--color-danger`，下方显示红色错误文字
-- **Disabled**：`opacity: 0.5; cursor: not-allowed`
-
-### 2.4 表单布局
-
-Label 在上，Input 在下，间距 `--space-1.5`。表单组之间间距 `--space-4`。
-
-```
-[Label]                    ← --text-sm, --font-medium, --color-text
-[Input]                    ← 32px 高
-[Helper text / Error]      ← --text-xs, --color-text-secondary 或 --color-danger
-```
+- Placeholder：`--color-text-tertiary`
+- Focus：边框和 ring 高亮
+- Error：红色边框 + 辅助错误文案
+- Disabled：降透明 + 禁用 cursor
 
 ---
 
@@ -86,35 +101,19 @@ Label 在上，Input 在下，间距 `--space-1.5`。表单组之间间距 `--sp
 
 - 背景：`var(--color-bg-elevated)`
 - 边框：`1px solid var(--color-border)`
-- 圆角：`var(--radius-lg)` (8px)
-- 阴影：`var(--shadow-xs)`
+- 圆角：`var(--radius-lg)`
 - Padding：`var(--space-4)`
 
 ### 3.2 可交互卡片
 
-- Hover：`border-color: var(--color-border-hover)`，`box-shadow: var(--shadow-sm)`
-- Active：`transform: scale(0.99)`
-- Cursor：`pointer`
+- Hover：边框增强 + 轻阴影
+- Active：可轻微缩放
 
-### 3.3 数据积木卡片
+### 3.3 数据积木卡片（结构）
 
-数据积木是核心组件，在基础卡片上增加：
-
-```
-┌─────────────────────────────┐
-│ [Icon] 卡片标题    [刷新][×] │  ← header: padding var(--space-3) var(--space-4)
-├─────────────────────────────┤
-│                             │
-│    卡片内容区                │  ← content: padding 0 var(--space-4), min-height 200px
-│    (图表/列表/统计数字)       │
-│                             │
-├─────────────────────────────┤
-│ 最后更新: 3分钟前            │  ← footer: padding var(--space-2) var(--space-4), --text-xs, --color-text-tertiary
-└─────────────────────────────┘
-```
-
-- 拖拽时：`opacity: 0.5; border: 1px dashed var(--color-primary)`
-- 拖拽目标：`border-color: var(--color-primary); background: var(--color-primary-50)` (Dark 下用 `var(--primary-800)`)
+- Header：标题 + 操作按钮（刷新/删除）
+- Content：核心数据区
+- Footer：最后更新时间
 
 ---
 
@@ -122,150 +121,100 @@ Label 在上，Input 在下，间距 `--space-1.5`。表单组之间间距 `--sp
 
 ### 4.1 账号状态
 
-| 状态 | 圆点颜色 | 文字 | 背景 |
-|------|---------|------|------|
-| 在线 | `--color-success` | "在线" | `--color-success-muted` |
-| 离线 | `--color-danger` | "离线" | `--color-danger-muted` |
-| 验证中 | `--color-warning` | "验证中" | `--color-warning-muted` |
-
-规格：`padding: 2px var(--space-2); border-radius: var(--radius-full); font-size: --text-xs; display: inline-flex; align-items: center; gap: 6px`。圆点大小 6px。
+| 状态 | 颜色 | 文案 |
+|------|------|------|
+| 在线 | 绿 | 在线 |
+| 离线 | 红 | 离线 |
+| 验证中 | 黄 | 验证中 |
 
 ### 4.2 任务状态
 
-| 状态 | 标签样式 |
-|------|---------|
-| 运行中 | 绿色 Badge（同"在线"） |
-| 已暂停 | 灰色 Badge (`--color-text-tertiary` 文字 + `--color-bg-hover` 背景) |
-| 待执行 | 蓝色 Badge (`--color-info` + `--color-info-muted`) |
-| 失败 | 红色 Badge（同"离线"） |
-| 空闲 | 灰色 Badge（同"已暂停"） |
+- 运行中：绿
+- 已暂停：灰
+- 失败：红
+- 已完成：中性/成功态
 
 ---
 
 ## 5. Sidebar
 
-### 5.1 侧边栏整体
+### 5.1 结构
 
-- 宽度：220px（固定，不可折叠）
-- 背景：`var(--color-bg)`（与主内容区同色，通过 border 分隔）
-- 右边框：`1px solid var(--color-border)`
-- 顶部：App Logo + 名称
+- 固定导航区 + 主内容区
+- 导航项支持默认/hover/active 三态
 
-### 5.2 导航项
+### 5.2 导航图标规范
 
-```
-┌──────────────────────┐
-│ [Icon]  任务管理      │  ← 36px 高, padding: 0 var(--space-3)
-├──────────────────────┤
-│ [Icon]  数据积木      │  ← 默认态
-├──────────────────────┤
-│ [Icon]  设置          │
-└──────────────────────┘
-```
-
-- 默认态：文字 `--color-text-secondary`，背景 transparent
-- Hover：背景 `var(--color-bg-hover)`，文字 `--color-text`
-- Active：背景 `--color-primary-50`（Dark: `var(--primary-800)`），文字 `--color-primary`，左侧 2px 竖条 `--color-primary`
-- 圆角：`var(--radius-md)`
-- 图标：16px，Lucide
-
-### 5.3 底部区域
-
-侧边栏底部固定显示：
-
-- 当前工作目录路径（截断显示，hover tooltip 完整路径）
-- 主题切换按钮（dark/light）
+- 推荐 Lucide 图标
+- 尺寸统一 16px
 
 ---
 
 ## 6. Modal
 
-### 6.1 规格
+### 6.1 通用规则
 
-- 遮罩：`background: rgba(0,0,0,0.5)`（Dark），`rgba(0,0,0,0.3)`（Light）
-- 面板：`max-width: 520px; width: 90%; border-radius: var(--radius-xl); padding: var(--space-6)`
-- 背景：`var(--color-bg-elevated)`
-- 阴影：`var(--shadow-xl)`
-- 入场：`opacity 0→1, transform translateY(8px)→0, duration 200ms`
+- 遮罩 + 面板结构
+- ESC 可关闭（高危操作可关闭该能力）
+- 底部操作区默认 Secondary + Primary
 
-### 6.2 结构
+### 6.2 高危操作弹窗规则
 
-```
-┌─────────────────────────────┐
-│ 标题                   [×]   │  ← 标题 --text-xl, --font-semibold
-├─────────────────────────────┤
-│                             │
-│    内容区                    │
-│                             │
-├─────────────────────────────┤
-│              [取消] [确认]    │  ← 底部按钮区, 右对齐, gap var(--space-2)
-└─────────────────────────────┘
-```
-
-- 点击遮罩关闭（可配置为不关闭）
-- `Escape` 键关闭
-- 底部按钮：Secondary + Primary 组合
+- 删除类操作必须强调不可恢复性
+- 可采用双步骤确认（例如账号彻底删除）
 
 ---
 
 ## 7. Toast
 
-- 位置：屏幕右上角，距顶部 16px，距右 16px
-- 最大宽度：360px
-- 圆角：`var(--radius-md)`
-- 入场：`translateX(100%)→0, opacity 0→1, 200ms`
-- 自动消失：3 秒
-- 变体：`success`（绿色左边条）、`error`（红色左边条）、`info`（蓝色左边条）
+- 右上角提示
+- 支持 success / error / info
+- 自动消失，保留手动关闭能力
 
 ---
 
 ## 8. Dropdown
 
-- 触发方式：点击
-- 位置：触发元素正下方，左对齐
-- 背景：`var(--color-bg-elevated)`
-- 边框：`1px solid var(--color-border)`
-- 圆角：`var(--radius-md)`
-- 阴影：`var(--shadow-lg)`
-- 选项高度：32px
-- 选项 Hover：背景 `var(--color-bg-hover)`
-- 选项 Active/Selected：背景 `var(--color-primary-50)`（Dark: `--primary-800`），文字 `--color-primary`
-- 最大高度：320px，超出滚动
+- 触发元素下方展开
+- 选项 hover 与 selected 态明确区分
+- 超长列表需滚动容器
 
 ---
 
 ## 9. Tabs
 
-- 类型：下划线式（underline）
-- 选中态：底部 2px 线 `--color-primary`，文字 `--color-text`
-- 未选中：文字 `--color-text-secondary`
-- Hover：文字 `--color-text`
-- 间距：Tab 之间 `--space-4`
+- 下划线式
+- 选中态高亮
+- 保持文字和内容层级清晰
 
 ---
 
 ## 10. Empty State
 
-- 居中显示
-- 图标：64px，使用 `--color-text-tertiary`（或 Lucide outline 图标）
-- 标题：`--text-lg, --font-medium`
-- 描述：`--text-sm, --color-text-secondary`
-- 操作按钮：可选的 Primary 按钮
+- 居中展示图标、标题、说明
+- 可附带一个主操作按钮
 
 ---
 
 ## 11. Tooltip
 
-- 背景：Dark 模式 `var(--neutral-300)`，Light 模式 `var(--neutral-800)`
-- 文字：对应的对比色
-- 圆角：`var(--radius-sm)`
-- Padding：`4px var(--space-2)`
-- 字号：`--text-xs`
-- 延迟：300ms 显示，0ms 隐藏
+- 简短解释型文案
+- 不放长段内容
+- 避免遮挡核心操作区
+
+---
+
+## 12. 执行建议（给后续 AI）
+
+1. 新组件优先按本规范落地
+2. 改旧组件时先保持行为稳定，再收敛视觉规范
+3. 不为了“看起来统一”去改动已经验证通过的关键流程交互
+4. 当规范与真实需求冲突时，以用户流程为先，并回写文档
 
 ---
 
 ## 文档版本
 
-- 版本：1.0
+- 版本：2.0
 - 创建日期：2026-04-15
+- 最后更新：2026-04-16（补充规范状态与现状偏差说明）
