@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import SortableDataCard from '../components/SortableDataCard'
 import AddCardDialog from '../components/AddCardDialog'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { accountService, dataBlocksService } from '@/services'
+import { useToast } from '@/contexts/ToastContext'
 import type { MappedAccount } from '@/services/account'
 import type { DataBlockCard } from '@/services/data-blocks'
 import {
@@ -29,6 +31,8 @@ export default function DataBlocks() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
+  const [deleteCardId, setDeleteCardId] = useState<string | null>(null)
+  const toast = useToast()
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -64,24 +68,30 @@ export default function DataBlocks() {
       const newCard = await dataBlocksService.addCard(cardType, {})
       setCards((prev) => [...prev, newCard])
       setShowAddDialog(false)
+      toast.success('卡片添加成功')
     } catch (error) {
       console.error('Failed to add card:', error)
-      alert('添加卡片失败: ' + (error as Error).message)
+      toast.error('添加卡片失败: ' + (error as Error).message)
     }
   }
 
-  const handleDeleteCard = async (cardId: string) => {
-    if (!confirm('确定要删除这个卡片吗？')) {
-      return
-    }
+  const handleDeleteCard = (cardId: string) => {
+    setDeleteCardId(cardId)
+  }
+
+  const confirmDeleteCard = async () => {
+    if (!deleteCardId) return
 
     try {
-      await dataBlocksService.deleteCard(cardId)
+      await dataBlocksService.deleteCard(deleteCardId)
       const layout = await dataBlocksService.getLayout()
       setCards(layout)
+      toast.success('卡片删除成功')
     } catch (error) {
       console.error('Failed to delete card:', error)
-      alert('删除失败: ' + (error as Error).message)
+      toast.error('删除失败: ' + (error as Error).message)
+    } finally {
+      setDeleteCardId(null)
     }
   }
 
@@ -214,7 +224,7 @@ export default function DataBlocks() {
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={cards.map((card) => card.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {cards.map((card) => (
                   <SortableDataCard
                     key={card.id}
@@ -237,6 +247,17 @@ export default function DataBlocks() {
           existingCards={cards}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteCardId !== null}
+        title="删除卡片"
+        message="确定要删除这个卡片吗？此操作无法撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        danger={true}
+        onConfirm={confirmDeleteCard}
+        onCancel={() => setDeleteCardId(null)}
+      />
     </div>
   )
 }

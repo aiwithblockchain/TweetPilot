@@ -4,7 +4,9 @@ import TaskConfigDialog from '../components/TaskConfigDialog'
 import TaskDetailSidebar from '../components/TaskDetailSidebar'
 import ExecutingModal from '../components/ExecutingModal'
 import ExecutionResultModal from '../components/ExecutionResultModal'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { taskService } from '@/services'
+import { useToast } from '@/contexts/ToastContext'
 import type { ExecutionResult, Task } from '@/services/task'
 
 export type { ExecutionResult, Task }
@@ -19,6 +21,8 @@ export default function TaskManagement() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [executingTask, setExecutingTask] = useState<Task | null>(null)
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null)
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     loadTasks()
@@ -59,20 +63,25 @@ export default function TaskManagement() {
     loadTasks()
   }
 
-  const handleTaskDeleted = async (taskId: string) => {
-    if (!confirm('确定要删除这个任务吗？')) {
-      return
-    }
+  const handleTaskDeleted = (taskId: string) => {
+    setDeleteTaskId(taskId)
+  }
+
+  const confirmDeleteTask = async () => {
+    if (!deleteTaskId) return
 
     try {
-      await taskService.deleteTask(taskId)
-      setTasks((prev) => prev.filter((t) => t.id !== taskId))
-      if (selectedTaskId === taskId) {
+      await taskService.deleteTask(deleteTaskId)
+      setTasks((prev) => prev.filter((t) => t.id !== deleteTaskId))
+      if (selectedTaskId === deleteTaskId) {
         setSelectedTaskId(null)
       }
+      toast.success('任务删除成功')
     } catch (error) {
       console.error('Failed to delete task:', error)
-      alert('删除失败: ' + (error as Error).message)
+      toast.error('删除失败: ' + (error as Error).message)
+    } finally {
+      setDeleteTaskId(null)
     }
   }
 
@@ -98,7 +107,7 @@ export default function TaskManagement() {
     } catch (error) {
       console.error('Failed to execute task:', error)
       setExecutingTask(null)
-      alert('执行失败: ' + (error as Error).message)
+      toast.error('执行失败: ' + (error as Error).message)
     }
   }
 
@@ -196,7 +205,7 @@ export default function TaskManagement() {
             <div className="text-xs text-secondary">点击"创建任务"按钮添加第一个任务</div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredTasks.map((task) => (
               <TaskCard
                 key={task.id}
@@ -235,6 +244,18 @@ export default function TaskManagement() {
       {executionResult && (
         <ExecutionResultModal result={executionResult} onClose={() => setExecutionResult(null)} />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteTaskId !== null}
+        title="删除任务"
+        message="确定要删除这个任务吗？此操作无法撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        danger={true}
+        onConfirm={confirmDeleteTask}
+        onCancel={() => setDeleteTaskId(null)}
+      />
     </div>
   )
 }

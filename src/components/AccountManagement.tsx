@@ -98,7 +98,7 @@ export default function AccountManagement() {
           <div className="text-xs text-secondary">点击"映射账号"按钮添加第一个账号</div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {accounts.map((account) => (
             <AccountCard
               key={account.screenName}

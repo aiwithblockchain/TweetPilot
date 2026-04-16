@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import AccountManagement from '../components/AccountManagement'
 import { settingsService } from '@/services'
+import { useToast } from '@/contexts/ToastContext'
 import type { AppSettings } from '@/services/settings'
 
 type SettingsSection = 'accounts' | 'preferences'
@@ -97,6 +98,7 @@ function PreferencesSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -135,13 +137,13 @@ function PreferencesSection() {
 
   const handleSave = async () => {
     if (!localBridgeIp.trim()) {
-      alert('IP 地址不能为空')
+      toast.warning('IP 地址不能为空')
       return
     }
 
     const port = Number(localBridgePort)
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      alert('端口必须是 1-65535 的整数')
+      toast.warning('端口必须是 1-65535 的整数')
       return
     }
 
@@ -159,10 +161,10 @@ function PreferencesSection() {
         timeoutMs: localBridgeTimeoutMs,
       })
 
-      alert('设置已保存')
+      toast.success('设置已保存')
     } catch (error) {
       console.error('Failed to save settings:', error)
-      alert('保存失败: ' + (error as Error).message)
+      toast.error('保存失败: ' + (error as Error).message)
     } finally {
       setSaving(false)
     }
