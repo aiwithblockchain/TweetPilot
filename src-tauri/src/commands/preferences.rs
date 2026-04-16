@@ -1,22 +1,8 @@
-use once_cell::sync::Lazy;
+use crate::services::storage;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
 
-static PREFERENCES: Lazy<Mutex<Preferences>> = Lazy::new(|| {
-    Mutex::new(Preferences {
-        language: "zh-CN".to_string(),
-        theme: "dark".to_string(),
-        startup: "last-workspace".to_string(),
-    })
-});
-
-static LOCAL_BRIDGE_CONFIG: Lazy<Mutex<LocalBridgeConfig>> = Lazy::new(|| {
-    Mutex::new(LocalBridgeConfig {
-        endpoint: "http://127.0.0.1:9527".to_string(),
-        api_key: String::new(),
-        timeout_ms: 10000,
-    })
-});
+const PREFERENCES_FILE: &str = "preferences.json";
+const LOCAL_BRIDGE_CONFIG_FILE: &str = "local-bridge-config.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preferences {
@@ -32,28 +18,38 @@ pub struct LocalBridgeConfig {
     pub timeout_ms: u32,
 }
 
+fn default_preferences() -> Preferences {
+    Preferences {
+        language: "zh-CN".to_string(),
+        theme: "dark".to_string(),
+        startup: "last-workspace".to_string(),
+    }
+}
+
+fn default_local_bridge_config() -> LocalBridgeConfig {
+    LocalBridgeConfig {
+        endpoint: "http://127.0.0.1:9527".to_string(),
+        api_key: String::new(),
+        timeout_ms: 10000,
+    }
+}
+
 #[tauri::command]
 pub async fn save_preferences(preferences: Preferences) -> Result<(), String> {
-    let mut stored = PREFERENCES.lock().unwrap();
-    *stored = preferences;
-    Ok(())
+    storage::write_json(PREFERENCES_FILE, &preferences)
 }
 
 #[tauri::command]
 pub async fn get_preferences() -> Result<Preferences, String> {
-    let stored = PREFERENCES.lock().unwrap();
-    Ok(stored.clone())
+    storage::read_json(PREFERENCES_FILE, default_preferences())
 }
 
 #[tauri::command]
 pub async fn get_local_bridge_config() -> Result<LocalBridgeConfig, String> {
-    let config = LOCAL_BRIDGE_CONFIG.lock().unwrap();
-    Ok(config.clone())
+    storage::read_json(LOCAL_BRIDGE_CONFIG_FILE, default_local_bridge_config())
 }
 
 #[tauri::command]
 pub async fn update_local_bridge_config(config: LocalBridgeConfig) -> Result<(), String> {
-    let mut stored = LOCAL_BRIDGE_CONFIG.lock().unwrap();
-    *stored = config;
-    Ok(())
+    storage::write_json(LOCAL_BRIDGE_CONFIG_FILE, &config)
 }
