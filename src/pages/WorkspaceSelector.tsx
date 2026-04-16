@@ -1,13 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { workspaceService } from '@/services'
 
 interface WorkspaceSelectorProps {
+  currentWorkspace: string | null
   onWorkspaceSelected: (path: string) => void
 }
 
-export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSelectorProps) {
+export default function WorkspaceSelector({
+  currentWorkspace,
+  onWorkspaceSelected,
+}: WorkspaceSelectorProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      onWorkspaceSelected(currentWorkspace)
+    }
+  }, [currentWorkspace, onWorkspaceSelected])
 
   const handleSelectDirectory = async () => {
     setLoading(true)
@@ -16,10 +26,12 @@ export default function WorkspaceSelector({ onWorkspaceSelected }: WorkspaceSele
     try {
       const path = await workspaceService.selectLocalDirectory()
 
-      if (path) {
-        await workspaceService.setCurrentWorkspace(path)
-        onWorkspaceSelected(path)
+      if (!path) {
+        return
       }
+
+      await workspaceService.setCurrentWorkspace(path)
+      onWorkspaceSelected(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to select directory')
     } finally {

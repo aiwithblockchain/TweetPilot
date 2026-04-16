@@ -49,7 +49,12 @@ function App() {
   }
 
   if (!currentWorkspace) {
-    return <WorkspaceSelector onWorkspaceSelected={setCurrentWorkspace} />
+    return (
+      <WorkspaceSelector
+        currentWorkspace={currentWorkspace}
+        onWorkspaceSelected={setCurrentWorkspace}
+      />
+    )
   }
 
   return (
@@ -81,9 +86,19 @@ function App() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setShowWorkspaceDropdown(false)
-                    setCurrentWorkspace(null)
+                    try {
+                      const path = await workspaceService.selectLocalDirectory()
+                      if (!path) {
+                        return
+                      }
+                      await workspaceService.setCurrentWorkspace(path)
+                      setCurrentWorkspace(path)
+                    } catch (error) {
+                      console.error('Failed to open workspace:', error)
+                      alert('打开工作目录失败: ' + (error as Error).message)
+                    }
                   }}
                   className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors"
                 >
