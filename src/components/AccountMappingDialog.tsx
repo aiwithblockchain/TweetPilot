@@ -19,7 +19,7 @@ export default function AccountMappingDialog({
   const [accounts, setAccounts] = useState<AvailableAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [mapping, setMapping] = useState(false)
+  const [mappingAccount, setMappingAccount] = useState<string | null>(null)
 
   useEffect(() => {
     loadAvailableAccounts()
@@ -37,13 +37,13 @@ export default function AccountMappingDialog({
   }
 
   const handleMapAccount = async (account: AvailableAccount) => {
-    setMapping(true)
+    setMappingAccount(account.screenName)
     try {
       await invoke('map_account', { screenName: account.screenName })
       onAccountMapped()
     } catch (err) {
       alert('映射失败: ' + (err instanceof Error ? err.message : '未知错误'))
-      setMapping(false)
+      setMappingAccount(null)
     }
   }
 
@@ -92,11 +92,9 @@ export default function AccountMappingDialog({
               </p>
               <div className="grid gap-3">
                 {accounts.map((account) => (
-                  <button
+                  <div
                     key={account.screenName}
-                    onClick={() => handleMapAccount(account)}
-                    disabled={mapping}
-                    className="flex items-center gap-3 p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] hover:shadow-sm transition-all text-left disabled:opacity-50"
+                    className="flex items-center gap-3 p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg"
                   >
                     <img
                       src={account.avatar}
@@ -107,7 +105,14 @@ export default function AccountMappingDialog({
                       <div className="font-semibold text-sm">{account.displayName}</div>
                       <div className="text-xs text-secondary">{account.screenName}</div>
                     </div>
-                  </button>
+                    <button
+                      onClick={() => handleMapAccount(account)}
+                      disabled={mappingAccount === account.screenName}
+                      className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+                    >
+                      {mappingAccount === account.screenName ? '映射中...' : '确认映射'}
+                    </button>
+                  </div>
                 ))}
               </div>
             </>

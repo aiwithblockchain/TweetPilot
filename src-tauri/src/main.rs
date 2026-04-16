@@ -25,6 +25,10 @@ fn main() {
             account::get_mapped_accounts,
             account::verify_account_status,
             account::refresh_all_accounts_status,
+            account::get_account_settings,
+            account::save_account_personality,
+            account::unlink_account,
+            account::delete_account_completely,
             // Task commands
             task::create_task,
             task::get_tasks,

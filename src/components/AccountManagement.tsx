@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import AccountCard from './AccountCard'
 import AccountMappingDialog from './AccountMappingDialog'
+import AccountSettingsDialog from './AccountSettingsDialog'
 
 export interface TwitterAccount {
   screenName: string
@@ -15,6 +16,7 @@ export default function AccountManagement() {
   const [accounts, setAccounts] = useState<TwitterAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [showMappingDialog, setShowMappingDialog] = useState(false)
+  const [settingsScreenName, setSettingsScreenName] = useState<string | null>(null)
 
   useEffect(() => {
     loadAccounts()
@@ -121,8 +123,7 @@ export default function AccountManagement() {
             <AccountCard
               key={account.screenName}
               account={account}
-              onRefresh={() => refreshAccountStatus(account.screenName)}
-              onDelete={() => handleDeleteAccount(account.screenName)}
+              onSettings={() => setSettingsScreenName(account.screenName)}
             />
           ))}
         </div>
@@ -132,6 +133,17 @@ export default function AccountManagement() {
         <AccountMappingDialog
           onClose={() => setShowMappingDialog(false)}
           onAccountMapped={handleAccountMapped}
+        />
+      )}
+
+      {settingsScreenName && (
+        <AccountSettingsDialog
+          screenName={settingsScreenName}
+          onClose={() => setSettingsScreenName(null)}
+          onAccountDeleted={() => {
+            setSettingsScreenName(null)
+            loadAccounts()
+          }}
         />
       )}
     </div>

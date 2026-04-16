@@ -126,3 +126,61 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
     // TODO: 刷新所有账号状态
     Ok(())
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSettings {
+    pub twitter_id: String,
+    pub name: String,
+    pub screen_name: String,
+    pub avatar: String,
+    pub is_linked: bool,
+    pub extension_id: Option<String>,
+    pub extension_name: Option<String>,
+    pub personality: String,
+}
+
+#[tauri::command]
+pub async fn get_account_settings(screen_name: String) -> Result<AccountSettings, String> {
+    let mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    let account = mapped
+        .iter()
+        .find(|a| a.screen_name == screen_name)
+        .ok_or_else(|| "Account not found".to_string())?;
+
+    // Simulate fetching additional settings
+    Ok(AccountSettings {
+        twitter_id: format!("{}123456789", &screen_name[1..]), // Fake Twitter ID
+        name: account.display_name.clone(),
+        screen_name: account.screen_name.clone(),
+        avatar: account.avatar.clone(),
+        is_linked: true,
+        extension_id: Some("ext_abc123".to_string()),
+        extension_name: Some("LocalBridge Extension".to_string()),
+        personality: String::new(), // TODO: Load from persistent storage
+    })
+}
+
+#[tauri::command]
+pub async fn save_account_personality(screen_name: String, personality: String) -> Result<(), String> {
+    println!("Saving personality for {}: {}", screen_name, personality);
+    // TODO: Save to persistent storage
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unlink_account(screen_name: String) -> Result<(), String> {
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
+    println!("Unlinked account: {}", screen_name);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_account_completely(screen_name: String) -> Result<(), String> {
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
+    println!("Completely deleted account: {}", screen_name);
+    // TODO: Delete local data blocks
+    Ok(())
+}

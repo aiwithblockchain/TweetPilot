@@ -2,11 +2,10 @@ import { TwitterAccount } from './AccountManagement'
 
 interface AccountCardProps {
   account: TwitterAccount
-  onRefresh: () => void
-  onDelete: () => void
+  onSettings: () => void
 }
 
-export default function AccountCard({ account, onRefresh, onDelete }: AccountCardProps) {
+export default function AccountCard({ account, onSettings }: AccountCardProps) {
   const formatRelativeTime = (isoString: string) => {
     const date = new Date(isoString)
     const now = new Date()
@@ -70,26 +69,11 @@ export default function AccountCard({ account, onRefresh, onDelete }: AccountCar
 
       <div className="flex gap-1">
         <button
-          onClick={onRefresh}
-          disabled={account.status === 'verifying'}
-          className="w-8 h-8 flex items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors disabled:opacity-50"
-          title="刷新状态"
+          onClick={onSettings}
+          className="w-8 h-8 flex items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors"
+          title="设置"
         >
-          🔄
-        </button>
-        {account.status === 'offline' && (
-          <button
-            className="h-8 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
-          >
-            重新连接
-          </button>
-        )}
-        <button
-          onClick={onDelete}
-          className="w-8 h-8 flex items-center justify-center text-sm text-red-500 hover:bg-red-500/10 rounded transition-colors"
-          title="删除"
-        >
-          ×
+          ⚙️
         </button>
       </div>
     </div>

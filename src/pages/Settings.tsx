@@ -53,7 +53,8 @@ export default function Settings() {
 function PreferencesSection() {
   const [language, setLanguage] = useState('zh-CN')
   const [theme, setTheme] = useState('dark')
-  const [startup, setStartup] = useState('last-workspace')
+  const [localBridgeIp, setLocalBridgeIp] = useState('127.0.0.1')
+  const [localBridgePort, setLocalBridgePort] = useState('10088')
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme)
@@ -79,7 +80,12 @@ function PreferencesSection() {
     try {
       // Save preferences to backend
       await invoke('save_preferences', {
-        preferences: { language, theme, startup }
+        preferences: {
+          language,
+          theme,
+          localBridgeIp,
+          localBridgePort: parseInt(localBridgePort)
+        }
       })
       alert('设置已保存')
     } catch (error) {
@@ -92,42 +98,60 @@ function PreferencesSection() {
     <div>
       <h3 className="text-base font-semibold mb-4">系统偏好</h3>
 
-      <div className="max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1.5">语言</label>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
-          >
-            <option value="zh-CN">中文</option>
-            <option value="en-US">English</option>
-          </select>
+      <div className="max-w-md space-y-6">
+        {/* General Settings */}
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">语言</label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
+            >
+              <option value="zh-CN">中文</option>
+              <option value="en-US">English</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5">主题</label>
+            <select
+              value={theme}
+              onChange={(e) => handleThemeChange(e.target.value)}
+              className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
+            >
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+              <option value="system">跟随系统</option>
+            </select>
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1.5">主题</label>
-          <select
-            value={theme}
-            onChange={(e) => handleThemeChange(e.target.value)}
-            className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
-          >
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-            <option value="system">跟随系统</option>
-          </select>
-        </div>
+        {/* LocalBridge Settings */}
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4 space-y-4">
+          <div className="text-sm font-semibold mb-3">LocalBridge 设置</div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1.5">启动时行为</label>
-          <select
-            value={startup}
-            onChange={(e) => setStartup(e.target.value)}
-            className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
-          >
-            <option value="last-workspace">打开上次工作目录</option>
-            <option value="show-selector">显示选择界面</option>
-          </select>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">IP 地址</label>
+            <input
+              type="text"
+              value={localBridgeIp}
+              onChange={(e) => setLocalBridgeIp(e.target.value)}
+              placeholder="127.0.0.1"
+              className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5">端口</label>
+            <input
+              type="text"
+              value={localBridgePort}
+              onChange={(e) => setLocalBridgePort(e.target.value)}
+              placeholder="10088"
+              className="w-full h-8 px-3 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded"
+            />
+          </div>
         </div>
 
         <button
