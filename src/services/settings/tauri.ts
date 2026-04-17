@@ -48,15 +48,15 @@ export const settingsTauriService: SettingsService = {
   },
 
   async getLocalBridgeConfig() {
-    const response = await tauriInvoke<TauriLocalBridgeConfig>('get_localbridge_config')
+    const response = await tauriInvoke<TauriLocalBridgeConfig>('get_local_bridge_config')
     return mapLocalBridgeConfig(response)
   },
 
   async updateLocalBridgeConfig(config) {
-    await tauriInvoke<void>('update_localbridge_config', {
+    await tauriInvoke<void>('update_local_bridge_config', {
       endpoint: config.endpoint,
-      timeoutMs: config.timeoutMs,
-      syncIntervalMs: config.syncIntervalMs,
+      timeout_ms: config.timeoutMs,
+      sync_interval_ms: config.syncIntervalMs,
     })
   },
 

@@ -44,4 +44,13 @@ export const workspaceTauriService: WorkspaceService = {
   async openWorkspaceInNewWindow() {
     await tauriInvoke<void>('open_workspace_in_new_window')
   },
+
+  async checkDirectoryExists(path: string) {
+    try {
+      await tauriInvoke<void>('check_directory_exists', { path })
+      return true
+    } catch {
+      return false
+    }
+  },
 }

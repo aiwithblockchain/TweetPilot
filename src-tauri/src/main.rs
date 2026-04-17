@@ -43,6 +43,7 @@ fn main() {
             workspace::clear_current_workspace_command,
             workspace::get_current_workspace,
             workspace::open_workspace_in_new_window,
+            workspace::check_directory_exists,
             // Account commands
             account::get_available_accounts,
             account::map_account,

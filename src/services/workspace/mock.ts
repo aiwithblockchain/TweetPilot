@@ -83,4 +83,10 @@ export const workspaceMockService: WorkspaceService = {
       throw new Error('当前没有可打开的工作目录')
     }
   },
+
+  async checkDirectoryExists(_path: string) {
+    await randomDelay(50, 100)
+    // In mock mode, assume all directories exist
+    return true
+  },
 }

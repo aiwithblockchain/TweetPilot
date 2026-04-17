@@ -96,14 +96,9 @@ function App() {
                   <button
                     onClick={async () => {
                       setShowWorkspaceDropdown(false)
-                      isSwitchingWorkspaceRef.current = true
-                      setCurrentWorkspace(null)
-
                       try {
                         const path = await workspaceService.selectLocalDirectory()
                         if (!path) {
-                          const existingWorkspace = await workspaceService.getCurrentWorkspace()
-                          setCurrentWorkspace(existingWorkspace)
                           return
                         }
                         await workspaceService.setCurrentWorkspace(path)
@@ -111,10 +106,6 @@ function App() {
                       } catch (error) {
                         console.error('Failed to open workspace:', error)
                         alert('打开工作目录失败: ' + (error as Error).message)
-                        const existingWorkspace = await workspaceService.getCurrentWorkspace()
-                        setCurrentWorkspace(existingWorkspace)
-                      } finally {
-                        isSwitchingWorkspaceRef.current = false
                       }
                     }}
                     className="w-full px-3 py-2 text-xs text-left hover:bg-[var(--color-surface)] transition-colors"

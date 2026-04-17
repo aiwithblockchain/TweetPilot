@@ -48,13 +48,6 @@ const ACTION_NAME_PRESETS: Record<TaskFormAction, string> = {
   'tweetclaw.like_tweet': '点赞推文',
 }
 
-const SCHEDULE_PRESETS = [
-  { label: '每 30 分钟', value: '*/30 * * * *' },
-  { label: '每 1 小时', value: '0 */1 * * *' },
-  { label: '每天上午 9 点', value: '0 9 * * *' },
-  { label: '每天晚上 8 点', value: '0 20 * * *' },
-]
-
 export default function TaskConfigDialog({
   onClose,
   onTaskCreated,
@@ -67,7 +60,28 @@ export default function TaskConfigDialog({
   const [taskAction, setTaskAction] = useState<TaskFormAction>(
     initialValues?.taskAction ?? 'tweetclaw.post_tweet'
   )
-  const [schedule, setSchedule] = useState(initialValues?.schedule ?? '0 */1 * * *')
+  const [intervalValue, setIntervalValue] = useState(1)
+  const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
+
+  // Parse schedule from initialValues if in edit mode
+  useEffect(() => {
+    if (initialValues?.schedule) {
+      const match = initialValues.schedule.match(/^\*\/(\d+)/)
+      if (match) {
+        const minutes = Number(match[1])
+        if (minutes < 60) {
+          setIntervalValue(minutes)
+          setIntervalUnit('minutes')
+        } else if (minutes < 1440) {
+          setIntervalValue(minutes / 60)
+          setIntervalUnit('hours')
+        } else {
+          setIntervalValue(minutes / 1440)
+          setIntervalUnit('days')
+        }
+      }
+    }
+  }, [initialValues?.schedule])
   const [accountScreenName, setAccountScreenName] = useState(initialValues?.accountScreenName ?? '')
   const [tweetId, setTweetId] = useState(initialValues?.tweetId ?? '')
   const [text, setText] = useState(initialValues?.text ?? '')
@@ -148,8 +162,8 @@ export default function TaskConfigDialog({
       return taskAction === 'tweetclaw.post_tweet' ? '请输入推文内容' : '请输入回复内容'
     }
 
-    if (taskType === 'scheduled' && !schedule.trim()) {
-      return '请输入定时规则'
+    if (taskType === 'scheduled' && intervalValue < 1) {
+      return '执行间隔必须大于 0'
     }
 
     return null
@@ -165,12 +179,23 @@ export default function TaskConfigDialog({
     setCreating(true)
     setError(null)
 
+    const getIntervalMinutes = () => {
+      switch (intervalUnit) {
+        case 'minutes':
+          return intervalValue
+        case 'hours':
+          return intervalValue * 60
+        case 'days':
+          return intervalValue * 1440
+      }
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
       taskType,
       scriptPath: taskAction,
-      schedule: taskType === 'scheduled' ? schedule.trim() : undefined,
+      schedule: taskType === 'scheduled' ? `*/${getIntervalMinutes()} * * * *` : undefined,
       accountScreenName,
       tweetId: requiresTweetId ? tweetId.trim() : undefined,
       text: requiresText ? text.trim() : undefined,
@@ -356,32 +381,26 @@ export default function TaskConfigDialog({
 
           {taskType === 'scheduled' && (
             <div>
-              <label className="block text-sm font-medium mb-1.5">Cron 定时规则</label>
-              <div className="grid gap-2 md:grid-cols-2 mb-2">
-                {SCHEDULE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    onClick={() => setSchedule(preset.value)}
-                    className={`rounded border px-3 py-2 text-left text-xs transition-colors ${
-                      schedule === preset.value
-                        ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[#6D5BF6]/50'
-                    }`}
-                  >
-                    <div className="font-medium text-sm text-[var(--color-text)]">{preset.label}</div>
-                    <div className="mt-1 text-secondary font-mono">{preset.value}</div>
-                  </button>
-                ))}
+              <label className="block text-sm font-medium mb-1.5">执行间隔</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={intervalValue}
+                  onChange={(e) => setIntervalValue(Number(e.target.value))}
+                  min="1"
+                  className="w-24 h-9 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+                />
+                <select
+                  value={intervalUnit}
+                  onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                  className="h-9 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+                >
+                  <option value="minutes">分钟</option>
+                  <option value="hours">小时</option>
+                  <option value="days">天</option>
+                </select>
+                <span className="text-sm text-secondary">执行一次</span>
               </div>
-              <input
-                type="text"
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
-                placeholder="输入 Cron 表达式，如：0 */2 * * *"
-                className="w-full h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
-              />
-              <div className="mt-1 text-xs text-secondary">格式：分 时 日 月 周</div>
             </div>
           )}
 

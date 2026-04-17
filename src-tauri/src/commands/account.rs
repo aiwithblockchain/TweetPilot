@@ -106,7 +106,12 @@ pub struct TwitterAccount {
     pub instance_id: Option<String>,
     pub extension_name: Option<String>,
     pub default_tab_id: Option<i32>,
+    #[serde(default = "default_is_logged_in")]
     pub is_logged_in: bool,
+}
+
+fn default_is_logged_in() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

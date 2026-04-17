@@ -2,7 +2,7 @@ use crate::services::storage;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const WORKSPACE_CONFIG_FILE: &str = "config.json";
 const RECENT_WORKSPACES_FILE: &str = "recent-workspaces.json";
@@ -110,7 +110,14 @@ fn extract_repo_name(url: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn clone_from_github(repository_url: String, target_path: String) -> Result<String, String> {
+pub async fn clone_from_github(
+    repository_url: String,
+    target_path: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
     let repo_url = repository_url.trim();
     let target_dir = Path::new(&target_path);
 
@@ -145,15 +152,32 @@ pub async fn clone_from_github(repository_url: String, target_path: String) -> R
     std::fs::create_dir_all(target_dir)
         .map_err(|e| format!("创建目录失败: {}", e))?;
 
-    // 8. 执行 git clone
-    let output = Command::new("git")
+    // 8. 执行 git clone with progress
+    let mut child = Command::new("git")
         .arg("clone")
+        .arg("--progress")
         .arg(repo_url)
         .arg(&final_target_dir)
-        .output()
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("执行 git clone 失败: {}", e))?;
 
-    // 9. 检查克隆是否成功
+    // 9. 读取进度输出
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                let _ = app.emit("clone-progress", &line);
+            }
+        }
+    }
+
+    // 10. 等待命令完成
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("等待 git clone 完成失败: {}", e))?;
+
+    // 11. 检查克隆是否成功
     if !output.status.success() {
         let error_msg = String::from_utf8_lossy(&output.stderr);
 
@@ -207,6 +231,11 @@ pub async fn clear_current_workspace_command() -> Result<(), String> {
 pub async fn get_current_workspace() -> Result<Option<String>, String> {
     let config = load_workspace_config()?;
     Ok(config.current_workspace)
+}
+
+#[tauri::command]
+pub async fn check_directory_exists(path: String) -> Result<bool, String> {
+    Ok(Path::new(&path).exists())
 }
 
 #[tauri::command]

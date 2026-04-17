@@ -12,4 +12,5 @@ export interface WorkspaceService {
   clearCurrentWorkspace(): Promise<void>
   getCurrentWorkspace(): Promise<string | null>
   openWorkspaceInNewWindow(): Promise<void>
+  checkDirectoryExists(path: string): Promise<boolean>
 }
