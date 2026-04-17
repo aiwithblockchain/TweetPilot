@@ -3,6 +3,7 @@ import type { Task } from '@/services/task'
 interface TaskCardProps {
   task: Task
   onViewDetail: () => void
+  onEdit: () => void
   onExecute: () => void
   onPause: () => void
   onResume: () => void
@@ -26,6 +27,7 @@ const STATUS_LABELS: Record<Task['status'], string> = {
 export default function TaskCard({
   task,
   onViewDetail,
+  onEdit,
   onExecute,
   onPause,
   onResume,
@@ -131,6 +133,12 @@ export default function TaskCard({
           className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
         >
           查看详情
+        </button>
+        <button
+          onClick={onEdit}
+          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+        >
+          编辑
         </button>
         {task.type === 'immediate' ? (
           <button

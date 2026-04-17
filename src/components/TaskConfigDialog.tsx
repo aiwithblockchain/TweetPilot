@@ -2,12 +2,27 @@ import { useEffect, useMemo, useState } from 'react'
 import type { MappedAccount, TaskAction, TaskType } from '@/services'
 import { accountService, taskService } from '@/services'
 
+type TaskFormAction = TaskAction
+
 interface TaskConfigDialogProps {
   onClose: () => void
-  onTaskCreated: () => void
+  onTaskCreated: (mode: 'create' | 'edit') => void
+  initialValues?: TaskFormValues
+  mode?: 'create' | 'edit'
 }
 
-type TaskFormAction = TaskAction
+interface TaskFormValues {
+  id?: string
+  name: string
+  description?: string
+  taskType: TaskType
+  taskAction: TaskFormAction
+  schedule?: string
+  accountScreenName?: string
+  tweetId?: string
+  text?: string
+  query?: string
+}
 
 const ACTION_OPTIONS: Array<{ value: TaskFormAction; label: string; description: string }> = [
   {
@@ -40,16 +55,23 @@ const SCHEDULE_PRESETS = [
   { label: '每天晚上 8 点', value: '0 20 * * *' },
 ]
 
-export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigDialogProps) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [taskType, setTaskType] = useState<TaskType>('immediate')
-  const [taskAction, setTaskAction] = useState<TaskFormAction>('tweetclaw.post_tweet')
-  const [schedule, setSchedule] = useState('0 */1 * * *')
-  const [accountScreenName, setAccountScreenName] = useState('')
-  const [tweetId, setTweetId] = useState('')
-  const [text, setText] = useState('')
-  const [query, setQuery] = useState('')
+export default function TaskConfigDialog({
+  onClose,
+  onTaskCreated,
+  initialValues,
+  mode = 'create',
+}: TaskConfigDialogProps) {
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [description, setDescription] = useState(initialValues?.description ?? '')
+  const [taskType, setTaskType] = useState<TaskType>(initialValues?.taskType ?? 'immediate')
+  const [taskAction, setTaskAction] = useState<TaskFormAction>(
+    initialValues?.taskAction ?? 'tweetclaw.post_tweet'
+  )
+  const [schedule, setSchedule] = useState(initialValues?.schedule ?? '0 */1 * * *')
+  const [accountScreenName, setAccountScreenName] = useState(initialValues?.accountScreenName ?? '')
+  const [tweetId, setTweetId] = useState(initialValues?.tweetId ?? '')
+  const [text, setText] = useState(initialValues?.text ?? '')
+  const [query, setQuery] = useState(initialValues?.query ?? '')
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -133,7 +155,7 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
     return null
   }
 
-  const handleCreate = async () => {
+  const handleSubmit = async () => {
     const validationError = validateForm()
     if (validationError) {
       setError(validationError)
@@ -143,21 +165,28 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
     setCreating(true)
     setError(null)
 
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      taskType,
+      scriptPath: taskAction,
+      schedule: taskType === 'scheduled' ? schedule.trim() : undefined,
+      accountScreenName,
+      tweetId: requiresTweetId ? tweetId.trim() : undefined,
+      text: requiresText ? text.trim() : undefined,
+      query: query.trim() || undefined,
+    }
+
     try {
-      await taskService.createTask({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        taskType,
-        scriptPath: taskAction,
-        schedule: taskType === 'scheduled' ? schedule.trim() : undefined,
-        accountScreenName,
-        tweetId: requiresTweetId ? tweetId.trim() : undefined,
-        text: requiresText ? text.trim() : undefined,
-        query: query.trim() || undefined,
-      })
-      onTaskCreated()
+      if (mode === 'edit' && initialValues?.id) {
+        await taskService.updateTask(initialValues.id, payload)
+        onTaskCreated('edit')
+      } else {
+        await taskService.createTask(payload)
+        onTaskCreated('create')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      setError(err instanceof Error ? err.message : mode === 'edit' ? '更新失败' : '创建失败')
       setCreating(false)
     }
   }
@@ -167,7 +196,9 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
       <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-          <h3 className="text-base font-semibold">创建任务</h3>
+          <h3 className="text-base font-semibold">
+            {mode === 'edit' ? '编辑任务' : '创建任务'}
+          </h3>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-surface)] rounded transition-colors"
@@ -371,11 +402,11 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
             取消
           </button>
           <button
-            onClick={handleCreate}
+            onClick={handleSubmit}
             disabled={creating}
             className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
           >
-            {creating ? '创建中...' : '创建'}
+            {creating ? (mode === 'edit' ? '保存中...' : '创建中...') : mode === 'edit' ? '保存' : '创建'}
           </button>
         </div>
       </div>

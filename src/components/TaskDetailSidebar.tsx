@@ -5,6 +5,7 @@ import type { Task, TaskDetail } from '@/services/task'
 interface TaskDetailSidebarProps {
   taskId: string
   onClose: () => void
+  onEdit?: (task: Task) => void
 }
 
 type TabType = 'config' | 'stats' | 'history' | 'last-execution' | 'failures'
@@ -19,21 +20,7 @@ function getTaskActionLabel(task: Task) {
   return ACTION_LABELS[task.scriptPath] || task.scriptPath
 }
 
-function getTaskTargetSummary(task: Task) {
-  const parts = []
-  if (task.accountScreenName) {
-    parts.push(`账号 @${task.accountScreenName}`)
-  }
-  if (task.tweetId) {
-    parts.push(`目标推文 ${task.tweetId}`)
-  }
-  if (task.text) {
-    parts.push(`文本 ${task.text}`)
-  }
-  return parts.length > 0 ? parts.join('，') : '未配置额外字段'
-}
-
-export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebarProps) {
+export default function TaskDetailSidebar({ taskId, onClose, onEdit }: TaskDetailSidebarProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabType>('config')
@@ -103,12 +90,22 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
         <h3 className="text-base font-semibold">任务详情</h3>
-        <button
-          onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-surface)] rounded transition-colors"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-2">
+          {onEdit && (
+            <button
+              onClick={() => onEdit(task)}
+              className="h-7 px-2 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+            >
+              编辑
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-surface)] rounded transition-colors"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -178,14 +175,6 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
                 <div className="font-mono text-xs">{task.schedule}</div>
               </div>
             )}
-            <div>
-              <div className="text-xs text-secondary mb-1">底层动作标识</div>
-              <div className="text-xs break-all font-mono">{task.scriptPath}</div>
-            </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">目标摘要</div>
-              <div>{getTaskTargetSummary(task)}</div>
-            </div>
           </div>
         )}
 

@@ -170,6 +170,10 @@ export const taskMockService: TaskService = {
       scriptPath: config.scriptPath,
       parameters: config.parameters,
       schedule: config.taskType === 'scheduled' ? config.schedule : undefined,
+      accountScreenName: config.accountScreenName,
+      tweetId: config.tweetId,
+      text: config.text,
+      query: config.query,
       statistics:
         config.taskType === 'scheduled'
           ? {
@@ -203,6 +207,10 @@ export const taskMockService: TaskService = {
             scriptPath: config.scriptPath,
             schedule: config.taskType === 'scheduled' ? config.schedule : undefined,
             parameters: config.parameters,
+            accountScreenName: config.accountScreenName,
+            tweetId: config.tweetId,
+            text: config.text,
+            query: config.query,
           }
         : task
     )
