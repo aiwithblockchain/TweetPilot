@@ -14,8 +14,8 @@ pub struct Preferences {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalBridgeConfig {
     pub endpoint: String,
-    pub api_key: String,
-    pub timeout_ms: u32,
+    pub timeout_ms: u64,
+    pub sync_interval_ms: u64,
 }
 
 fn default_preferences() -> Preferences {
@@ -28,9 +28,9 @@ fn default_preferences() -> Preferences {
 
 fn default_local_bridge_config() -> LocalBridgeConfig {
     LocalBridgeConfig {
-        endpoint: "http://127.0.0.1:9527".to_string(),
-        api_key: String::new(),
-        timeout_ms: 10000,
+        endpoint: "http://127.0.0.1:10088".to_string(),
+        timeout_ms: 30000,
+        sync_interval_ms: 60000,
     }
 }
 
@@ -52,4 +52,17 @@ pub async fn get_local_bridge_config() -> Result<LocalBridgeConfig, String> {
 #[tauri::command]
 pub async fn update_local_bridge_config(config: LocalBridgeConfig) -> Result<(), String> {
     storage::write_json(LOCAL_BRIDGE_CONFIG_FILE, &config)
+}
+
+#[tauri::command]
+pub async fn test_localbridge_connection() -> Result<bool, String> {
+    use crate::services::localbridge::LocalBridgeClient;
+
+    let config = storage::read_json(LOCAL_BRIDGE_CONFIG_FILE, default_local_bridge_config())?;
+    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
+
+    match client.test_connection().await {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
 }

@@ -7,10 +7,33 @@ mod services;
 
 use commands::{workspace, account, task, data_blocks, preferences};
 
+async fn start_account_sync_task() {
+    use tokio::time::{interval, Duration};
+
+    let mut tick_interval = interval(Duration::from_secs(60));
+
+    loop {
+        tick_interval.tick().await;
+
+        match account::refresh_all_accounts_status().await {
+            Ok(_) => {
+                println!("账号状态刷新成功");
+            }
+            Err(e) => {
+                eprintln!("账号状态刷新失败: {}", e);
+            }
+        }
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .setup(|_app| {
+            tauri::async_runtime::spawn(start_account_sync_task());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Workspace commands
             workspace::select_local_directory,
@@ -54,6 +77,7 @@ fn main() {
             preferences::get_preferences,
             preferences::get_local_bridge_config,
             preferences::update_local_bridge_config,
+            preferences::test_localbridge_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

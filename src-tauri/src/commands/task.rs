@@ -205,7 +205,7 @@ fn load_tasks() -> Result<Vec<Task>, String> {
 }
 
 fn save_tasks(tasks: &[Task]) -> Result<(), String> {
-    storage::write_json(TASKS_FILE, tasks)
+    storage::write_json(TASKS_FILE, &tasks.to_vec())
 }
 
 fn load_task_details() -> Result<HashMap<String, TaskDetail>, String> {
@@ -594,7 +594,6 @@ pub async fn resume_task(task_id: String) -> Result<(), String> {
 
     upsert_task_detail(updated_task);
     persist_tasks()?;
-    Ok(())
     Ok(())
 }
 

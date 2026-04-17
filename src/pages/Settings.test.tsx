@@ -32,8 +32,8 @@ describe('Settings service integration', () => {
   it('validates and saves LocalBridge endpoint configuration', async () => {
     const config = {
       endpoint: 'http://localhost:9090',
-      apiKey: 'new-key',
       timeoutMs: 5000,
+      syncIntervalMs: 60000,
     }
 
     // Simulate user updating LocalBridge config

@@ -12,14 +12,14 @@ describe('settingsTauriService', () => {
 
     tauriInvokeMock.mockResolvedValueOnce({
       endpoint: 'http://127.0.0.1:8787',
-      api_key: 'secret-key',
       timeout_ms: 15000,
+      sync_interval_ms: 60000,
     })
 
     await expect(settingsTauriService.getLocalBridgeConfig()).resolves.toEqual({
       endpoint: 'http://127.0.0.1:8787',
-      apiKey: 'secret-key',
       timeoutMs: 15000,
+      syncIntervalMs: 60000,
     })
   })
 
@@ -30,16 +30,14 @@ describe('settingsTauriService', () => {
 
     await settingsTauriService.updateLocalBridgeConfig({
       endpoint: 'http://localhost:3000',
-      apiKey: 'bridge-token',
       timeoutMs: 30000,
+      syncIntervalMs: 60000,
     })
 
-    expect(tauriInvokeMock).toHaveBeenCalledWith('update_local_bridge_config', {
-      config: {
-        endpoint: 'http://localhost:3000',
-        api_key: 'bridge-token',
-        timeout_ms: 30000,
-      },
+    expect(tauriInvokeMock).toHaveBeenCalledWith('update_localbridge_config', {
+      endpoint: 'http://localhost:3000',
+      timeoutMs: 30000,
+      syncIntervalMs: 60000,
     })
   })
 })

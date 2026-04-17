@@ -1,4 +1,5 @@
 use crate::services::storage;
+use crate::services::localbridge::LocalBridgeClient;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -203,6 +204,75 @@ pub async fn verify_account_status(_screen_name: String) -> Result<AccountStatus
 
 #[tauri::command]
 pub async fn refresh_all_accounts_status() -> Result<(), String> {
+    // Try to sync from LocalBridge first
+    if let Ok(config) = crate::commands::preferences::get_local_bridge_config().await {
+        if let Ok(client) = LocalBridgeClient::new(config.endpoint, config.timeout_ms) {
+            // Get all extension instances (each instance = one Twitter account)
+            if let Ok(instances) = client.get_instances().await {
+                let mut synced_accounts = Vec::new();
+
+                for instance in instances {
+                    // Extract account info from each instance
+                    if let (Some(screen_name), Some(name)) = (
+                        instance.get("screen_name").and_then(|v| v.as_str()),
+                        instance.get("name").and_then(|v| v.as_str()),
+                    ) {
+                        let avatar = instance
+                            .get("profile_image_url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
+                            .to_string();
+
+                        synced_accounts.push(TwitterAccount {
+                            screen_name: if screen_name.starts_with('@') {
+                                screen_name.to_string()
+                            } else {
+                                format!("@{}", screen_name)
+                            },
+                            display_name: name.to_string(),
+                            avatar,
+                            status: AccountStatus::Online,
+                            last_verified: chrono::Utc::now().to_rfc3339(),
+                        });
+                    }
+                }
+
+                // Update mapped accounts with synced data
+                if !synced_accounts.is_empty() {
+                    with_mapped_accounts(|mapped| {
+                        let now = chrono::Utc::now().to_rfc3339();
+
+                        // Update existing accounts or add new ones
+                        for synced in &synced_accounts {
+                            if let Some(existing) = mapped.iter_mut().find(|a| a.screen_name == synced.screen_name) {
+                                existing.status = synced.status.clone();
+                                existing.last_verified = synced.last_verified.clone();
+                                existing.display_name = synced.display_name.clone();
+                                existing.avatar = synced.avatar.clone();
+                            } else {
+                                mapped.push(synced.clone());
+                            }
+                        }
+
+                        // Mark accounts not in LocalBridge as offline
+                        let synced_names: Vec<String> = synced_accounts.iter().map(|a| a.screen_name.clone()).collect();
+                        for account in mapped.iter_mut() {
+                            if !synced_names.contains(&account.screen_name) {
+                                account.status = AccountStatus::Offline;
+                                account.last_verified = now.clone();
+                            }
+                        }
+
+                        Ok(())
+                    })?;
+
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // Fallback: just refresh status of existing accounts
     with_mapped_accounts(|mapped| {
         let now = chrono::Utc::now().to_rfc3339();
         for (index, account) in mapped.iter_mut().enumerate() {

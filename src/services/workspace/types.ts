@@ -6,7 +6,7 @@ export interface WorkspaceHistory {
 
 export interface WorkspaceService {
   selectLocalDirectory(): Promise<string | null>
-  cloneFromGithub(repositoryUrl: string): Promise<string>
+  cloneFromGithub(repositoryUrl: string, targetPath: string): Promise<string>
   getRecentWorkspaces(): Promise<WorkspaceHistory[]>
   setCurrentWorkspace(path: string): Promise<void>
   clearCurrentWorkspace(): Promise<void>

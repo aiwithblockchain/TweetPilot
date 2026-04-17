@@ -92,9 +92,9 @@ function PreferencesSection() {
   const [language, setLanguage] = useState('zh-CN')
   const [theme, setTheme] = useState<AppSettings['theme']>('dark')
   const [localBridgeIp, setLocalBridgeIp] = useState('127.0.0.1')
-  const [localBridgePort, setLocalBridgePort] = useState('8000')
-  const [localBridgeApiKey, setLocalBridgeApiKey] = useState('')
+  const [localBridgePort, setLocalBridgePort] = useState('10088')
   const [localBridgeTimeoutMs, setLocalBridgeTimeoutMs] = useState(30000)
+  const [localBridgeSyncIntervalMs, setLocalBridgeSyncIntervalMs] = useState(60000)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -118,8 +118,8 @@ function PreferencesSection() {
         const { ip, port } = parseEndpoint(localBridgeConfig.endpoint)
         setLocalBridgeIp(ip)
         setLocalBridgePort(port)
-        setLocalBridgeApiKey(localBridgeConfig.apiKey)
         setLocalBridgeTimeoutMs(localBridgeConfig.timeoutMs)
+        setLocalBridgeSyncIntervalMs(localBridgeConfig.syncIntervalMs)
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : '读取设置失败')
       } finally {
@@ -157,8 +157,8 @@ function PreferencesSection() {
 
       await settingsService.updateLocalBridgeConfig({
         endpoint: `http://${localBridgeIp.trim()}:${port}`,
-        apiKey: localBridgeApiKey,
         timeoutMs: localBridgeTimeoutMs,
+        syncIntervalMs: localBridgeSyncIntervalMs,
       })
 
       toast.success('设置已保存')

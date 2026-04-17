@@ -32,7 +32,7 @@ export const workspaceMockService: WorkspaceService = {
     return '/Users/demo/projects/tweetpilot-workspace'
   },
 
-  async cloneFromGithub(repositoryUrl: string) {
+  async cloneFromGithub(repositoryUrl: string, targetPath: string) {
     await randomDelay(300, 1500)
 
     if (!repositoryUrl.trim()) {
@@ -43,7 +43,8 @@ export const workspaceMockService: WorkspaceService = {
       throw new Error('仓库地址格式非法')
     }
 
-    const clonedPath = '/Users/demo/projects/cloned-repo'
+    const repoName = repositoryUrl.split('/').pop()?.replace('.git', '') || 'repo'
+    const clonedPath = `${targetPath}/${repoName}`
     currentWorkspace = clonedPath
     updateRecentWorkspaces(clonedPath)
     return clonedPath

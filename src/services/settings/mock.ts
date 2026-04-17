@@ -76,7 +76,11 @@ export const settingsMockService: SettingsService = {
     localBridgeConfig = {
       ...config,
       endpoint: config.endpoint.trim(),
-      apiKey: config.apiKey.trim(),
     }
+  },
+
+  async testLocalBridgeConnection() {
+    await randomDelay(500, 1000)
+    return Math.random() > 0.3
   },
 }

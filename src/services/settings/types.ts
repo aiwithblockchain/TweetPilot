@@ -1,7 +1,7 @@
 export interface LocalBridgeConfig {
   endpoint: string
-  apiKey: string
   timeoutMs: number
+  syncIntervalMs: number
 }
 
 export interface AppSettings {
@@ -14,4 +14,5 @@ export interface SettingsService {
   updateSettings(settings: AppSettings): Promise<void>
   getLocalBridgeConfig(): Promise<LocalBridgeConfig>
   updateLocalBridgeConfig(config: LocalBridgeConfig): Promise<void>
+  testLocalBridgeConnection(): Promise<boolean>
 }

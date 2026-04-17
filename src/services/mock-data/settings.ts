@@ -6,7 +6,7 @@ export const defaultSettings: AppSettings = {
 }
 
 export const defaultLocalBridgeConfig: LocalBridgeConfig = {
-  endpoint: 'http://127.0.0.1:8000',
-  apiKey: '',
+  endpoint: 'http://127.0.0.1:10088',
   timeoutMs: 30000,
+  syncIntervalMs: 60000,
 }

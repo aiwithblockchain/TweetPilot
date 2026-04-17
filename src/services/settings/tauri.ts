@@ -9,8 +9,8 @@ interface TauriPreferences {
 
 interface TauriLocalBridgeConfig {
   endpoint: string
-  api_key: string
   timeout_ms: number
+  sync_interval_ms: number
 }
 
 function mapPreferencesToAppSettings(preferences: TauriPreferences): AppSettings {
@@ -30,16 +30,8 @@ function mapAppSettingsToPreferences(settings: AppSettings): TauriPreferences {
 function mapLocalBridgeConfig(config: TauriLocalBridgeConfig): LocalBridgeConfig {
   return {
     endpoint: config.endpoint,
-    apiKey: config.api_key,
     timeoutMs: config.timeout_ms,
-  }
-}
-
-function mapLocalBridgeConfigToTauri(config: LocalBridgeConfig): TauriLocalBridgeConfig {
-  return {
-    endpoint: config.endpoint,
-    api_key: config.apiKey,
-    timeout_ms: config.timeoutMs,
+    syncIntervalMs: config.sync_interval_ms,
   }
 }
 
@@ -56,13 +48,19 @@ export const settingsTauriService: SettingsService = {
   },
 
   async getLocalBridgeConfig() {
-    const response = await tauriInvoke<TauriLocalBridgeConfig>('get_local_bridge_config')
+    const response = await tauriInvoke<TauriLocalBridgeConfig>('get_localbridge_config')
     return mapLocalBridgeConfig(response)
   },
 
   async updateLocalBridgeConfig(config) {
-    await tauriInvoke<void>('update_local_bridge_config', {
-      config: mapLocalBridgeConfigToTauri(config),
+    await tauriInvoke<void>('update_localbridge_config', {
+      endpoint: config.endpoint,
+      timeoutMs: config.timeoutMs,
+      syncIntervalMs: config.syncIntervalMs,
     })
+  },
+
+  async testLocalBridgeConnection() {
+    return tauriInvoke<boolean>('test_localbridge_connection')
   },
 }

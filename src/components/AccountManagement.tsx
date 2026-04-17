@@ -4,10 +4,12 @@ import AccountMappingDialog from './AccountMappingDialog'
 import AccountSettingsDialog from './AccountSettingsDialog'
 import { accountService } from '@/services'
 import type { MappedAccount } from '@/services/account'
+import { useToast } from '@/contexts/ToastContext'
 
 export type TwitterAccount = MappedAccount
 
 export default function AccountManagement() {
+  const toast = useToast()
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [showMappingDialog, setShowMappingDialog] = useState(false)
@@ -66,6 +68,19 @@ export default function AccountManagement() {
     }
   }
 
+  const handleRefreshAllAccounts = async () => {
+    try {
+      setLoading(true)
+      await accountService.refreshAllAccountsStatus()
+      await loadAccounts()
+      toast.success('账号状态已刷新')
+    } catch (error) {
+      toast.error('刷新失败: ' + error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
 
   const handleAccountMapped = () => {
     setShowMappingDialog(false)
@@ -84,12 +99,20 @@ export default function AccountManagement() {
     <div>
       <h3 className="text-base font-semibold mb-4">Twitter 账号管理</h3>
 
-      <button
-        onClick={() => setShowMappingDialog(true)}
-        className="mb-4 h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
-      >
-        映射账号
-      </button>
+      <div className="mb-4 flex gap-2">
+        <button
+          onClick={() => setShowMappingDialog(true)}
+          className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+        >
+          映射账号
+        </button>
+        <button
+          onClick={handleRefreshAllAccounts}
+          className="h-8 px-3 text-sm bg-[#10A37F] text-white rounded hover:bg-[#0E8C6F] transition-colors"
+        >
+          刷新账号状态
+        </button>
+      </div>
 
       {accounts.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center">

@@ -30,7 +30,7 @@ fn load_cards() -> Result<Vec<Card>, String> {
 }
 
 fn save_cards(cards: &[Card]) -> Result<(), String> {
-    storage::write_json(LAYOUT_FILE, cards)
+    storage::write_json(LAYOUT_FILE, &cards.to_vec())
 }
 
 fn get_card_or_error(cards: &[Card], card_id: &str) -> Result<Card, String> {
