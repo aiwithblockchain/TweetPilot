@@ -1,5 +1,3 @@
-import { serviceMode } from '../runtime'
-import { taskMockService } from './mock'
 import { taskTauriService } from './tauri'
 
 export type {
@@ -15,4 +13,4 @@ export type {
   TaskType,
 } from './types'
 
-export const taskService = serviceMode === 'tauri' ? taskTauriService : taskMockService
+export const taskService = taskTauriService

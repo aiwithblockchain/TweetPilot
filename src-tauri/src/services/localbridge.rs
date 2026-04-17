@@ -140,6 +140,41 @@ impl LocalBridgeClient {
             .await
             .map_err(|e| format!("解析响应失败: {}", e))?;
 
+        self.parse_user_from_response(&raw)
+    }
+
+    pub async fn get_basic_info_with_instance(&self, instance_id: &str) -> Result<XUser, String> {
+        let url = format!("{}/api/v1/x/basic_info", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header("X-Instance-ID", instance_id)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    "无法连接到 LocalBridge".to_string()
+                } else {
+                    format!("请求失败: {}", e)
+                }
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("API 返回错误 {}: {}", status, body));
+        }
+
+        let raw: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("解析响应失败: {}", e))?;
+
+        self.parse_user_from_response(&raw)
+    }
+
+    fn parse_user_from_response(&self, raw: &serde_json::Value) -> Result<XUser, String> {
+
         let data = raw
             .get("data")
             .and_then(|d| d.get("data"))

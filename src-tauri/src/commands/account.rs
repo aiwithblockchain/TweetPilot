@@ -314,61 +314,57 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
         Err(_) => return Err("LocalBridge 配置未设置".to_string()),
     };
 
-    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
+    let client = LocalBridgeClient::new(config.endpoint.clone(), config.timeout_ms)?;
 
     // Get all extension instances
     let instances = client.get_instances().await?;
-    let status = client.get_status().await.ok();
+
+    println!("=== 发现 {} 个实例 ===", instances.len());
 
     let mut synced_accounts = Vec::new();
 
     for instance in instances {
-        if let Some(screen_name) = instance.get("screen_name").and_then(|v| v.as_str()) {
-            let normalized_screen_name = if screen_name.starts_with('@') {
-                screen_name.to_string()
-            } else {
-                format!("@{}", screen_name)
-            };
+        let instance_id = instance.get("instanceId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "Instance missing instanceId".to_string())?;
 
-            // Get basic info for this account
-            let basic_info = client.get_basic_info().await.ok();
+        let instance_name = instance.get("instanceName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
 
-            let display_name = instance
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string();
+        println!("处理实例: {} (ID: {})", instance_name, instance_id);
 
-            let avatar = instance
-                .get("profile_image_url")
-                .and_then(|v| v.as_str())
-                .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
-                .to_string();
+        // Try to get basic info for this instance
+        match client.get_basic_info_with_instance(instance_id).await {
+            Ok(basic_info) => {
+                let screen_name = basic_info.screen_name
+                    .as_ref()
+                    .map(|sn| if sn.starts_with('@') { sn.clone() } else { format!("@{}", sn) })
+                    .unwrap_or_else(|| format!("@{}", instance_name));
 
-            let twitter_id = basic_info.as_ref().and_then(|info| info.id.clone());
-            let description = basic_info.as_ref().and_then(|info| info.description.clone());
+                let display_name = basic_info.name.clone().unwrap_or_else(|| instance_name.to_string());
+                let avatar = basic_info.profile_image_url.clone()
+                    .unwrap_or_else(|| "https://pbs.twimg.com/profile_images/default_profile_400x400.png".to_string());
 
-            let instance_id = instance.get("id").and_then(|v| v.as_str()).map(String::from);
-            let extension_name = instance.get("extensionName").and_then(|v| v.as_str()).map(String::from);
+                println!("  账号: {} ({})", display_name, screen_name);
 
-            let is_logged_in = status.as_ref().map(|s| s.is_logged_in).unwrap_or(false);
-            let default_tab_id = status.as_ref()
-                .and_then(|s| s.tabs.first())
-                .and_then(|t| t.tab_id);
-
-            synced_accounts.push(TwitterAccount {
-                screen_name: normalized_screen_name,
-                display_name,
-                avatar,
-                status: if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline },
-                last_verified: chrono::Utc::now().to_rfc3339(),
-                twitter_id,
-                description,
-                instance_id,
-                extension_name,
-                default_tab_id,
-                is_logged_in,
-            });
+                synced_accounts.push(TwitterAccount {
+                    screen_name,
+                    display_name,
+                    avatar,
+                    status: AccountStatus::Online,
+                    last_verified: chrono::Utc::now().to_rfc3339(),
+                    twitter_id: basic_info.id.clone(),
+                    description: basic_info.description.clone(),
+                    instance_id: Some(instance_id.to_string()),
+                    extension_name: Some(instance_name.to_string()),
+                    default_tab_id: None,
+                    is_logged_in: true,
+                });
+            }
+            Err(e) => {
+                eprintln!("  获取实例 {} 的账号信息失败: {}", instance_name, e);
+            }
         }
     }
 
@@ -387,7 +383,6 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
                 existing.description = synced.description.clone();
                 existing.instance_id = synced.instance_id.clone();
                 existing.extension_name = synced.extension_name.clone();
-                existing.default_tab_id = synced.default_tab_id;
                 existing.is_logged_in = synced.is_logged_in;
             } else {
                 mapped.push(synced.clone());

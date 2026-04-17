@@ -1,5 +1,3 @@
-import { serviceMode } from '../runtime'
-import { accountMockService } from './mock'
 import { accountTauriService } from './tauri'
 
 export type {
@@ -10,4 +8,4 @@ export type {
   MappedAccount,
 } from './types'
 
-export const accountService = serviceMode === 'tauri' ? accountTauriService : accountMockService
+export const accountService = accountTauriService

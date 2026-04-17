@@ -1,5 +1,6 @@
 export type ServiceMode = 'mock' | 'tauri'
 
-const requestedMode = import.meta.env.VITE_SERVICE_MODE
+// Always use tauri mode when running in the app
+export const serviceMode: ServiceMode = 'tauri'
 
-export const serviceMode: ServiceMode = requestedMode === 'tauri' ? 'tauri' : 'mock'
+console.log('[Runtime] Service mode: tauri (forced)')
