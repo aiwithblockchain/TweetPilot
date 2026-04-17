@@ -1,6 +1,8 @@
 use crate::services::storage;
+use crate::services::localbridge::LocalBridgeClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 const LAYOUT_FILE: &str = "data-blocks-layout.json";
 
@@ -120,7 +122,7 @@ pub async fn delete_card(card_id: String) -> Result<(), String> {
 pub async fn get_card_data(
     card_id: String,
     card_type: String,
-    _account_id: Option<String>,
+    account_id: Option<String>,
 ) -> Result<Value, String> {
     let cards = load_cards()?;
     let card = get_card_or_error(&cards, &card_id)?;
@@ -128,57 +130,19 @@ pub async fn get_card_data(
         return Err("卡片类型不匹配".to_string());
     }
 
+    // Get LocalBridge client if available
+    let client = if let Ok(config) = crate::commands::preferences::get_local_bridge_config().await {
+        LocalBridgeClient::new(config.endpoint, config.timeout_ms).ok()
+    } else {
+        None
+    };
+
     match card_type.as_str() {
-        "latest_tweets" => Ok(json!({
-            "tweets": [
-                {
-                    "time": "2小时前",
-                    "text": "这是一条测试推文，展示最新推文列表功能。",
-                    "likes": 42,
-                    "retweets": 12
-                },
-                {
-                    "time": "5小时前",
-                    "text": "TweetPilot 开发进展顺利，UI 界面已经基本完成。",
-                    "likes": 128,
-                    "retweets": 34
-                },
-                {
-                    "time": "1天前",
-                    "text": "今天学习了 Tauri 框架，感觉非常强大！",
-                    "likes": 89,
-                    "retweets": 23
-                }
-            ]
-        })),
-        "account_basic_data" => Ok(json!({
-            "following": 234,
-            "followers": 1567,
-            "tweets": 892,
-            "likes": 3421
-        })),
-        "account_interaction_data" => Ok(json!({
-            "totalViews": 45678,
-            "totalLikes": 3421,
-            "totalRetweets": 892
-        })),
-        "tweet_time_distribution" => Ok(json!({
-            "data": [
-                { "day": "周一", "count": 12 },
-                { "day": "周二", "count": 8 },
-                { "day": "周三", "count": 15 },
-                { "day": "周四", "count": 10 },
-                { "day": "周五", "count": 18 },
-                { "day": "周六", "count": 5 },
-                { "day": "周日", "count": 7 }
-            ]
-        })),
-        "task_execution_stats" => Ok(json!({
-            "data": [
-                { "name": "成功", "value": 85 },
-                { "name": "失败", "value": 15 }
-            ]
-        })),
+        "latest_tweets" => get_latest_tweets_data(client, account_id).await,
+        "account_basic_data" => get_account_basic_data(client, account_id).await,
+        "account_interaction_data" => get_account_interaction_data(client, account_id).await,
+        "tweet_time_distribution" => get_tweet_time_distribution(client, account_id).await,
+        "task_execution_stats" => get_task_execution_stats().await,
         _ => Ok(json!({})),
     }
 }
@@ -195,3 +159,170 @@ pub async fn refresh_card_data(card_id: String) -> Result<(), String> {
     card.last_updated = chrono::Utc::now().to_rfc3339();
     save_cards(&cards)
 }
+
+async fn get_latest_tweets_data(
+    client: Option<LocalBridgeClient>,
+    _account_id: Option<String>,
+) -> Result<Value, String> {
+    if let Some(client) = client {
+        if let Ok(tweets) = client.get_timeline(None).await {
+            let tweet_data: Vec<Value> = tweets
+                .iter()
+                .take(3)
+                .map(|tweet| {
+                    json!({
+                        "time": format_tweet_time(&tweet.created_at),
+                        "text": &tweet.text,
+                        "likes": tweet.like_count.unwrap_or(0),
+                        "retweets": tweet.retweet_count.unwrap_or(0)
+                    })
+                })
+                .collect();
+
+            return Ok(json!({ "tweets": tweet_data }));
+        }
+    }
+
+    Ok(json!({ "tweets": [] }))
+}
+
+async fn get_account_basic_data(
+    client: Option<LocalBridgeClient>,
+    _account_id: Option<String>,
+) -> Result<Value, String> {
+    if let Some(client) = client {
+        if let Ok(basic_info) = client.get_basic_info().await {
+            return Ok(json!({
+                "following": basic_info.following_count.unwrap_or(0),
+                "followers": basic_info.followers_count.unwrap_or(0),
+                "tweets": basic_info.tweet_count.unwrap_or(0),
+                "likes": 0
+            }));
+        }
+    }
+
+    Ok(json!({
+        "following": 0,
+        "followers": 0,
+        "tweets": 0,
+        "likes": 0
+    }))
+}
+
+async fn get_account_interaction_data(
+    client: Option<LocalBridgeClient>,
+    _account_id: Option<String>,
+) -> Result<Value, String> {
+    if let Some(client) = client {
+        if let Ok(tweets) = client.get_timeline(None).await {
+            let total_views: i64 = tweets.iter().filter_map(|t| t.view_count).sum();
+            let total_likes: i64 = tweets.iter().filter_map(|t| t.like_count).sum();
+            let total_retweets: i64 = tweets.iter().filter_map(|t| t.retweet_count).sum();
+
+            return Ok(json!({
+                "totalViews": total_views,
+                "totalLikes": total_likes,
+                "totalRetweets": total_retweets
+            }));
+        }
+    }
+
+    Ok(json!({
+        "totalViews": 0,
+        "totalLikes": 0,
+        "totalRetweets": 0
+    }))
+}
+
+async fn get_tweet_time_distribution(
+    client: Option<LocalBridgeClient>,
+    _account_id: Option<String>,
+) -> Result<Value, String> {
+    if let Some(client) = client {
+        if let Ok(tweets) = client.get_timeline(None).await {
+            let mut day_counts: HashMap<String, i32> = HashMap::new();
+            day_counts.insert("周一".to_string(), 0);
+            day_counts.insert("周二".to_string(), 0);
+            day_counts.insert("周三".to_string(), 0);
+            day_counts.insert("周四".to_string(), 0);
+            day_counts.insert("周五".to_string(), 0);
+            day_counts.insert("周六".to_string(), 0);
+            day_counts.insert("周日".to_string(), 0);
+
+            for tweet in tweets {
+                if let Some(created_at) = &tweet.created_at {
+                    if let Ok(day) = parse_day_of_week(created_at) {
+                        *day_counts.entry(day).or_insert(0) += 1;
+                    }
+                }
+            }
+
+            let data: Vec<Value> = vec![
+                json!({ "day": "周一", "count": day_counts.get("周一").unwrap_or(&0) }),
+                json!({ "day": "周二", "count": day_counts.get("周二").unwrap_or(&0) }),
+                json!({ "day": "周三", "count": day_counts.get("周三").unwrap_or(&0) }),
+                json!({ "day": "周四", "count": day_counts.get("周四").unwrap_or(&0) }),
+                json!({ "day": "周五", "count": day_counts.get("周五").unwrap_or(&0) }),
+                json!({ "day": "周六", "count": day_counts.get("周六").unwrap_or(&0) }),
+                json!({ "day": "周日", "count": day_counts.get("周日").unwrap_or(&0) }),
+            ];
+
+            return Ok(json!({ "data": data }));
+        }
+    }
+
+    Ok(json!({
+        "data": [
+            { "day": "周一", "count": 0 },
+            { "day": "周二", "count": 0 },
+            { "day": "周三", "count": 0 },
+            { "day": "周四", "count": 0 },
+            { "day": "周五", "count": 0 },
+            { "day": "周六", "count": 0 },
+            { "day": "周日", "count": 0 }
+        ]
+    }))
+}
+
+async fn get_task_execution_stats() -> Result<Value, String> {
+    Ok(json!({
+        "data": [
+            { "name": "成功", "value": 0 },
+            { "name": "失败", "value": 0 }
+        ]
+    }))
+}
+
+fn format_tweet_time(created_at: &Option<String>) -> String {
+    if let Some(_time_str) = created_at {
+        "最近".to_string()
+    } else {
+        "未知时间".to_string()
+    }
+}
+
+fn parse_day_of_week(created_at: &str) -> Result<String, String> {
+    let parts: Vec<&str> = created_at.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err("Invalid date format".to_string());
+    }
+
+    let day_map = [
+        ("Mon", "周一"),
+        ("Tue", "周二"),
+        ("Wed", "周三"),
+        ("Thu", "周四"),
+        ("Fri", "周五"),
+        ("Sat", "周六"),
+        ("Sun", "周日"),
+    ];
+
+    for (en, zh) in &day_map {
+        if parts[0] == *en {
+            return Ok(zh.to_string());
+        }
+    }
+
+    Err("Unknown day".to_string())
+}
+

@@ -27,3 +27,4 @@ dist-ssr
 src-tauri/target
 .gstack/
 docs/clawBotCli
+docs/clawBotCli.zip

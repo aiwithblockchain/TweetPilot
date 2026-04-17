@@ -117,8 +117,16 @@ export default function AccountManagement() {
       {accounts.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <div className="text-4xl mb-3">👤</div>
-          <div className="text-base font-medium mb-1">暂无账号</div>
-          <div className="text-xs text-secondary">点击"映射账号"按钮添加第一个账号</div>
+          <div className="text-base font-medium mb-1">暂无推特账号配置</div>
+          <div className="text-xs text-secondary mb-4">
+            系统需要通过 LocalBridge 连接推特账号才能正常工作
+          </div>
+          <button
+            onClick={() => setShowMappingDialog(true)}
+            className="h-9 px-4 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+          >
+            立即配置账号
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

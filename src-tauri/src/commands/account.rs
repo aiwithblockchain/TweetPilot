@@ -20,14 +20,7 @@ struct AccountPersonalityRecord {
 
 fn default_persisted_accounts() -> PersistedAccountData {
     PersistedAccountData {
-        mapped_accounts: vec![TwitterAccount {
-            screen_name: "@testuser1".to_string(),
-            display_name: "Test User 1".to_string(),
-            avatar: "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg"
-                .to_string(),
-            status: AccountStatus::Online,
-            last_verified: chrono::Utc::now().to_rfc3339(),
-        }],
+        mapped_accounts: vec![],
         personalities: vec![],
     }
 }
@@ -100,15 +93,6 @@ static MAPPED_ACCOUNTS: Lazy<Mutex<Vec<TwitterAccount>>> = Lazy::new(|| {
     Mutex::new(initial)
 });
 
-// All available Twitter accounts (5 total)
-const ALL_ACCOUNTS: &[(&str, &str, &str)] = &[
-    ("@elonmusk", "Elon Musk", "https://pbs.twimg.com/profile_images/1683325380441128960/yRsRRjGO_400x400.jpg"),
-    ("@jack", "Jack Dorsey", "https://pbs.twimg.com/profile_images/1115644092329758721/AFjOr-K8_400x400.jpg"),
-    ("@naval", "Naval", "https://pbs.twimg.com/profile_images/1469381207701483520/0ye3FdXq_400x400.jpg"),
-    ("@pmarca", "Marc Andreessen", "https://pbs.twimg.com/profile_images/1455185376876826625/s1lXSWdX_400x400.jpg"),
-    ("@sama", "Sam Altman", "https://pbs.twimg.com/profile_images/804990434455887872/BG0Xh7Oa_400x400.jpg"),
-];
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TwitterAccount {
@@ -117,6 +101,12 @@ pub struct TwitterAccount {
     pub avatar: String,
     pub status: AccountStatus,
     pub last_verified: String,
+    pub twitter_id: Option<String>,
+    pub description: Option<String>,
+    pub instance_id: Option<String>,
+    pub extension_name: Option<String>,
+    pub default_tab_id: Option<i32>,
+    pub is_logged_in: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,43 +127,130 @@ pub enum AccountStatus {
 
 #[tauri::command]
 pub async fn get_available_accounts() -> Result<Vec<TwitterAccountInfo>, String> {
-    let mapped = MAPPED_ACCOUNTS.lock().unwrap();
-    let mapped_screen_names: Vec<String> =
-        mapped.iter().map(|a| a.screen_name.clone()).collect();
+    // Try to get accounts from LocalBridge
+    if let Ok(config) = crate::commands::preferences::get_local_bridge_config().await {
+        if let Ok(client) = LocalBridgeClient::new(config.endpoint, config.timeout_ms) {
+            if let Ok(instances) = client.get_instances().await {
+                let mapped = MAPPED_ACCOUNTS.lock().unwrap();
+                let mapped_screen_names: Vec<String> =
+                    mapped.iter().map(|a| a.screen_name.clone()).collect();
 
-    let available: Vec<TwitterAccountInfo> = ALL_ACCOUNTS
-        .iter()
-        .filter(|(screen_name, _, _)| !mapped_screen_names.contains(&screen_name.to_string()))
-        .map(|(screen_name, display_name, avatar)| TwitterAccountInfo {
-            screen_name: screen_name.to_string(),
-            display_name: display_name.to_string(),
-            avatar: avatar.to_string(),
-        })
-        .collect();
+                let mut available = Vec::new();
 
-    Ok(available)
+                for instance in instances {
+                    if let (Some(screen_name), Some(name)) = (
+                        instance.get("screen_name").and_then(|v| v.as_str()),
+                        instance.get("name").and_then(|v| v.as_str()),
+                    ) {
+                        let normalized_screen_name = if screen_name.starts_with('@') {
+                            screen_name.to_string()
+                        } else {
+                            format!("@{}", screen_name)
+                        };
+
+                        // Only include if not already mapped
+                        if !mapped_screen_names.contains(&normalized_screen_name) {
+                            let avatar = instance
+                                .get("profile_image_url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
+                                .to_string();
+
+                            available.push(TwitterAccountInfo {
+                                screen_name: normalized_screen_name,
+                                display_name: name.to_string(),
+                                avatar,
+                            });
+                        }
+                    }
+                }
+
+                return Ok(available);
+            }
+        }
+    }
+
+    // If LocalBridge is not available, return empty list
+    Ok(vec![])
 }
 
 #[tauri::command]
 pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> {
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    // Get LocalBridge config and sync real account data
+    let config = crate::commands::preferences::get_local_bridge_config().await?;
+    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
 
-    let account_info = ALL_ACCOUNTS
+    // Get instances to find the account
+    let instances = client.get_instances().await?;
+
+    let normalized_screen_name = if screen_name.starts_with('@') {
+        screen_name.clone()
+    } else {
+        format!("@{}", screen_name)
+    };
+
+    // Find the instance matching this screen_name
+    let instance = instances
         .iter()
-        .find(|(sn, _, _)| *sn == screen_name)
-        .ok_or_else(|| format!("Account not found: {}", screen_name))?;
+        .find(|inst| {
+            if let Some(sn) = inst.get("screen_name").and_then(|v| v.as_str()) {
+                let inst_screen_name = if sn.starts_with('@') {
+                    sn.to_string()
+                } else {
+                    format!("@{}", sn)
+                };
+                inst_screen_name == normalized_screen_name
+            } else {
+                false
+            }
+        })
+        .ok_or_else(|| format!("Account {} not found in LocalBridge instances", screen_name))?;
+
+    // Get basic info for this account
+    let basic_info = client.get_basic_info().await.ok();
+    let status = client.get_status().await.ok();
+
+    // Extract instance metadata
+    let instance_id = instance.get("id").and_then(|v| v.as_str()).map(String::from);
+    let extension_name = instance.get("extensionName").and_then(|v| v.as_str()).map(String::from);
+
+    let display_name = instance
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    let avatar = instance
+        .get("profile_image_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
+        .to_string();
+
+    let twitter_id = basic_info.as_ref().and_then(|info| info.id.clone());
+    let description = basic_info.as_ref().and_then(|info| info.description.clone());
+
+    let is_logged_in = status.as_ref().map(|s| s.is_logged_in).unwrap_or(false);
+    let default_tab_id = status.as_ref()
+        .and_then(|s| s.tabs.first())
+        .and_then(|t| t.tab_id);
 
     with_mapped_accounts(|mapped| {
-        if mapped.iter().any(|item| item.screen_name == screen_name) {
-            return Err(format!("Account already mapped: {}", screen_name));
+        if mapped.iter().any(|item| item.screen_name == normalized_screen_name) {
+            return Err(format!("Account {} already mapped", screen_name));
         }
 
         let new_account = TwitterAccount {
-            screen_name: account_info.0.to_string(),
-            display_name: account_info.1.to_string(),
-            avatar: account_info.2.to_string(),
-            status: AccountStatus::Online,
+            screen_name: normalized_screen_name.clone(),
+            display_name: display_name.clone(),
+            avatar: avatar.clone(),
+            status: if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline },
             last_verified: chrono::Utc::now().to_rfc3339(),
+            twitter_id: twitter_id.clone(),
+            description: description.clone(),
+            instance_id: instance_id.clone(),
+            extension_name: extension_name.clone(),
+            default_tab_id,
+            is_logged_in,
         };
 
         mapped.push(new_account.clone());
@@ -196,93 +273,132 @@ pub async fn get_mapped_accounts() -> Result<Vec<TwitterAccount>, String> {
 }
 
 #[tauri::command]
-pub async fn verify_account_status(_screen_name: String) -> Result<AccountStatus, String> {
-    // Simulate network delay
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    Ok(AccountStatus::Online)
-}
-
-#[tauri::command]
-pub async fn refresh_all_accounts_status() -> Result<(), String> {
-    // Try to sync from LocalBridge first
+pub async fn verify_account_status(screen_name: String) -> Result<AccountStatus, String> {
+    // Try to verify account status from LocalBridge
     if let Ok(config) = crate::commands::preferences::get_local_bridge_config().await {
         if let Ok(client) = LocalBridgeClient::new(config.endpoint, config.timeout_ms) {
-            // Get all extension instances (each instance = one Twitter account)
-            if let Ok(instances) = client.get_instances().await {
-                let mut synced_accounts = Vec::new();
+            if let Ok(status) = client.get_status().await {
+                // Check if this specific account is logged in
+                let is_logged_in = status.is_logged_in;
 
-                for instance in instances {
-                    // Extract account info from each instance
-                    if let (Some(screen_name), Some(name)) = (
-                        instance.get("screen_name").and_then(|v| v.as_str()),
-                        instance.get("name").and_then(|v| v.as_str()),
-                    ) {
-                        let avatar = instance
-                            .get("profile_image_url")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
-                            .to_string();
-
-                        synced_accounts.push(TwitterAccount {
-                            screen_name: if screen_name.starts_with('@') {
-                                screen_name.to_string()
-                            } else {
-                                format!("@{}", screen_name)
-                            },
-                            display_name: name.to_string(),
-                            avatar,
-                            status: AccountStatus::Online,
-                            last_verified: chrono::Utc::now().to_rfc3339(),
-                        });
+                // Update the account status in memory
+                with_mapped_accounts(|mapped| {
+                    if let Some(account) = mapped.iter_mut().find(|a| a.screen_name == screen_name) {
+                        account.status = if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline };
+                        account.is_logged_in = is_logged_in;
+                        account.last_verified = chrono::Utc::now().to_rfc3339();
+                        return Ok(account.status.clone());
                     }
-                }
+                    Err("Account not found".to_string())
+                })?;
 
-                // Update mapped accounts with synced data
-                if !synced_accounts.is_empty() {
-                    with_mapped_accounts(|mapped| {
-                        let now = chrono::Utc::now().to_rfc3339();
-
-                        // Update existing accounts or add new ones
-                        for synced in &synced_accounts {
-                            if let Some(existing) = mapped.iter_mut().find(|a| a.screen_name == synced.screen_name) {
-                                existing.status = synced.status.clone();
-                                existing.last_verified = synced.last_verified.clone();
-                                existing.display_name = synced.display_name.clone();
-                                existing.avatar = synced.avatar.clone();
-                            } else {
-                                mapped.push(synced.clone());
-                            }
-                        }
-
-                        // Mark accounts not in LocalBridge as offline
-                        let synced_names: Vec<String> = synced_accounts.iter().map(|a| a.screen_name.clone()).collect();
-                        for account in mapped.iter_mut() {
-                            if !synced_names.contains(&account.screen_name) {
-                                account.status = AccountStatus::Offline;
-                                account.last_verified = now.clone();
-                            }
-                        }
-
-                        Ok(())
-                    })?;
-
-                    return Ok(());
-                }
+                return Ok(if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline });
             }
         }
     }
 
-    // Fallback: just refresh status of existing accounts
+    // Fallback: return offline if cannot verify
+    Ok(AccountStatus::Offline)
+}
+
+#[tauri::command]
+pub async fn refresh_all_accounts_status() -> Result<(), String> {
+    // Try to sync from LocalBridge
+    let config = match crate::commands::preferences::get_local_bridge_config().await {
+        Ok(c) => c,
+        Err(_) => return Err("LocalBridge 配置未设置".to_string()),
+    };
+
+    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
+
+    // Get all extension instances
+    let instances = client.get_instances().await?;
+    let status = client.get_status().await.ok();
+
+    let mut synced_accounts = Vec::new();
+
+    for instance in instances {
+        if let Some(screen_name) = instance.get("screen_name").and_then(|v| v.as_str()) {
+            let normalized_screen_name = if screen_name.starts_with('@') {
+                screen_name.to_string()
+            } else {
+                format!("@{}", screen_name)
+            };
+
+            // Get basic info for this account
+            let basic_info = client.get_basic_info().await.ok();
+
+            let display_name = instance
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+
+            let avatar = instance
+                .get("profile_image_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("https://pbs.twimg.com/profile_images/default_profile_400x400.png")
+                .to_string();
+
+            let twitter_id = basic_info.as_ref().and_then(|info| info.id.clone());
+            let description = basic_info.as_ref().and_then(|info| info.description.clone());
+
+            let instance_id = instance.get("id").and_then(|v| v.as_str()).map(String::from);
+            let extension_name = instance.get("extensionName").and_then(|v| v.as_str()).map(String::from);
+
+            let is_logged_in = status.as_ref().map(|s| s.is_logged_in).unwrap_or(false);
+            let default_tab_id = status.as_ref()
+                .and_then(|s| s.tabs.first())
+                .and_then(|t| t.tab_id);
+
+            synced_accounts.push(TwitterAccount {
+                screen_name: normalized_screen_name,
+                display_name,
+                avatar,
+                status: if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline },
+                last_verified: chrono::Utc::now().to_rfc3339(),
+                twitter_id,
+                description,
+                instance_id,
+                extension_name,
+                default_tab_id,
+                is_logged_in,
+            });
+        }
+    }
+
+    // Update mapped accounts with synced data
     with_mapped_accounts(|mapped| {
         let now = chrono::Utc::now().to_rfc3339();
-        for (index, account) in mapped.iter_mut().enumerate() {
-            account.status = if index % 2 == 0 {
-                AccountStatus::Online
+
+        // Update existing accounts or add new ones
+        for synced in &synced_accounts {
+            if let Some(existing) = mapped.iter_mut().find(|a| a.screen_name == synced.screen_name) {
+                existing.status = synced.status.clone();
+                existing.last_verified = synced.last_verified.clone();
+                existing.display_name = synced.display_name.clone();
+                existing.avatar = synced.avatar.clone();
+                existing.twitter_id = synced.twitter_id.clone();
+                existing.description = synced.description.clone();
+                existing.instance_id = synced.instance_id.clone();
+                existing.extension_name = synced.extension_name.clone();
+                existing.default_tab_id = synced.default_tab_id;
+                existing.is_logged_in = synced.is_logged_in;
             } else {
-                AccountStatus::Offline
-            };
-            account.last_verified = now.clone();
+                mapped.push(synced.clone());
+            }
         }
+
+        // Mark accounts not in LocalBridge as offline
+        let synced_names: Vec<String> = synced_accounts.iter().map(|a| a.screen_name.clone()).collect();
+        for account in mapped.iter_mut() {
+            if !synced_names.contains(&account.screen_name) {
+                account.status = AccountStatus::Offline;
+                account.is_logged_in = false;
+                account.last_verified = now.clone();
+            }
+        }
+
         Ok(())
     })
 }
@@ -317,30 +433,25 @@ pub struct AccountSettings {
 
 #[tauri::command]
 pub async fn get_account_settings(screen_name: String) -> Result<AccountSettings, String> {
-    let (name, resolved_screen_name, avatar) = {
+    let account = {
         let mapped = MAPPED_ACCOUNTS.lock().unwrap();
-        let account = mapped
+        mapped
             .iter()
             .find(|a| a.screen_name == screen_name)
-            .ok_or_else(|| "Account not found".to_string())?;
-
-        (
-            account.display_name.clone(),
-            account.screen_name.clone(),
-            account.avatar.clone(),
-        )
+            .cloned()
+            .ok_or_else(|| "Account not found".to_string())?
     };
 
     let personality = load_personality(&screen_name)?;
 
     Ok(AccountSettings {
-        twitter_id: format!("{}123456789", &screen_name[1..]),
-        name,
-        screen_name: resolved_screen_name,
-        avatar,
-        is_linked: true,
-        extension_id: Some("ext_abc123".to_string()),
-        extension_name: Some("LocalBridge Extension".to_string()),
+        twitter_id: account.twitter_id.unwrap_or_else(|| "unknown".to_string()),
+        name: account.display_name,
+        screen_name: account.screen_name,
+        avatar: account.avatar,
+        is_linked: account.is_logged_in,
+        extension_id: account.instance_id,
+        extension_name: account.extension_name,
         personality,
     })
 }
