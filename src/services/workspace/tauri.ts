@@ -46,11 +46,6 @@ export const workspaceTauriService: WorkspaceService = {
   },
 
   async checkDirectoryExists(path: string) {
-    try {
-      await tauriInvoke<void>('check_directory_exists', { path })
-      return true
-    } catch {
-      return false
-    }
+    return tauriInvoke<boolean>('check_directory_exists', { path })
   },
 }

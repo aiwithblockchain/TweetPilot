@@ -193,17 +193,6 @@ export default function WorkspaceSelector({
             正在选择目录...
           </div>
         )}
-
-        {cloning && (
-          <div className="mt-4 text-center">
-            <div className="text-secondary text-sm mb-2">正在克隆仓库...</div>
-            {cloneProgress && (
-              <div className="text-xs text-secondary font-mono bg-[var(--color-surface)] p-2 rounded max-h-32 overflow-auto">
-                {cloneProgress}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {showCloneDialog && (
@@ -240,6 +229,15 @@ export default function WorkspaceSelector({
                 </div>
               )}
             </div>
+
+            {cloning && cloneProgress && (
+              <div className="mb-4 p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded">
+                <div className="text-xs font-medium mb-2">克隆进度</div>
+                <div className="text-xs text-secondary font-mono max-h-32 overflow-auto whitespace-pre-wrap">
+                  {cloneProgress}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end">
               <button
