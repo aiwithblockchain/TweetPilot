@@ -408,6 +408,82 @@ impl LocalBridgeClient {
         }
     }
 
+    pub async fn create_tweet(
+        &self,
+        text: &str,
+        media_ids: Option<Vec<String>>,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v1/x/tweets", self.base_url);
+        let body = serde_json::json!({
+            "text": text,
+            "mediaIds": media_ids.unwrap_or_default(),
+        });
+
+        let response = self.client.post(&url).json(&body).send().await.map_err(|e| {
+            if e.is_connect() {
+                "无法连接到 LocalBridge".to_string()
+            } else {
+                format!("请求失败: {}", e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(format!("API 返回错误: {}", response.status()));
+        }
+
+        Ok(())
+    }
+
+    pub async fn reply(
+        &self,
+        tweet_id: &str,
+        text: &str,
+        media_ids: Option<Vec<String>>,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v1/x/replies", self.base_url);
+        let body = serde_json::json!({
+            "tweetId": tweet_id,
+            "text": text,
+            "mediaIds": media_ids.unwrap_or_default(),
+        });
+
+        let response = self.client.post(&url).json(&body).send().await.map_err(|e| {
+            if e.is_connect() {
+                "无法连接到 LocalBridge".to_string()
+            } else {
+                format!("请求失败: {}", e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(format!("API 返回错误: {}", response.status()));
+        }
+
+        Ok(())
+    }
+
+    pub async fn like(&self, tweet_id: &str, tab_id: Option<i32>) -> Result<(), String> {
+        let url = format!("{}/api/v1/x/likes", self.base_url);
+        let body = serde_json::json!({
+            "tweetId": tweet_id,
+            "tabId": tab_id,
+        });
+
+        let response = self.client.post(&url).json(&body).send().await.map_err(|e| {
+            if e.is_connect() {
+                "无法连接到 LocalBridge".to_string()
+            } else {
+                format!("请求失败: {}", e)
+            }
+        })?;
+
+        if !response.status().is_success() {
+            return Err(format!("API 返回错误: {}", response.status()));
+        }
+
+        Ok(())
+    }
+
     fn parse_tweets_from_timeline(&self, raw: &serde_json::Value) -> Result<Vec<XTweet>, String> {
         let mut tweets = Vec::new();
 

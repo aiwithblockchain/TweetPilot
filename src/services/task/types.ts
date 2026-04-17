@@ -1,4 +1,5 @@
 export type TaskType = 'immediate' | 'scheduled'
+export type TaskAction = 'tweetclaw.post_tweet' | 'tweetclaw.reply_tweet' | 'tweetclaw.like_tweet'
 
 export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 
@@ -33,6 +34,10 @@ export interface Task {
   nextExecutionTime?: string
   lastExecutionTime?: string
   statistics?: TaskStatistics
+  accountScreenName?: string
+  tweetId?: string
+  query?: string
+  text?: string
 }
 
 export interface TaskDetail {
@@ -46,9 +51,13 @@ export interface TaskConfigInput {
   name: string
   description?: string
   taskType: TaskType
-  scriptPath: string
+  scriptPath: TaskAction | string
   schedule?: string
   parameters?: Record<string, string>
+  accountScreenName?: string
+  tweetId?: string
+  query?: string
+  text?: string
 }
 
 export interface TaskExecutionRecord {

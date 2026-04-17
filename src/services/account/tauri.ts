@@ -19,6 +19,12 @@ interface TauriMappedAccount {
   avatar: string
   status: AccountStatus
   lastVerified: string
+  twitterId?: string
+  description?: string
+  instanceId?: string
+  extensionName?: string
+  defaultTabId?: number
+  isLoggedIn?: boolean
 }
 
 interface TauriAccountSettings {
@@ -39,6 +45,12 @@ function mapTauriMappedAccount(account: TauriMappedAccount): MappedAccount {
     avatar: account.avatar,
     status: account.status,
     lastVerified: account.lastVerified,
+    twitterId: account.twitterId,
+    description: account.description,
+    instanceId: account.instanceId,
+    extensionName: account.extensionName,
+    defaultTabId: account.defaultTabId,
+    isLoggedIn: account.isLoggedIn,
   }
 }
 

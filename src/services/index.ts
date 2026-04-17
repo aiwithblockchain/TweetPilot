@@ -16,6 +16,7 @@ export { taskService } from './task'
 export type {
   ExecutionResult,
   Task,
+  TaskAction,
   TaskConfigInput,
   TaskDetail,
   TaskExecutionRecord,

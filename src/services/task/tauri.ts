@@ -17,6 +17,10 @@ interface TauriTaskConfigInput {
   script_path: string
   schedule?: string
   parameters?: Record<string, string>
+  account_screen_name?: string
+  tweet_id?: string
+  query?: string
+  text?: string
 }
 
 interface TauriTask {
@@ -32,6 +36,10 @@ interface TauriTask {
   schedule?: string
   nextExecutionTime?: string
   lastExecutionTime?: string
+  accountScreenName?: string
+  tweetId?: string
+  query?: string
+  text?: string
   statistics?: {
     totalExecutions: number
     successCount: number
@@ -80,6 +88,10 @@ function mapTask(task: TauriTask): Task {
     nextExecutionTime: task.nextExecutionTime,
     lastExecutionTime: task.lastExecutionTime,
     statistics: task.statistics,
+    accountScreenName: (task as TauriTask & { accountScreenName?: string }).accountScreenName,
+    tweetId: (task as TauriTask & { tweetId?: string }).tweetId,
+    query: (task as TauriTask & { query?: string }).query,
+    text: (task as TauriTask & { text?: string }).text,
   }
 }
 
@@ -100,6 +112,10 @@ function toTauriTaskConfig(config: TaskConfigInput): TauriTaskConfigInput {
     script_path: config.scriptPath,
     schedule: config.schedule,
     parameters: config.parameters,
+    account_screen_name: config.accountScreenName,
+    tweet_id: config.tweetId,
+    query: config.query,
+    text: config.text,
   }
 }
 

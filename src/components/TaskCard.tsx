@@ -9,6 +9,20 @@ interface TaskCardProps {
   onDelete: () => void
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  'tweetclaw.post_tweet': '发帖任务',
+  'tweetclaw.reply_tweet': '回复任务',
+  'tweetclaw.like_tweet': '点赞任务',
+}
+
+const STATUS_LABELS: Record<Task['status'], string> = {
+  idle: '待执行',
+  running: '运行中',
+  paused: '已暂停',
+  completed: '已完成',
+  failed: '执行失败',
+}
+
 export default function TaskCard({
   task,
   onViewDetail,
@@ -32,13 +46,17 @@ export default function TaskCard({
     return date.toLocaleDateString('zh-CN')
   }
 
+  const actionLabel = ACTION_LABELS[task.scriptPath] || task.scriptPath
+  const statusLabel = STATUS_LABELS[task.status] || '未知状态'
+
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 hover:border-[#6D5BF6] hover:shadow-sm transition-all">
       {/* Header */}
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex-1">
+      <div className="flex justify-between items-start mb-2 gap-2">
+        <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold mb-1">{task.name}</div>
-          <div className="flex gap-1">
+          <div className="text-xs text-[var(--color-text-secondary)] mb-2">{actionLabel}</div>
+          <div className="flex gap-1 flex-wrap">
             <span
               className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
                 task.type === 'scheduled'
@@ -54,27 +72,26 @@ export default function TaskCard({
                   ? 'bg-green-500/10 text-green-500'
                   : task.status === 'paused'
                   ? 'bg-yellow-500/10 text-yellow-500'
+                  : task.status === 'failed'
+                  ? 'bg-red-500/10 text-red-500'
                   : 'bg-gray-500/10 text-gray-500'
               }`}
             >
-              {task.status === 'running'
-                ? '运行中'
-                : task.status === 'paused'
-                ? '已暂停'
-                : '待执行'}
+              {statusLabel}
             </span>
           </div>
         </div>
       </div>
 
       {/* Meta Info */}
-      <div className="space-y-0.5 mb-2 text-xs text-[var(--color-text-secondary)]">
+      <div className="space-y-1 mb-2 text-xs text-[var(--color-text-secondary)]">
+        <div>执行账号：{task.accountScreenName ? `@${task.accountScreenName}` : '未指定'}</div>
+        {task.tweetId && <div>目标推文：{task.tweetId}</div>}
+        {task.text && <div className="line-clamp-2">文本：{task.text}</div>}
         {task.type === 'scheduled' ? (
           <>
-            <div>执行规则：{task.schedule || '0 * * * *'}</div>
-            {task.nextExecutionTime && (
-              <div>下次执行：{formatRelativeTime(task.nextExecutionTime)}</div>
-            )}
+            <div>执行规则：{task.schedule || '未配置'}</div>
+            {task.nextExecutionTime && <div>下次执行：{formatRelativeTime(task.nextExecutionTime)}</div>}
             {task.lastExecutionTime ? (
               <div>最后执行：{formatRelativeTime(task.lastExecutionTime)}</div>
             ) : (
@@ -85,19 +102,20 @@ export default function TaskCard({
         ) : (
           <>
             <div>描述：{task.description || '无'}</div>
-            <div>脚本：{task.scriptPath}</div>
             {task.lastExecutionTime ? (
               <div>
                 最后执行：{formatRelativeTime(task.lastExecutionTime)}{' '}
-                <span
-                  className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
-                    task.lastExecutionStatus === 'success'
-                      ? 'bg-green-500/10 text-green-500'
-                      : 'bg-red-500/10 text-red-500'
-                  }`}
-                >
-                  {task.lastExecutionStatus === 'success' ? '成功' : '失败'}
-                </span>
+                {task.lastExecutionStatus && (
+                  <span
+                    className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${
+                      task.lastExecutionStatus === 'success'
+                        ? 'bg-green-500/10 text-green-500'
+                        : 'bg-red-500/10 text-red-500'
+                    }`}
+                  >
+                    {task.lastExecutionStatus === 'success' ? '成功' : '失败'}
+                  </span>
+                )}
               </div>
             ) : (
               <div>尚未执行</div>

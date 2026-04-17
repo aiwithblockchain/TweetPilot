@@ -12,6 +12,12 @@ export interface MappedAccount {
   avatar: string
   status: AccountStatus
   lastVerified: string
+  twitterId?: string
+  description?: string
+  instanceId?: string
+  extensionName?: string
+  defaultTabId?: number
+  isLoggedIn?: boolean
 }
 
 export interface AccountSettings {

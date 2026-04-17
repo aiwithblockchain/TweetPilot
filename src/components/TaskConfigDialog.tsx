@@ -1,80 +1,142 @@
-import { useState } from 'react'
-import { open } from '@tauri-apps/plugin-dialog'
-import type { TaskType } from '@/services/task'
-import { taskService } from '@/services'
+import { useEffect, useMemo, useState } from 'react'
+import type { MappedAccount, TaskAction, TaskType } from '@/services'
+import { accountService, taskService } from '@/services'
 
 interface TaskConfigDialogProps {
   onClose: () => void
   onTaskCreated: () => void
 }
 
+type TaskFormAction = TaskAction
+
+const ACTION_OPTIONS: Array<{ value: TaskFormAction; label: string; description: string }> = [
+  {
+    value: 'tweetclaw.post_tweet',
+    label: '发帖任务',
+    description: '使用选定账号直接发布一条新推文',
+  },
+  {
+    value: 'tweetclaw.reply_tweet',
+    label: '回复任务',
+    description: '针对指定 tweetId 发送回复内容',
+  },
+  {
+    value: 'tweetclaw.like_tweet',
+    label: '点赞任务',
+    description: '使用选定账号为指定 tweetId 点赞',
+  },
+]
+
+const ACTION_NAME_PRESETS: Record<TaskFormAction, string> = {
+  'tweetclaw.post_tweet': '发布推文',
+  'tweetclaw.reply_tweet': '回复推文',
+  'tweetclaw.like_tweet': '点赞推文',
+}
+
+const SCHEDULE_PRESETS = [
+  { label: '每 30 分钟', value: '*/30 * * * *' },
+  { label: '每 1 小时', value: '0 */1 * * *' },
+  { label: '每天上午 9 点', value: '0 9 * * *' },
+  { label: '每天晚上 8 点', value: '0 20 * * *' },
+]
+
 export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigDialogProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('immediate')
-  const [scriptPath, setScriptPath] = useState('')
-  const [schedule, setSchedule] = useState('')
-  const [scheduleMode, setScheduleMode] = useState<'simple' | 'advanced'>('simple')
-  const [simpleSchedule, setSimpleSchedule] = useState({
-    interval: '1',
-    unit: 'hours',
-  })
-  const [parameters, setParameters] = useState<Record<string, string>>({})
+  const [taskAction, setTaskAction] = useState<TaskFormAction>('tweetclaw.post_tweet')
+  const [schedule, setSchedule] = useState('0 */1 * * *')
+  const [accountScreenName, setAccountScreenName] = useState('')
+  const [tweetId, setTweetId] = useState('')
+  const [text, setText] = useState('')
+  const [query, setQuery] = useState('')
+  const [accounts, setAccounts] = useState<MappedAccount[]>([])
+  const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSelectScript = async () => {
-    try {
-      const selected = await open({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: 'Python Scripts',
-            extensions: ['py'],
-          },
-        ],
-      })
+  useEffect(() => {
+    let mounted = true
 
-      if (selected) {
-        setScriptPath(selected as string)
+    const loadAccounts = async () => {
+      try {
+        const result = await accountService.getMappedAccounts()
+        if (!mounted) return
+        setAccounts(result)
+        setAccountScreenName((current) => current || result.find((item) => item.isLoggedIn)?.screenName || result[0]?.screenName || '')
+      } catch (err) {
+        console.error('Failed to load mapped accounts:', err)
+        if (!mounted) return
+        setError('加载账号失败，请先检查账号映射配置')
+      } finally {
+        if (mounted) {
+          setAccountsLoading(false)
+        }
       }
-    } catch (err) {
-      console.error('Failed to select script:', err)
-    }
-  }
-
-  const buildScheduleExpression = () => {
-    if (scheduleMode === 'advanced') {
-      return schedule
     }
 
-    const { interval, unit } = simpleSchedule
-    switch (unit) {
-      case 'minutes':
-        return `*/${interval} * * * *`
-      case 'hours':
-        return `0 */${interval} * * *`
-      case 'days':
-        return `0 0 */${interval} * *`
-      default:
-        return schedule
+    loadAccounts()
+
+    return () => {
+      mounted = false
     }
+  }, [])
+
+  useEffect(() => {
+    const presetName = ACTION_NAME_PRESETS[taskAction]
+    setName((current) => (current.trim() ? current : presetName))
+    setDescription((current) => current)
+  }, [taskAction])
+
+  const selectedAction = useMemo(
+    () => ACTION_OPTIONS.find((option) => option.value === taskAction) ?? ACTION_OPTIONS[0],
+    [taskAction]
+  )
+
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.screenName === accountScreenName) ?? null,
+    [accounts, accountScreenName]
+  )
+
+  const requiresTweetId = taskAction === 'tweetclaw.reply_tweet' || taskAction === 'tweetclaw.like_tweet'
+  const requiresText = taskAction === 'tweetclaw.post_tweet' || taskAction === 'tweetclaw.reply_tweet'
+
+  const validateForm = () => {
+    if (!name.trim()) {
+      return '请输入任务名称'
+    }
+
+    if (accountsLoading) {
+      return '账号列表加载中，请稍后重试'
+    }
+
+    if (accounts.length === 0) {
+      return '请先在账号管理中映射至少一个账号'
+    }
+
+    if (!accountScreenName) {
+      return '请选择执行账号'
+    }
+
+    if (requiresTweetId && !tweetId.trim()) {
+      return '请输入目标 tweetId'
+    }
+
+    if (requiresText && !text.trim()) {
+      return taskAction === 'tweetclaw.post_tweet' ? '请输入推文内容' : '请输入回复内容'
+    }
+
+    if (taskType === 'scheduled' && !schedule.trim()) {
+      return '请输入定时规则'
+    }
+
+    return null
   }
 
   const handleCreate = async () => {
-    if (!name.trim()) {
-      setError('请输入任务名称')
-      return
-    }
-
-    if (!scriptPath) {
-      setError('请选择脚本文件')
-      return
-    }
-
-    if (taskType === 'scheduled' && scheduleMode === 'advanced' && !schedule.trim()) {
-      setError('请输入定时规则')
+    const validationError = validateForm()
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -82,16 +144,17 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
     setError(null)
 
     try {
-      const config = {
+      await taskService.createTask({
         name: name.trim(),
         description: description.trim() || undefined,
         taskType,
-        scriptPath,
-        schedule: taskType === 'scheduled' ? buildScheduleExpression() : undefined,
-        parameters,
-      }
-
-      await taskService.createTask(config)
+        scriptPath: taskAction,
+        schedule: taskType === 'scheduled' ? schedule.trim() : undefined,
+        accountScreenName,
+        tweetId: requiresTweetId ? tweetId.trim() : undefined,
+        text: requiresText ? text.trim() : undefined,
+        query: query.trim() || undefined,
+      })
       onTaskCreated()
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建失败')
@@ -115,7 +178,12 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-4 space-y-4">
-          {/* Task Name */}
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="text-xs text-secondary mb-1">任务动作</div>
+            <div className="text-sm font-medium">{selectedAction.label}</div>
+            <div className="text-xs text-secondary mt-1">{selectedAction.description}</div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-1.5">任务名称</label>
             <input
@@ -127,21 +195,19 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
             />
           </div>
 
-          {/* Description */}
           <div>
-            <label className="block text-sm font-medium mb-1.5">描述（可选）</label>
+            <label className="block text-sm font-medium mb-1.5">任务描述（可选）</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="输入任务描述"
+              placeholder="说明这个任务的触发场景或执行目标"
               rows={2}
               className="w-full px-3 py-2 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none resize-none"
             />
           </div>
 
-          {/* Task Type */}
           <div>
-            <label className="block text-sm font-medium mb-1.5">任务类型</label>
+            <label className="block text-sm font-medium mb-1.5">执行方式</label>
             <div className="flex gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -166,151 +232,128 @@ export default function TaskConfigDialog({ onClose, onTaskCreated }: TaskConfigD
             </div>
           </div>
 
-          {/* Script Path */}
           <div>
-            <label className="block text-sm font-medium mb-1.5">脚本文件</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={scriptPath}
-                readOnly
-                placeholder="选择 Python 脚本文件"
-                className="flex-1 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
-              />
-              <button
-                onClick={handleSelectScript}
-                className="h-8 px-3 text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
-              >
-                浏览
-              </button>
-            </div>
-          </div>
-
-          {/* Task Parameters */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5">任务参数</label>
-            <div id="params-list" className="flex flex-col gap-2 mb-2">
-              {Object.entries(parameters).map(([key, value], index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    placeholder="参数名"
-                    value={key}
-                    onChange={(e) => {
-                      const newParams = { ...parameters }
-                      delete newParams[key]
-                      newParams[e.target.value] = value
-                      setParameters(newParams)
-                    }}
-                    className="flex-1 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none font-mono"
-                  />
-                  <input
-                    type="text"
-                    placeholder="参数值"
-                    value={value}
-                    onChange={(e) => {
-                      setParameters({ ...parameters, [key]: e.target.value })
-                    }}
-                    className="flex-1 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
-                  />
-                  <button
-                    onClick={() => {
-                      const newParams = { ...parameters }
-                      delete newParams[key]
-                      setParameters(newParams)
-                    }}
-                    className="h-8 w-8 flex items-center justify-center text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
+            <label className="block text-sm font-medium mb-1.5">任务类型</label>
+            <div className="grid gap-2 md:grid-cols-3">
+              {ACTION_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setTaskAction(option.value)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    taskAction === option.value
+                      ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[#6D5BF6]/50'
+                  }`}
+                >
+                  <div className="text-sm font-medium">{option.label}</div>
+                  <div className="mt-1 text-xs text-secondary">{option.description}</div>
+                </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const newKey = `param${Object.keys(parameters).length + 1}`
-                setParameters({ ...parameters, [newKey]: '' })
-              }}
-              className="h-8 px-3 text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
-            >
-              + 添加参数
-            </button>
-            <div className="mt-1.5 text-xs text-secondary">
-              参数将以 --key value 形式传递给脚本
-            </div>
           </div>
 
-          {/* Schedule (only for scheduled tasks) */}
-          {taskType === 'scheduled' && (
-            <div>
-              <label className="block text-sm font-medium mb-1.5">定时规则</label>
-              <div className="flex gap-3 mb-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    value="simple"
-                    checked={scheduleMode === 'simple'}
-                    onChange={(e) => setScheduleMode(e.target.value as 'simple' | 'advanced')}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">简单模式</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    value="advanced"
-                    checked={scheduleMode === 'advanced'}
-                    onChange={(e) => setScheduleMode(e.target.value as 'simple' | 'advanced')}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">高级模式</span>
-                </label>
-              </div>
-
-              {scheduleMode === 'simple' ? (
-                <div className="flex gap-2">
-                  <span className="text-sm leading-8">每</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={simpleSchedule.interval}
-                    onChange={(e) =>
-                      setSimpleSchedule({ ...simpleSchedule, interval: e.target.value })
-                    }
-                    className="w-20 h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
-                  />
-                  <select
-                    value={simpleSchedule.unit}
-                    onChange={(e) =>
-                      setSimpleSchedule({ ...simpleSchedule, unit: e.target.value })
-                    }
-                    className="h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
-                  >
-                    <option value="minutes">分钟</option>
-                    <option value="hours">小时</option>
-                    <option value="days">天</option>
-                  </select>
-                  <span className="text-sm leading-8">执行一次</span>
-                </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">执行账号</label>
+            <select
+              value={accountScreenName}
+              onChange={(e) => setAccountScreenName(e.target.value)}
+              disabled={accountsLoading || accounts.length === 0}
+              className="w-full h-9 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none disabled:opacity-60"
+            >
+              {accounts.length === 0 ? (
+                <option value="">暂无可用账号</option>
               ) : (
-                <div>
-                  <input
-                    type="text"
-                    value={schedule}
-                    onChange={(e) => setSchedule(e.target.value)}
-                    placeholder="输入 Cron 表达式，如：0 */2 * * *"
-                    className="w-full h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
-                  />
-                  <div className="mt-1 text-xs text-secondary">
-                    Cron 表达式格式：分 时 日 月 周
-                  </div>
-                </div>
+                accounts.map((account) => (
+                  <option key={account.screenName} value={account.screenName}>
+                    @{account.screenName} · {account.displayName}
+                    {account.isLoggedIn === false ? ' · 未登录' : ''}
+                  </option>
+                ))
               )}
+            </select>
+            {selectedAccount && (
+              <div className="mt-1.5 text-xs text-secondary">
+                当前账号状态：{selectedAccount.isLoggedIn === false ? '未登录' : '可执行'}
+                {selectedAccount.extensionName ? `，实例：${selectedAccount.extensionName}` : ''}
+              </div>
+            )}
+          </div>
+
+          {requiresTweetId && (
+            <div>
+              <label className="block text-sm font-medium mb-1.5">目标 tweetId</label>
+              <input
+                type="text"
+                value={tweetId}
+                onChange={(e) => setTweetId(e.target.value)}
+                placeholder="输入要回复或点赞的 tweetId"
+                className="w-full h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+              />
             </div>
           )}
 
-          {/* Error Message */}
+          {requiresText && (
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                {taskAction === 'tweetclaw.post_tweet' ? '推文内容' : '回复内容'}
+              </label>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={
+                  taskAction === 'tweetclaw.post_tweet'
+                    ? '输入要发布的推文内容'
+                    : '输入要发送的回复内容'
+                }
+                rows={4}
+                className="w-full px-3 py-2 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none resize-y"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5">查询备注（可选）</label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="可用于记录关键词、来源或后续扩展信息"
+              className="w-full h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+            />
+          </div>
+
+          {taskType === 'scheduled' && (
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Cron 定时规则</label>
+              <div className="grid gap-2 md:grid-cols-2 mb-2">
+                {SCHEDULE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setSchedule(preset.value)}
+                    className={`rounded border px-3 py-2 text-left text-xs transition-colors ${
+                      schedule === preset.value
+                        ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
+                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[#6D5BF6]/50'
+                    }`}
+                  >
+                    <div className="font-medium text-sm text-[var(--color-text)]">{preset.label}</div>
+                    <div className="mt-1 text-secondary font-mono">{preset.value}</div>
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={schedule}
+                onChange={(e) => setSchedule(e.target.value)}
+                placeholder="输入 Cron 表达式，如：0 */2 * * *"
+                className="w-full h-8 px-3 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded focus:border-[#6D5BF6] focus:outline-none"
+              />
+              <div className="mt-1 text-xs text-secondary">格式：分 时 日 月 周</div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500 rounded text-red-500 text-sm">
               {error}

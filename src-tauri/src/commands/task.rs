@@ -1,3 +1,5 @@
+use crate::commands::account;
+use crate::services::localbridge::LocalBridgeClient;
 use crate::services::storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -7,166 +9,15 @@ const TASK_DETAILS_FILE: &str = "task-details.json";
 const TASK_HISTORY_FILE: &str = "task-history.json";
 
 fn default_tasks() -> Vec<Task> {
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-    let two_hours_ago = now - chrono::Duration::hours(2);
-    let next_hour = now + chrono::Duration::hours(1);
-
-    vec![
-        Task {
-            id: "task_1".to_string(),
-            name: "测试即时任务".to_string(),
-            description: Some("这是一个测试任务".to_string()),
-            task_type: TaskType::Immediate,
-            status: TaskStatus::Idle,
-            script_path: "/path/to/script.py".to_string(),
-            schedule: None,
-            parameters: Some(HashMap::from([
-                ("topic".to_string(), "ai".to_string()),
-                ("tone".to_string(), "friendly".to_string()),
-            ])),
-            next_execution_time: None,
-            last_execution_time: Some(one_hour_ago.to_rfc3339()),
-            last_execution_status: Some("success".to_string()),
-            last_execution: Some(ExecutionResult {
-                start_time: two_hours_ago.to_rfc3339(),
-                end_time: one_hour_ago.to_rfc3339(),
-                status: "success".to_string(),
-                output: "Task completed successfully\nProcessed 50 items".to_string(),
-                error: None,
-                duration: 2.1,
-            }),
-            statistics: None,
-        },
-        Task {
-            id: "task_2".to_string(),
-            name: "测试定时任务".to_string(),
-            description: Some("每小时执行一次".to_string()),
-            task_type: TaskType::Scheduled,
-            status: TaskStatus::Running,
-            script_path: "/path/to/scheduled.py".to_string(),
-            schedule: Some("0 * * * *".to_string()),
-            parameters: Some(HashMap::from([("region".to_string(), "global".to_string())])),
-            next_execution_time: Some(next_hour.to_rfc3339()),
-            last_execution_time: Some(one_hour_ago.to_rfc3339()),
-            last_execution_status: None,
-            last_execution: None,
-            statistics: Some(TaskStatistics {
-                total_executions: 15,
-                success_count: 12,
-                failure_count: 3,
-                success_rate: 80.0,
-                average_duration: 2.5,
-            }),
-        },
-    ]
+    vec![]
 }
 
 fn default_task_details() -> HashMap<String, TaskDetail> {
-    let tasks = default_tasks();
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-    let two_hours_ago = now - chrono::Duration::hours(2);
-
-    HashMap::from([
-        (
-            "task_1".to_string(),
-            TaskDetail {
-                task: tasks[0].clone(),
-                statistics: TaskStatistics {
-                    total_executions: 6,
-                    success_count: 5,
-                    failure_count: 1,
-                    success_rate: 83.3,
-                    average_duration: 2.2,
-                },
-                history: vec![ExecutionResult {
-                    start_time: two_hours_ago.to_rfc3339(),
-                    end_time: one_hour_ago.to_rfc3339(),
-                    status: "success".to_string(),
-                    output: "Task completed successfully\nProcessed 50 items".to_string(),
-                    error: None,
-                    duration: 2.1,
-                }],
-                failure_log: vec![ExecutionResult {
-                    start_time: (now - chrono::Duration::hours(26)).to_rfc3339(),
-                    end_time: (now - chrono::Duration::hours(26)
-                        + chrono::Duration::milliseconds(1800))
-                    .to_rfc3339(),
-                    status: "failure".to_string(),
-                    output: "Task started\nProcessing...".to_string(),
-                    error: Some("Connection timeout".to_string()),
-                    duration: 1.8,
-                }],
-            },
-        ),
-        (
-            "task_2".to_string(),
-            TaskDetail {
-                task: tasks[1].clone(),
-                statistics: TaskStatistics {
-                    total_executions: 15,
-                    success_count: 12,
-                    failure_count: 3,
-                    success_rate: 80.0,
-                    average_duration: 2.5,
-                },
-                history: vec![ExecutionResult {
-                    start_time: two_hours_ago.to_rfc3339(),
-                    end_time: one_hour_ago.to_rfc3339(),
-                    status: "success".to_string(),
-                    output: "Scheduled task finished".to_string(),
-                    error: None,
-                    duration: 2.4,
-                }],
-                failure_log: vec![ExecutionResult {
-                    start_time: (now - chrono::Duration::hours(8)).to_rfc3339(),
-                    end_time: (now - chrono::Duration::hours(8)
-                        + chrono::Duration::milliseconds(2100))
-                    .to_rfc3339(),
-                    status: "failure".to_string(),
-                    output: "Task started...".to_string(),
-                    error: Some("Failed to connect to remote server".to_string()),
-                    duration: 2.1,
-                }],
-            },
-        ),
-    ])
+    HashMap::new()
 }
 
 fn default_task_history() -> HashMap<String, Vec<ExecutionRecord>> {
-    let now = chrono::Utc::now();
-    let one_hour_ago = now - chrono::Duration::hours(1);
-    let two_hours_ago = now - chrono::Duration::hours(2);
-
-    HashMap::from([
-        (
-            "task_1".to_string(),
-            vec![ExecutionRecord {
-                id: "exec_1".to_string(),
-                task_id: "task_1".to_string(),
-                start_time: two_hours_ago.to_rfc3339(),
-                end_time: Some(one_hour_ago.to_rfc3339()),
-                duration: Some(2.1),
-                status: TaskStatus::Completed,
-                output: Some("Task completed successfully".to_string()),
-                exit_code: Some(0),
-            }],
-        ),
-        (
-            "task_2".to_string(),
-            vec![ExecutionRecord {
-                id: "exec_2".to_string(),
-                task_id: "task_2".to_string(),
-                start_time: two_hours_ago.to_rfc3339(),
-                end_time: Some(one_hour_ago.to_rfc3339()),
-                duration: Some(2.4),
-                status: TaskStatus::Completed,
-                output: Some("Scheduled task finished".to_string()),
-                exit_code: Some(0),
-            }],
-        ),
-    ])
+    HashMap::new()
 }
 
 // Global task storage (loaded from disk on first access)
@@ -232,6 +83,10 @@ pub struct TaskConfig {
     pub script_path: String,
     pub schedule: Option<String>,
     pub parameters: Option<HashMap<String, String>>,
+    pub account_screen_name: Option<String>,
+    pub tweet_id: Option<String>,
+    pub query: Option<String>,
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +110,12 @@ pub struct Task {
     #[serde(rename = "lastExecution")]
     pub last_execution: Option<ExecutionResult>,
     pub statistics: Option<TaskStatistics>,
+    #[serde(rename = "accountScreenName")]
+    pub account_screen_name: Option<String>,
+    #[serde(rename = "tweetId")]
+    pub tweet_id: Option<String>,
+    pub query: Option<String>,
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,6 +161,14 @@ pub struct ExecutionResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskAction {
+    PostTweet,
+    ReplyTweet,
+    LikeTweet,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskType {
     Scheduled,
@@ -324,6 +193,25 @@ fn default_statistics() -> TaskStatistics {
         success_rate: 0.0,
         average_duration: 0.0,
     }
+}
+
+fn parse_task_action(script_path: &str) -> Option<TaskAction> {
+    match script_path {
+        "tweetclaw.post_tweet" => Some(TaskAction::PostTweet),
+        "tweetclaw.reply_tweet" => Some(TaskAction::ReplyTweet),
+        "tweetclaw.like_tweet" => Some(TaskAction::LikeTweet),
+        _ => None,
+    }
+}
+
+fn get_required_parameter<'a>(
+    value: &'a Option<String>,
+    field_name: &str,
+) -> Result<&'a str, String> {
+    value
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| format!("缺少必要字段: {}", field_name))
 }
 
 fn get_task_or_error(tasks: &[Task], task_id: &str) -> Result<Task, String> {
@@ -474,6 +362,10 @@ pub async fn create_task(config: TaskConfig) -> Result<Task, String> {
         } else {
             None
         },
+        account_screen_name: config.account_screen_name,
+        tweet_id: config.tweet_id,
+        query: config.query,
+        text: config.text,
     };
 
     let mut tasks = TASKS.lock().unwrap();
@@ -526,6 +418,10 @@ pub async fn update_task(task_id: String, config: TaskConfig) -> Result<(), Stri
         None
     };
     task.parameters = config.parameters;
+    task.account_screen_name = config.account_screen_name;
+    task.tweet_id = config.tweet_id;
+    task.query = config.query;
+    task.text = config.text;
     task.next_execution_time = next_execution_time(&task.task_type, &task.status);
     if matches!(task.task_type, TaskType::Scheduled) && task.statistics.is_none() {
         task.statistics = Some(default_statistics());
@@ -599,39 +495,37 @@ pub async fn resume_task(task_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn execute_task(task_id: String) -> Result<ExecutionResult, String> {
-    {
+    let task = {
         let tasks = TASKS.lock().unwrap();
-        get_task_or_error(&tasks, &task_id)?;
-    }
+        get_task_or_error(&tasks, &task_id)?
+    };
 
     let start = chrono::Utc::now();
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+    let task_action = parse_task_action(&task.script_path);
+    let execution_result = match task_action {
+        Some(action) => execute_tweetclaw_task(&task, action).await,
+        None => Err(format!("不支持的任务动作: {}", task.script_path)),
+    };
     let end = chrono::Utc::now();
-    let success = task_id
-        .chars()
-        .last()
-        .and_then(|ch| ch.to_digit(10))
-        .map(|digit| digit % 2 == 1)
-        .unwrap_or(true);
+    let duration_ms = (end - start).num_milliseconds().max(0) as f32;
 
-    let result = if success {
-        ExecutionResult {
+    let result = match execution_result {
+        Ok(output) => ExecutionResult {
             start_time: start.to_rfc3339(),
             end_time: end.to_rfc3339(),
             status: "success".to_string(),
-            output: "Task executed successfully\nProcessed 100 items".to_string(),
+            output,
             error: None,
-            duration: 1.2,
-        }
-    } else {
-        ExecutionResult {
+            duration: duration_ms / 1000.0,
+        },
+        Err(error) => ExecutionResult {
             start_time: start.to_rfc3339(),
             end_time: end.to_rfc3339(),
             status: "failure".to_string(),
-            output: "Task started...\nProcessing data...".to_string(),
-            error: Some("Error: Connection timeout after 30 seconds".to_string()),
-            duration: 1.2,
-        }
+            output: "任务执行失败".to_string(),
+            error: Some(error),
+            duration: duration_ms / 1000.0,
+        },
     };
 
     let next_status = execution_status_to_task_status(&result.status);
@@ -684,7 +578,47 @@ pub async fn execute_task(task_id: String) -> Result<ExecutionResult, String> {
     }
 
     recompute_task_statistics(&task_id)?;
+    persist_tasks()?;
+    persist_task_details()?;
+    persist_task_history()?;
     Ok(result)
+}
+
+async fn execute_tweetclaw_task(task: &Task, action: TaskAction) -> Result<String, String> {
+    let account_screen_name = get_required_parameter(&task.account_screen_name, "account_screen_name")?;
+    let config = crate::commands::preferences::get_local_bridge_config().await?;
+    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
+
+    let mapped_accounts = account::get_mapped_accounts().await?;
+    let account = mapped_accounts
+        .iter()
+        .find(|item| item.screen_name == account_screen_name)
+        .ok_or_else(|| format!("账号未映射: {}", account_screen_name))?;
+
+    if !account.is_logged_in {
+        return Err("账号未登录，无法执行任务".to_string());
+    }
+
+    let tab_id = account.default_tab_id;
+
+    match action {
+        TaskAction::PostTweet => {
+            let text = get_required_parameter(&task.text, "text")?;
+            client.create_tweet(text, None).await?;
+            Ok(format!("已使用账号 {} 发布推文", account_screen_name))
+        }
+        TaskAction::ReplyTweet => {
+            let tweet_id = get_required_parameter(&task.tweet_id, "tweet_id")?;
+            let text = get_required_parameter(&task.text, "text")?;
+            client.reply(tweet_id, text, None).await?;
+            Ok(format!("已使用账号 {} 回复推文 {}", account_screen_name, tweet_id))
+        }
+        TaskAction::LikeTweet => {
+            let tweet_id = get_required_parameter(&task.tweet_id, "tweet_id")?;
+            client.like(tweet_id, tab_id).await?;
+            Ok(format!("已使用账号 {} 点赞推文 {}", account_screen_name, tweet_id))
+        }
+    }
 }
 
 #[tauri::command]

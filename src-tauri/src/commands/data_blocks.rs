@@ -1,3 +1,4 @@
+use crate::commands::task;
 use crate::services::storage;
 use crate::services::localbridge::LocalBridgeClient;
 use serde::{Deserialize, Serialize};
@@ -285,11 +286,37 @@ async fn get_tweet_time_distribution(
 }
 
 async fn get_task_execution_stats() -> Result<Value, String> {
+    let tasks = task::get_tasks().await?;
+
+    let mut success_count = 0u32;
+    let mut failure_count = 0u32;
+
+    for task_item in tasks {
+        if let Some(last_status) = task_item.last_execution_status.as_deref() {
+            match last_status {
+                "success" => success_count += 1,
+                "failure" => failure_count += 1,
+                _ => {}
+            }
+            continue;
+        }
+
+        if let Some(detail) = task::get_task_detail(task_item.id.clone()).await.ok() {
+            success_count += detail.statistics.success_count;
+            failure_count += detail.statistics.failure_count;
+        }
+    }
+
     Ok(json!({
         "data": [
-            { "name": "成功", "value": 0 },
-            { "name": "失败", "value": 0 }
-        ]
+            { "name": "成功", "value": success_count },
+            { "name": "失败", "value": failure_count }
+        ],
+        "summary": {
+            "total": success_count + failure_count,
+            "success": success_count,
+            "failure": failure_count
+        }
     }))
 }
 

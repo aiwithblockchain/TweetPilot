@@ -5,6 +5,7 @@ import { taskTauriService } from './tauri'
 export type {
   ExecutionResult,
   Task,
+  TaskAction,
   TaskConfigInput,
   TaskDetail,
   TaskExecutionRecord,

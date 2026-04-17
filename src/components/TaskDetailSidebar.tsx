@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { taskService } from '@/services'
-import type { TaskDetail } from '@/services/task'
+import type { Task, TaskDetail } from '@/services/task'
 
 interface TaskDetailSidebarProps {
   taskId: string
@@ -9,12 +9,34 @@ interface TaskDetailSidebarProps {
 
 type TabType = 'config' | 'stats' | 'history' | 'last-execution' | 'failures'
 
+const ACTION_LABELS: Record<string, string> = {
+  'tweetclaw.post_tweet': '发帖任务',
+  'tweetclaw.reply_tweet': '回复任务',
+  'tweetclaw.like_tweet': '点赞任务',
+}
+
+function getTaskActionLabel(task: Task) {
+  return ACTION_LABELS[task.scriptPath] || task.scriptPath
+}
+
+function getTaskTargetSummary(task: Task) {
+  const parts = []
+  if (task.accountScreenName) {
+    parts.push(`账号 @${task.accountScreenName}`)
+  }
+  if (task.tweetId) {
+    parts.push(`目标推文 ${task.tweetId}`)
+  }
+  if (task.text) {
+    parts.push(`文本 ${task.text}`)
+  }
+  return parts.length > 0 ? parts.join('，') : '未配置额外字段'
+}
+
 export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebarProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<TabType>('config')
-  const [parameters, setParameters] = useState<Record<string, string>>({})
-  const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
     loadTaskDetail()
@@ -24,7 +46,6 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
     try {
       const result = await taskService.getTaskDetail(taskId)
       setDetail(result)
-      setParameters(result.task.parameters || {})
       setActiveTab('config')
     } catch (error) {
       console.error('Failed to load task detail:', error)
@@ -32,6 +53,13 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
       setLoading(false)
     }
   }
+
+  const actionLabel = useMemo(() => {
+    if (!detail) {
+      return ''
+    }
+    return getTaskActionLabel(detail.task)
+  }, [detail])
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString)
@@ -45,60 +73,6 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
     })
   }
 
-  const handleParamChange = (oldKey: string, newKey: string, value: string) => {
-    setParameters((prev) => {
-      const updated = { ...prev }
-      if (oldKey !== newKey && oldKey in updated) {
-        delete updated[oldKey]
-      }
-      if (newKey.trim()) {
-        updated[newKey] = value
-      }
-      return updated
-    })
-    setHasChanges(true)
-  }
-
-  const handleParamDelete = (key: string) => {
-    setParameters((prev) => {
-      const updated = { ...prev }
-      delete updated[key]
-      return updated
-    })
-    setHasChanges(true)
-  }
-
-  const handleAddParam = () => {
-    const newKey = `param${Object.keys(parameters).length + 1}`
-    setParameters((prev) => ({ ...prev, [newKey]: '' }))
-    setHasChanges(true)
-  }
-
-  const handleSaveParams = async () => {
-    if (!detail) {
-      return
-    }
-
-    try {
-      await taskService.updateTask(taskId, {
-        name: detail.task.name,
-        description: detail.task.description,
-        taskType: detail.task.type,
-        scriptPath: detail.task.scriptPath,
-        schedule: detail.task.schedule,
-        parameters,
-      })
-
-      const result = await taskService.getTaskDetail(taskId)
-      setDetail(result)
-      setParameters(result.task.parameters || {})
-      setHasChanges(false)
-      alert('参数已保存')
-    } catch (error) {
-      console.error('Failed to save parameters:', error)
-      alert('保存失败: ' + (error as Error).message)
-    }
-  }
 
   if (loading || !detail) {
     return (
@@ -163,73 +137,54 @@ export default function TaskDetailSidebar({ taskId, onClose }: TaskDetailSidebar
               <div>{task.name}</div>
             </div>
             <div>
+              <div className="text-xs text-secondary mb-1">任务动作</div>
+              <div>{actionLabel}</div>
+            </div>
+            <div>
               <div className="text-xs text-secondary mb-1">描述</div>
               <div>{task.description || '无'}</div>
             </div>
             <div>
-              <div className="text-xs text-secondary mb-1">脚本路径</div>
-              <div className="text-xs break-all font-mono">{task.scriptPath}</div>
-            </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">任务类型</div>
+              <div className="text-xs text-secondary mb-1">执行方式</div>
               <div>{task.type === 'scheduled' ? '定时任务' : '即时任务'}</div>
             </div>
+            <div>
+              <div className="text-xs text-secondary mb-1">执行账号</div>
+              <div>{task.accountScreenName ? `@${task.accountScreenName}` : '未指定'}</div>
+            </div>
+            {task.tweetId && (
+              <div>
+                <div className="text-xs text-secondary mb-1">目标 tweetId</div>
+                <div className="break-all font-mono text-xs">{task.tweetId}</div>
+              </div>
+            )}
+            {task.text && (
+              <div>
+                <div className="text-xs text-secondary mb-1">任务文本</div>
+                <pre className="text-xs bg-[var(--color-surface)] p-2 rounded overflow-x-auto whitespace-pre-wrap">
+                  {task.text}
+                </pre>
+              </div>
+            )}
+            {task.query && (
+              <div>
+                <div className="text-xs text-secondary mb-1">查询备注</div>
+                <div>{task.query}</div>
+              </div>
+            )}
             {task.type === 'scheduled' && task.schedule && (
               <div>
                 <div className="text-xs text-secondary mb-1">执行规则</div>
-                <div>{task.schedule}</div>
+                <div className="font-mono text-xs">{task.schedule}</div>
               </div>
             )}
             <div>
-              <div className="text-xs text-secondary mb-1">任务参数</div>
-              <div className="flex flex-col gap-1.5 mb-2">
-                {Object.entries(parameters).map(([key, value]) => (
-                  <div key={key} className="flex gap-1.5 items-center">
-                    <input
-                      type="text"
-                      value={key}
-                      onChange={(e) => handleParamChange(key, e.target.value, value)}
-                      placeholder="参数名"
-                      className="flex-1 px-2 py-1 text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
-                    />
-                    <input
-                      type="text"
-                      value={value}
-                      onChange={(e) => handleParamChange(key, key, e.target.value)}
-                      placeholder="参数值"
-                      className="flex-1 px-2 py-1 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded"
-                    />
-                    <button
-                      onClick={() => handleParamDelete(key)}
-                      className="px-2 py-1 text-xs bg-[var(--color-surface)] hover:bg-red-500/10 hover:text-red-500 border border-[var(--color-border)] rounded transition-colors"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={handleAddParam}
-                className="w-full px-2 py-1 text-xs bg-[var(--color-surface)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] rounded transition-colors"
-              >
-                + 添加参数
-              </button>
-              <div className="text-xs text-secondary mt-1">
-                参数将以 --key value 形式传递给脚本
-              </div>
-              {hasChanges && (
-                <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-orange-500">⚠️ 有未保存的修改</span>
-                  </div>
-                  <button
-                    onClick={handleSaveParams}
-                    className="w-full h-7 px-3 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
-                  >
-                    保存修改
-                  </button>
-                </div>
-              )}
+              <div className="text-xs text-secondary mb-1">底层动作标识</div>
+              <div className="text-xs break-all font-mono">{task.scriptPath}</div>
+            </div>
+            <div>
+              <div className="text-xs text-secondary mb-1">目标摘要</div>
+              <div>{getTaskTargetSummary(task)}</div>
             </div>
           </div>
         )}
