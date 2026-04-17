@@ -587,17 +587,6 @@ impl LocalBridgeClient {
         })
     }
 
-    fn parse_user_from_response(&self, raw: &serde_json::Value) -> Result<XUser, String> {
-        let user_result = raw
-            .get("data")
-            .and_then(|d| d.get("user"))
-            .and_then(|u| u.get("result"))
-            .ok_or_else(|| "无法解析用户数据".to_string())?;
-
-        self.parse_user_result(user_result)
-            .ok_or_else(|| "用户数据格式错误".to_string())
-    }
-
     fn parse_user_result(&self, result: &serde_json::Value) -> Option<XUser> {
         let legacy = result.get("legacy")?;
 
