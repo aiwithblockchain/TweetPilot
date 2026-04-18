@@ -1,0 +1,69 @@
+:root {
+  --vscode-bg-main: #1E1E1E;
+  --vscode-bg-sidebar: #252526;
+  --vscode-bg-activity-bar: #333333;
+  --vscode-bg-title-bar: #323233;
+  --vscode-bg-surface: #2D2D30;
+  --vscode-border: #2A2A2A;
+  --vscode-text-primary: #CCCCCC;
+  --vscode-text-secondary: #858585;
+  --vscode-accent: #007ACC;
+  --vscode-success: #4EC9B0;
+  --vscode-error: #F48771;
+  --vscode-warning: #D7BA7D;
+  --vscode-hover-bg: #2A2A2A;
+  --color-bg: var(--vscode-bg-main);
+  --color-surface: var(--vscode-bg-surface);
+  --color-border: var(--vscode-border);
+  --color-text: var(--vscode-text-primary);
+  --color-text-secondary: var(--vscode-text-secondary);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: var(--vscode-text-primary);
+  background-color: var(--vscode-bg-main);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vscode-bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-text-secondary);
+}
+
+::selection {
+  background: var(--vscode-accent);
+  color: white;
+}

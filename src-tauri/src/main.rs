@@ -137,6 +137,7 @@ fn main() {
             account::map_account,
             account::delete_account_mapping,
             account::get_mapped_accounts,
+            account::get_instances,
             account::verify_account_status,
             account::refresh_all_accounts_status,
             account::reconnect_account,

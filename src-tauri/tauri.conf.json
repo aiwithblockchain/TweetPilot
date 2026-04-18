@@ -14,8 +14,10 @@
         "title": "TweetPilot",
         "width": 1280,
         "height": 800,
-        "minWidth": 1024,
+        "minWidth": 800,
         "minHeight": 600,
+        "decorations": false,
+        "transparent": false,
         "resizable": true,
         "fullscreen": false
       }

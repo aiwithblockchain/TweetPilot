@@ -404,6 +404,13 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn get_instances() -> Result<Vec<serde_json::Value>, String> {
+    let config = crate::commands::preferences::get_local_bridge_config().await?;
+    let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
+    client.get_instances().await
+}
+
+#[tauri::command]
 pub async fn reconnect_account(screen_name: String) -> Result<(), String> {
     with_mapped_accounts(|mapped| {
         let account = mapped
