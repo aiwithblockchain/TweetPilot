@@ -45,6 +45,7 @@ export function useAppLayoutState() {
   const [rightPanelVisible, setRightPanelVisible] = useState(() =>
     getStoredBoolean(RIGHT_PANEL_VISIBLE_STORAGE_KEY, true)
   )
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
   const [activeTab, setActiveTab] = useState<TabId>('workspace')
   const [selectedSidebarItemId, setSelectedSidebarItemId] = useState(() => SIDEBAR_ITEMS.workspace[0]?.id ?? '')
   const [isCompactLayout, setIsCompactLayout] = useState(false)
@@ -178,6 +179,14 @@ export function useAppLayoutState() {
     }
   }
 
+  const toggleLeftSidebarVisible = () => {
+    setLeftSidebarVisible((prev) => !prev)
+  }
+
+  const toggleRightPanelVisible = () => {
+    persistRightPanelVisible(!rightPanelVisible)
+  }
+
   return {
     activeTab,
     activeView,
@@ -189,6 +198,7 @@ export function useAppLayoutState() {
     instances,
     instancesError,
     isCompactLayout,
+    leftSidebarVisible,
     leftWidth,
     mobileSidebarOpen,
     openTabs,
@@ -199,5 +209,7 @@ export function useAppLayoutState() {
     rightWidth,
     selectedSidebarItem,
     setMobileSidebarOpen,
+    toggleLeftSidebarVisible,
+    toggleRightPanelVisible,
   }
 }

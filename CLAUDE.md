@@ -81,5 +81,16 @@ Failure to display context usage or trigger auto-compaction is a **CRITICAL PROT
 
 Use /browse from gstack for all web browsing. Never use mcp__claude-in-chrome__* tools.
 
+## Dev Startup Protocol (启动铁律)
+
+**CRITICAL REQUIREMENT**: All local dev/test/runtime verification in this project MUST be started via `./dev-with-log.sh`.
+
+Rules:
+1. **Always use `./dev-with-log.sh`** for starting the project when verifying UI behavior, desktop behavior, logs, Tauri runtime behavior, or other local testing.
+2. **Do not switch to another startup method on your own**. This includes not replacing it with `npm run dev`, `npm run tauri:dev`, or any other direct command unless the user explicitly requests that change.
+3. If additional startup behavior is needed, **modify `./dev-with-log.sh` instead of changing the startup entrypoint**.
+4. When describing verification steps or asking the user to run the app, refer to `./dev-with-log.sh` as the canonical startup method.
+5. Treat this as a project-level operating rule for all AI agents working in this repository.
+
 Available skills: /office-hours, /plan-ceo-review, /plan-eng-review, /plan-design-review, /design-consultation, /design-shotgun, /design-html, /review, /ship, /land-and-deploy, /canary, /benchmark, /browse, /connect-chrome, /qa, /qa-only, /design-review, /setup-browser-cookies, /setup-deploy, /retro, /investigate, /document-release, /codex, /cso, /autoplan, /plan-devex-review, /devex-review, /careful, /freeze, /guard, /unfreeze, /gstack-upgrade, /learn, /pair-agent, /open-gstack-browser, /checkpoint, /health
 

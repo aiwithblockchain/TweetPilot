@@ -27,6 +27,7 @@ function App() {
     instances,
     instancesError,
     isCompactLayout,
+    leftSidebarVisible,
     leftWidth,
     mobileSidebarOpen,
     openTabs,
@@ -37,26 +38,35 @@ function App() {
     rightWidth,
     selectedSidebarItem,
     setMobileSidebarOpen,
+    toggleLeftSidebarVisible,
+    toggleRightPanelVisible,
   } = useAppLayoutState()
 
   return (
     <ToastProvider>
       <div className="h-screen flex flex-col bg-[#1E1E1E] text-[#CCCCCC]">
-        <TitleBar />
+        <TitleBar
+          leftSidebarVisible={leftSidebarVisible}
+          rightPanelVisible={rightPanelVisible}
+          onToggleLeftSidebar={toggleLeftSidebarVisible}
+          onToggleRightPanel={toggleRightPanelVisible}
+        />
 
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <ActivityBar activeView={activeView} onViewChange={handleViewChange} />
 
-          <div className={isCompactLayout ? 'hidden md:flex' : 'flex'}>
-            <LeftSidebar
-              activeView={activeView}
-              width={leftWidth}
-              items={currentSidebarItems}
-              footer={<InstanceStatusPanel instances={instances} errorMessage={instancesError} />}
-              onSelectItem={handleSelectSidebarItem}
-            />
-            <ResizableDivider side="left" onResize={persistLeftWidth} isVisible={!isCompactLayout} />
-          </div>
+          {leftSidebarVisible && (
+            <div className={isCompactLayout ? 'hidden md:flex' : 'flex'}>
+              <LeftSidebar
+                activeView={activeView}
+                width={leftWidth}
+                items={currentSidebarItems}
+                footer={<InstanceStatusPanel instances={instances} errorMessage={instancesError} />}
+                onSelectItem={handleSelectSidebarItem}
+              />
+              <ResizableDivider side="left" onResize={persistLeftWidth} isVisible={!isCompactLayout} />
+            </div>
+          )}
 
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-[#1E1E1E] transition-opacity duration-200 ease-out">
             <EditorTabsBar
@@ -66,7 +76,7 @@ function App() {
               rightPanelVisible={rightPanelVisible}
               onActivateTab={handleActivateTab}
               onCloseTab={handleCloseTab}
-              onToggleRightPanel={() => persistRightPanelVisible(!rightPanelVisible)}
+              onToggleRightPanel={toggleRightPanelVisible}
               mobileSidebarTrigger={{
                 activeView,
                 items: currentSidebarItems,
