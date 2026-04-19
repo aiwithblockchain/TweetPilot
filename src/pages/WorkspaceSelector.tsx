@@ -115,11 +115,11 @@ export default function WorkspaceSelector({
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-[var(--color-bg)]">
+    <div className="h-screen flex items-center justify-center bg-[#1E1E1E]">
       <div className="max-w-2xl w-full px-8">
         <div className="text-center mb-12">
-          <h1 className="text-2xl font-semibold mb-3">TweetPilot</h1>
-          <p className="text-base text-secondary">
+          <h1 className="text-2xl font-semibold mb-3 text-white">TweetPilot</h1>
+          <p className="text-base text-[#CCCCCC]">
             选择一个工作目录开始使用
           </p>
         </div>
@@ -128,10 +128,10 @@ export default function WorkspaceSelector({
           <button
             onClick={handleSelectDirectory}
             disabled={loading}
-            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+            className="p-6 bg-[#252526] border border-[#2A2A2A] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
           >
-            <div className="text-base font-medium mb-1">📁 选择本地目录</div>
-            <div className="text-xs text-secondary">
+            <div className="text-base font-medium mb-1 text-[#CCCCCC]">📁 选择本地目录</div>
+            <div className="text-xs text-[#858585]">
               选择一个现有的目录作为工作目录
             </div>
           </button>
@@ -139,17 +139,17 @@ export default function WorkspaceSelector({
           <button
             onClick={() => setShowCloneDialog(true)}
             disabled={loading || cloning}
-            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+            className="p-6 bg-[#252526] border border-[#2A2A2A] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
           >
-            <div className="text-base font-medium mb-1">🔗 从 GitHub 克隆</div>
-            <div className="text-xs text-secondary">
+            <div className="text-base font-medium mb-1 text-[#CCCCCC]">🔗 从 GitHub 克隆</div>
+            <div className="text-xs text-[#858585]">
               克隆一个 GitHub 仓库作为工作目录
             </div>
           </button>
 
           {recentWorkspaces.length > 0 && (
             <div className="space-y-2">
-              <div className="text-sm font-medium text-secondary">最近使用</div>
+              <div className="text-sm font-medium text-[#858585]">最近使用</div>
               {recentWorkspaces.slice(0, 3).map((workspace) => (
                 <button
                   key={workspace.path}
@@ -161,16 +161,16 @@ export default function WorkspaceSelector({
                       setError(err instanceof Error ? err.message : '打开工作目录失败')
                     }
                   }}
-                  className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left"
+                  className="w-full p-4 bg-[#252526] border border-[#2A2A2A] rounded-lg hover:border-[#6D5BF6] transition-colors text-left"
                 >
-                  <div className="text-sm font-medium mb-1">{workspace.name}</div>
-                  <div className="text-xs text-secondary truncate">{workspace.path}</div>
+                  <div className="text-sm font-medium mb-1 text-[#CCCCCC]">{workspace.name}</div>
+                  <div className="text-xs text-[#858585] truncate">{workspace.path}</div>
                 </button>
               ))}
               {recentWorkspaces.length > 3 && (
                 <button
                   onClick={() => setShowRecentWorkspaces(true)}
-                  className="w-full p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-center text-sm text-secondary"
+                  className="w-full p-3 bg-[#252526] border border-[#2A2A2A] rounded-lg hover:border-[#6D5BF6] transition-colors text-center text-sm text-[#858585]"
                 >
                   查看全部 {recentWorkspaces.length} 个工作目录
                 </button>
@@ -186,7 +186,7 @@ export default function WorkspaceSelector({
         )}
 
         {loading && (
-          <div className="mt-4 text-center text-secondary">
+          <div className="mt-4 text-center text-[#858585]">
             正在选择目录...
           </div>
         )}
