@@ -26,12 +26,8 @@ export default function Settings() {
 
   return (
     <div className="h-full flex flex-col bg-[#1E1E1E] text-[#CCCCCC]">
-      <div className="h-12 flex items-center px-4 border-b border-[#2A2A2A] bg-[#252526]">
-        <h2 className="text-lg font-semibold">设置</h2>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-[220px] flex-shrink-0 border-r border-[#2A2A2A] p-3 bg-[#252526]">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <aside className="w-[220px] h-full flex-shrink-0 border-r border-[#2A2A2A] p-3 bg-[#252526] overflow-auto">
           <nav className="flex flex-col gap-1">
             <button
               onClick={() => setActiveSection('account')}
@@ -58,7 +54,7 @@ export default function Settings() {
           </nav>
         </aside>
 
-        <main className="flex-1 overflow-auto p-6 bg-[#1E1E1E]">
+        <main className="flex-1 min-h-0 overflow-auto p-6 bg-[#1E1E1E]">
           {activeSection === 'account' && <AccountSettingsSection />}
           {activeSection === 'preferences' && <PreferencesSection />}
         </main>

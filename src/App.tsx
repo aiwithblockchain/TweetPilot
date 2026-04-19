@@ -6,6 +6,7 @@ import { RightPanel } from './components/RightPanel'
 import { EditorTabsBar } from './components/EditorTabsBar'
 import { CenterContentRouter } from './components/CenterContentRouter'
 import { SettingsDialog } from './components/SettingsDialog'
+import { AddDataBlockMenu } from './components/AddDataBlockMenu'
 import { ToastProvider } from './contexts/ToastContext'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import './styles/vscode-theme.css'
@@ -16,7 +17,9 @@ function App() {
     centerMode,
     currentSidebarItems,
     currentSidebarSection,
+    dataBlockMenuOpen,
     handleActivateTab,
+    handleAddDataBlock,
     handleCloseTab,
     handleSelectSidebarItem,
     handleSidebarAction,
@@ -38,6 +41,7 @@ function App() {
     selectedSidebarItemId,
     setMobileSidebarOpen,
     settingsDialogOpen,
+    closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,
     toggleRightPanelVisible,
@@ -107,6 +111,7 @@ function App() {
         </div>
 
         <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} />
+        <AddDataBlockMenu open={dataBlockMenuOpen} onClose={closeDataBlockMenu} onSelect={handleAddDataBlock} />
       </div>
     </ToastProvider>
   )

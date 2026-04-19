@@ -13,8 +13,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-6 py-8">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
 
-      <div className="relative z-[81] w-full max-w-5xl max-h-[calc(100vh-4rem)] overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] shadow-2xl">
-        <div className="h-11 px-4 border-b border-[#2A2A2A] bg-[#252526] flex items-center justify-between gap-3">
+      <div className="relative z-[81] w-full max-w-5xl h-[720px] max-h-[calc(100vh-4rem)] overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] shadow-2xl flex flex-col">
+        <div className="h-11 px-4 border-b border-[#2A2A2A] bg-[#252526] flex items-center justify-between gap-3 flex-shrink-0">
           <div>
             <div className="text-sm font-semibold text-[#CCCCCC]">设置</div>
             <div className="text-[11px] text-[#858585] mt-0.5">全局配置以对话框形式打开，不打断当前工作流。</div>
@@ -30,7 +30,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </button>
         </div>
 
-        <div className="max-h-[calc(100vh-6.75rem)] overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <SettingsPage />
         </div>
       </div>

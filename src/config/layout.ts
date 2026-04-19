@@ -55,6 +55,14 @@ export const INSTANCE_MOCKS: AppInstance[] = [
   },
 ]
 
+const DATA_BLOCK_ITEMS: SidebarItem[] = [
+  { id: 'latest_tweets', label: '最新推文列表', description: '内容流' },
+  { id: 'account_basic_data', label: '粉丝统计', description: '账号画像' },
+  { id: 'account_interaction_data', label: '推文互动数据', description: '互动报表' },
+  { id: 'tweet_time_distribution', label: '推文时间分布', description: '发布时间报表' },
+  { id: 'task_execution_stats', label: '任务执行统计', description: '任务报表' },
+]
+
 export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {
   workspace: [
     { id: 'workspace-root', label: 'TweetPilot', description: '当前工作区根目录' },
@@ -66,11 +74,7 @@ export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {
     { id: 'account-growth', label: '@tweetpilot_growth', description: '增长账号' },
     { id: 'account-backup', label: '@tweetpilot_backup', description: '备用账号' },
   ],
-  'data-blocks': [
-    { id: 'db-trending', label: 'Trending Topics', description: '热点追踪' },
-    { id: 'db-mentions', label: 'Mentions Monitor', description: '互动监控' },
-    { id: 'db-content', label: 'Content Queue', description: '内容候选池' },
-  ],
+  'data-blocks': DATA_BLOCK_ITEMS,
   tasks: [
     { id: 'task-publish', label: '定时发布任务', description: '今天 18:00' },
     { id: 'task-sync', label: '账号同步任务', description: '每 60 秒执行' },

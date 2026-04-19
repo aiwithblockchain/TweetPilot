@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import {
   DEFAULT_LEFT_WIDTH,
   DEFAULT_RIGHT_WIDTH,
@@ -17,6 +18,7 @@ import {
   type SidebarItem,
   type View,
 } from '@/config/layout'
+import { dataBlocksService } from '@/services/data-blocks'
 import { layoutService } from '@/services/layout'
 import type { AppInstance } from '@/types/layout'
 
@@ -56,6 +58,7 @@ export function useAppLayoutState() {
   const [isCompactLayout, setIsCompactLayout] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [dataBlockMenuOpen, setDataBlockMenuOpen] = useState(false)
   const [instances, setInstances] = useState<AppInstance[]>(INSTANCE_MOCKS)
   const [instancesError, setInstancesError] = useState<string | null>(null)
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
@@ -187,11 +190,17 @@ export function useAppLayoutState() {
     openTab(activeView)
   }
 
-  const handleSidebarAction = (actionId: string) => {
+  const handleSidebarAction = async (actionId: string) => {
     if (actionId === 'create-task') {
       setActiveView('tasks')
       openTab('tasks')
       setCenterMode('create-task')
+      setMobileSidebarOpen(false)
+      return
+    }
+
+    if (actionId === 'add-data-block') {
+      setDataBlockMenuOpen(true)
       setMobileSidebarOpen(false)
       return
     }
@@ -202,6 +211,27 @@ export function useAppLayoutState() {
     }
 
     setCenterMode(activeView === 'tasks' ? 'create-task' : selectedItemsByView[activeView] ? 'detail' : 'empty')
+  }
+
+  const closeDataBlockMenu = () => {
+    setDataBlockMenuOpen(false)
+  }
+
+  const handleAddDataBlock = async (cardType: (typeof DATA_BLOCK_CATALOG)[number]['id']) => {
+    try {
+      await dataBlocksService.addCard(cardType, {})
+    } catch (error) {
+      console.error('Failed to add data block:', error)
+    }
+
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      'data-blocks': cardType,
+    }))
+    setActiveView('data-blocks')
+    openTab('data-blocks')
+    setCenterMode('detail')
+    setDataBlockMenuOpen(false)
   }
 
   const handleCloseTab = (tabId: View) => {
@@ -251,7 +281,9 @@ export function useAppLayoutState() {
     centerMode,
     currentSidebarItems,
     currentSidebarSection,
+    dataBlockMenuOpen,
     handleActivateTab,
+    handleAddDataBlock,
     handleCloseTab,
     handleSelectSidebarItem,
     handleSidebarAction,
@@ -273,6 +305,7 @@ export function useAppLayoutState() {
     selectedSidebarItemId,
     setMobileSidebarOpen,
     settingsDialogOpen,
+    closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,
     toggleRightPanelVisible,
