@@ -1,14 +1,14 @@
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from 'lucide-react'
 import { MobileSidebarDrawer } from './MobileSidebarDrawer'
-import type { AppInstance } from '@/types/layout'
-import { type OpenTab, type SidebarItem, type TabId, type View } from '@/config/layout'
+import { type OpenTab, type SidebarItem, type SidebarSectionConfig, type TabId, type View } from '@/config/layout'
 
 interface MobileSidebarTriggerProps {
   activeView: View
   items: SidebarItem[]
-  instances: AppInstance[]
-  instancesError: string | null
+  section: SidebarSectionConfig
+  selectedItemId?: string | null
   mobileSidebarOpen: boolean
+  onAction?: (actionId: string) => void
   onClose: () => void
   onOpen: () => void
   onSelectItem: (itemId: string) => void

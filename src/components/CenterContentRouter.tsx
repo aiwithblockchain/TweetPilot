@@ -1,64 +1,72 @@
-import { Suspense, type LazyExoticComponent } from 'react'
-import { AccountsOverview } from './AccountsOverview'
-import { WorkspaceHome } from './WorkspaceHome'
-import type { SidebarItem, TabId } from '@/config/layout'
+import { type LazyExoticComponent } from 'react'
+import { AccountDetailPane } from './AccountDetailPane'
+import { DataBlockDetailPane } from './DataBlockDetailPane'
+import { TaskDetailPane } from './TaskDetailPane'
+import { WorkspaceDetailPane } from './WorkspaceDetailPane'
+import type { SidebarItem, View } from '@/config/layout'
 import type { AppInstance } from '@/types/layout'
 
 interface CenterContentRouterProps {
-  activeTab: TabId
+  activeView: View
   selectedSidebarItem: SidebarItem | null
+  centerMode: 'empty' | 'detail' | 'create-task'
   instances: AppInstance[]
-  instancesError: string | null
-  TaskManagementPage: LazyExoticComponent<() => JSX.Element>
-  DataBlocksPage: LazyExoticComponent<() => JSX.Element>
-  SettingsPage: LazyExoticComponent<() => JSX.Element>
 }
 
 export function CenterContentRouter({
-  activeTab,
+  activeView,
   selectedSidebarItem,
+  centerMode,
   instances,
-  instancesError,
-  TaskManagementPage,
-  DataBlocksPage,
-  SettingsPage,
 }: CenterContentRouterProps) {
-  if (activeTab === 'claude-chat') {
-    return (
-      <div className="h-full flex items-center justify-center px-6">
-        <div className="max-w-md text-center text-sm text-[#858585]">
-          Claude 对话被固定在右侧面板中，这里预留为未来的全宽工作模式。
-        </div>
-      </div>
-    )
+  if (centerMode === 'create-task') {
+    return <TaskDetailPane item={selectedSidebarItem} mode="create" />
   }
 
-  return (
-    <Suspense fallback={<CenterLoadingState />}>
-      {(() => {
-        switch (activeTab) {
-          case 'tasks':
-            return <TaskManagementPage />
-          case 'data-blocks':
-            return <DataBlocksPage />
-          case 'settings':
-            return <SettingsPage />
-          case 'accounts':
-            return <AccountsOverview item={selectedSidebarItem} />
-          case 'workspace':
-          default:
-            return <WorkspaceHome item={selectedSidebarItem} instances={instances} instancesError={instancesError} />
-        }
-      })()}
-    </Suspense>
-  )
+  if (!selectedSidebarItem) {
+    return <CenterEmptyState view={activeView} />
+  }
+
+  switch (activeView) {
+    case 'accounts':
+      return <AccountDetailPane item={selectedSidebarItem} instances={instances} />
+    case 'data-blocks':
+      return <DataBlockDetailPane item={selectedSidebarItem} />
+    case 'tasks':
+      return <TaskDetailPane item={selectedSidebarItem} />
+    case 'workspace':
+    default:
+      return <WorkspaceDetailPane item={selectedSidebarItem} />
+  }
 }
 
-function CenterLoadingState() {
+function CenterEmptyState({ view }: { view: View }) {
+  const copy: Record<View, { title: string; description: string }> = {
+    workspace: {
+      title: '工作区',
+      description: '左侧显示目录树和基础操作，中间只在你选择文件或文件夹之后展示内容。',
+    },
+    accounts: {
+      title: '推特账号',
+      description: '左侧显示推特账号列表，中间展示选中账号及其关联实例信息。',
+    },
+    'data-blocks': {
+      title: '数据积木',
+      description: '左侧维护数据积木列表，中间展示积木详情。点击左上角 + 号可新增。',
+    },
+    tasks: {
+      title: '任务',
+      description: '左侧显示任务列表，中间展示任务详情。新增任务会在中间主区打开。',
+    },
+  }
+
+  const current = copy[view]
+
   return (
     <div className="h-full flex items-center justify-center px-6">
-      <div className="rounded border border-[#2A2A2A] bg-[#252526] px-4 py-3 text-sm text-[#858585]">
-        正在加载页面...
+      <div className="max-w-lg text-center rounded border border-[#2A2A2A] bg-[#252526] px-6 py-8">
+        <div className="text-base font-semibold text-[#CCCCCC]">{current.title}</div>
+        <p className="text-sm text-[#858585] mt-3 leading-6">{current.description}</p>
       </div>
     </div>
   )

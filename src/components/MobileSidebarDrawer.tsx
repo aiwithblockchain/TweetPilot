@@ -1,15 +1,14 @@
 import { Menu, X } from 'lucide-react'
 import { LeftSidebar } from './LeftSidebar'
-import { InstanceStatusPanel } from './InstanceStatusPanel'
-import type { SidebarItem, View } from '@/config/layout'
-import type { AppInstance } from '@/types/layout'
+import type { SidebarItem, SidebarSectionConfig, View } from '@/config/layout'
 
 interface MobileSidebarDrawerProps {
   activeView: View
   items: SidebarItem[]
-  instances: AppInstance[]
-  instancesError: string | null
+  section: SidebarSectionConfig
+  selectedItemId?: string | null
   mobileSidebarOpen: boolean
+  onAction?: (actionId: string) => void
   onClose: () => void
   onOpen: () => void
   onSelectItem: (itemId: string) => void
@@ -18,9 +17,10 @@ interface MobileSidebarDrawerProps {
 export function MobileSidebarDrawer({
   activeView,
   items,
-  instances,
-  instancesError,
+  section,
+  selectedItemId,
   mobileSidebarOpen,
+  onAction,
   onClose,
   onOpen,
   onSelectItem,
@@ -65,7 +65,9 @@ export function MobileSidebarDrawer({
           activeView={activeView}
           width={280}
           items={items}
-          footer={<InstanceStatusPanel instances={instances} errorMessage={instancesError} />}
+          section={section}
+          selectedItemId={selectedItemId}
+          onAction={onAction}
           onSelectItem={onSelectItem}
         />
       </div>

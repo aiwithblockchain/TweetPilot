@@ -1,28 +1,25 @@
-import { lazy } from 'react'
 import { TitleBar } from './components/TitleBar'
 import { ActivityBar } from './components/ActivityBar'
 import { ResizableDivider } from './components/ResizableDivider'
 import { LeftSidebar } from './components/LeftSidebar'
-import { InstanceStatusPanel } from './components/InstanceStatusPanel'
 import { RightPanel } from './components/RightPanel'
 import { EditorTabsBar } from './components/EditorTabsBar'
 import { CenterContentRouter } from './components/CenterContentRouter'
+import { SettingsDialog } from './components/SettingsDialog'
 import { ToastProvider } from './contexts/ToastContext'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import './styles/vscode-theme.css'
 
-const TaskManagement = lazy(() => import('./pages/TaskManagement'))
-const DataBlocks = lazy(() => import('./pages/DataBlocks'))
-const SettingsPage = lazy(() => import('./pages/Settings'))
-
 function App() {
   const {
-    activeTab,
     activeView,
+    centerMode,
     currentSidebarItems,
+    currentSidebarSection,
     handleActivateTab,
     handleCloseTab,
     handleSelectSidebarItem,
+    handleSidebarAction,
     handleViewChange,
     instances,
     instancesError,
@@ -30,6 +27,7 @@ function App() {
     leftSidebarVisible,
     leftWidth,
     mobileSidebarOpen,
+    openSettingsDialog,
     openTabs,
     persistLeftWidth,
     persistRightPanelVisible,
@@ -37,7 +35,10 @@ function App() {
     rightPanelVisible,
     rightWidth,
     selectedSidebarItem,
+    selectedSidebarItemId,
     setMobileSidebarOpen,
+    settingsDialogOpen,
+    closeSettingsDialog,
     toggleLeftSidebarVisible,
     toggleRightPanelVisible,
   } = useAppLayoutState()
@@ -53,7 +54,7 @@ function App() {
         />
 
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <ActivityBar activeView={activeView} onViewChange={handleViewChange} />
+          <ActivityBar activeView={activeView} onViewChange={handleViewChange} onOpenSettings={openSettingsDialog} />
 
           {leftSidebarVisible && (
             <div className={isCompactLayout ? 'hidden md:flex' : 'flex'}>
@@ -61,7 +62,9 @@ function App() {
                 activeView={activeView}
                 width={leftWidth}
                 items={currentSidebarItems}
-                footer={<InstanceStatusPanel instances={instances} errorMessage={instancesError} />}
+                section={currentSidebarSection}
+                selectedItemId={selectedSidebarItemId}
+                onAction={handleSidebarAction}
                 onSelectItem={handleSelectSidebarItem}
               />
               <ResizableDivider side="left" onResize={persistLeftWidth} isVisible={!isCompactLayout} />
@@ -70,7 +73,7 @@ function App() {
 
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-[#1E1E1E] transition-opacity duration-200 ease-out">
             <EditorTabsBar
-              activeTab={activeTab}
+              activeTab={activeView}
               openTabs={openTabs}
               isCompactLayout={isCompactLayout}
               rightPanelVisible={rightPanelVisible}
@@ -80,9 +83,10 @@ function App() {
               mobileSidebarTrigger={{
                 activeView,
                 items: currentSidebarItems,
-                instances,
-                instancesError,
+                section: currentSidebarSection,
+                selectedItemId: selectedSidebarItemId,
                 mobileSidebarOpen,
+                onAction: handleSidebarAction,
                 onClose: () => setMobileSidebarOpen(false),
                 onOpen: () => setMobileSidebarOpen(true),
                 onSelectItem: handleSelectSidebarItem,
@@ -90,15 +94,7 @@ function App() {
             />
 
             <div className="flex-1 min-h-0 overflow-auto">
-              <CenterContentRouter
-                activeTab={activeTab}
-                selectedSidebarItem={selectedSidebarItem}
-                instances={instances}
-                instancesError={instancesError}
-                TaskManagementPage={TaskManagement}
-                DataBlocksPage={DataBlocks}
-                SettingsPage={SettingsPage}
-              />
+              <CenterContentRouter activeView={activeView} selectedSidebarItem={selectedSidebarItem} centerMode={centerMode} instances={instances} />
             </div>
           </div>
 
@@ -109,6 +105,8 @@ function App() {
             </>
           )}
         </div>
+
+        <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} />
       </div>
     </ToastProvider>
   )

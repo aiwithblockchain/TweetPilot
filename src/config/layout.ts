@@ -1,7 +1,7 @@
-import { Bot, Database, FolderOpen, Settings, UserRound, Zap } from 'lucide-react'
+import { Bot, Database, FolderOpen, UserRound, Zap } from 'lucide-react'
 import type { AppInstance } from '@/types/layout'
 
-export type View = 'workspace' | 'accounts' | 'data-blocks' | 'tasks' | 'settings'
+export type View = 'workspace' | 'accounts' | 'data-blocks' | 'tasks'
 export type TabId = View | 'claude-chat'
 
 export interface OpenTab {
@@ -14,6 +14,19 @@ export interface SidebarItem {
   id: string
   label: string
   description: string
+}
+
+export interface SidebarSectionAction {
+  id: string
+  label: string
+  icon?: 'add' | 'add-file' | 'add-folder' | 'refresh'
+}
+
+export interface SidebarSectionConfig {
+  title: string
+  description: string
+  actions?: SidebarSectionAction[]
+  emptyMessage: string
 }
 
 export const LEFT_WIDTH_STORAGE_KEY = 'vscode-layout-left-width'
@@ -44,18 +57,18 @@ export const INSTANCE_MOCKS: AppInstance[] = [
 
 export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {
   workspace: [
-    { id: 'ws-default', label: 'TweetPilot 工作区', description: '当前项目总览' },
-    { id: 'ws-assets', label: '资源面板', description: '组件与素材目录' },
-    { id: 'ws-notes', label: '重构说明', description: 'UI 重构执行记录' },
+    { id: 'workspace-root', label: 'TweetPilot', description: '当前工作区根目录' },
+    { id: 'workspace-docs', label: 'docs', description: '方案与说明文档' },
+    { id: 'workspace-assets', label: 'assets', description: '图片与静态资源' },
   ],
   accounts: [
-    { id: 'acc-main', label: '@tweetpilot_main', description: '主账号 / 在线' },
-    { id: 'acc-growth', label: '@tweetpilot_growth', description: '增长账号 / 空闲' },
-    { id: 'acc-backup', label: '@tweetpilot_backup', description: '备用账号 / 离线' },
+    { id: 'account-main', label: '@tweetpilot_main', description: '主账号' },
+    { id: 'account-growth', label: '@tweetpilot_growth', description: '增长账号' },
+    { id: 'account-backup', label: '@tweetpilot_backup', description: '备用账号' },
   ],
   'data-blocks': [
-    { id: 'db-trending', label: 'Trending Topics', description: '热点追踪卡片' },
-    { id: 'db-mentions', label: 'Mentions Monitor', description: '互动监控卡片' },
+    { id: 'db-trending', label: 'Trending Topics', description: '热点追踪' },
+    { id: 'db-mentions', label: 'Mentions Monitor', description: '互动监控' },
     { id: 'db-content', label: 'Content Queue', description: '内容候选池' },
   ],
   tasks: [
@@ -63,10 +76,37 @@ export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {
     { id: 'task-sync', label: '账号同步任务', description: '每 60 秒执行' },
     { id: 'task-review', label: '内容审核任务', description: '待处理 3 条' },
   ],
-  settings: [
-    { id: 'setting-account', label: '账号设置', description: 'Google 登录与配额' },
-    { id: 'setting-system', label: '系统偏好', description: '语言 / 主题 / LocalBridge' },
-  ],
+}
+
+export const SIDEBAR_SECTION_CONFIG: Record<View, SidebarSectionConfig> = {
+  workspace: {
+    title: 'EXPLORER',
+    description: '浏览当前工作区目录并选择文件在中间预览。',
+    actions: [
+      { id: 'new-file', label: '新建文件', icon: 'add-file' },
+      { id: 'new-folder', label: '新建文件夹', icon: 'add-folder' },
+      { id: 'refresh-workspace', label: '刷新', icon: 'refresh' },
+    ],
+    emptyMessage: '当前工作区为空，后续可在这里显示真实目录树。',
+  },
+  accounts: {
+    title: 'TWITTER ACCOUNTS',
+    description: '选择左侧账号，在中间查看头像、名称与关联实例信息。',
+    actions: [{ id: 'refresh-accounts', label: '刷新', icon: 'refresh' }],
+    emptyMessage: '当前没有推特账号，后续可在这里接入真实账号数据。',
+  },
+  'data-blocks': {
+    title: 'DATA BLOCKS',
+    description: '左侧维护数据积木列表，中间显示积木详情。',
+    actions: [{ id: 'add-data-block', label: '新增积木', icon: 'add' }],
+    emptyMessage: '当前没有数据积木，点击上方 + 号可新增。',
+  },
+  tasks: {
+    title: 'TASKS',
+    description: '左侧查看任务列表，中间查看任务详情或新建任务。',
+    actions: [{ id: 'create-task', label: '新增任务', icon: 'add' }],
+    emptyMessage: '当前没有任务，点击上方 + 号可创建任务。',
+  },
 }
 
 export const TAB_META: Record<TabId, { title: string; icon: typeof FolderOpen }> = {
@@ -74,6 +114,5 @@ export const TAB_META: Record<TabId, { title: string; icon: typeof FolderOpen }>
   accounts: { title: 'Accounts', icon: UserRound },
   'data-blocks': { title: 'Data Blocks', icon: Database },
   tasks: { title: 'Tasks', icon: Zap },
-  settings: { title: 'Settings', icon: Settings },
   'claude-chat': { title: 'Claude Chat', icon: Bot },
 }

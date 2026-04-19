@@ -11,10 +11,10 @@ import {
   RIGHT_PANEL_VISIBLE_STORAGE_KEY,
   RIGHT_WIDTH_STORAGE_KEY,
   SIDEBAR_ITEMS,
+  SIDEBAR_SECTION_CONFIG,
   TAB_META,
   type OpenTab,
   type SidebarItem,
-  type TabId,
   type View,
 } from '@/config/layout'
 import { layoutService } from '@/services/layout'
@@ -46,10 +46,16 @@ export function useAppLayoutState() {
     getStoredBoolean(RIGHT_PANEL_VISIBLE_STORAGE_KEY, true)
   )
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
-  const [activeTab, setActiveTab] = useState<TabId>('workspace')
-  const [selectedSidebarItemId, setSelectedSidebarItemId] = useState(() => SIDEBAR_ITEMS.workspace[0]?.id ?? '')
+  const [selectedItemsByView, setSelectedItemsByView] = useState<Record<View, string | null>>({
+    workspace: SIDEBAR_ITEMS.workspace[0]?.id ?? null,
+    accounts: null,
+    'data-blocks': null,
+    tasks: null,
+  })
+  const [centerMode, setCenterMode] = useState<'empty' | 'detail' | 'create-task'>('detail')
   const [isCompactLayout, setIsCompactLayout] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [instances, setInstances] = useState<AppInstance[]>(INSTANCE_MOCKS)
   const [instancesError, setInstancesError] = useState<string | null>(null)
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
@@ -61,8 +67,10 @@ export function useAppLayoutState() {
   ])
 
   const currentSidebarItems = useMemo(() => SIDEBAR_ITEMS[activeView], [activeView])
+  const currentSidebarSection = useMemo(() => SIDEBAR_SECTION_CONFIG[activeView], [activeView])
+  const selectedSidebarItemId = selectedItemsByView[activeView]
   const selectedSidebarItem = useMemo<SidebarItem | null>(
-    () => currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? currentSidebarItems[0] ?? null,
+    () => currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? null,
     [currentSidebarItems, selectedSidebarItemId]
   )
 
@@ -112,9 +120,24 @@ export function useAppLayoutState() {
   }, [])
 
   useEffect(() => {
-    const firstItemId = SIDEBAR_ITEMS[activeView][0]?.id ?? ''
-    setSelectedSidebarItemId(firstItemId)
-  }, [activeView])
+    if (currentSidebarItems.length === 0) {
+      setCenterMode(activeView === 'tasks' ? 'empty' : 'empty')
+      return
+    }
+
+    if (selectedItemsByView[activeView]) {
+      return
+    }
+
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      [activeView]: currentSidebarItems[0]?.id ?? null,
+    }))
+
+    if (activeView !== 'tasks') {
+      setCenterMode('detail')
+    }
+  }, [activeView, currentSidebarItems, selectedItemsByView])
 
   const persistLeftWidth = (nextWidth: number) => {
     const width = clamp(nextWidth, MIN_LEFT_WIDTH, MAX_LEFT_WIDTH)
@@ -133,50 +156,86 @@ export function useAppLayoutState() {
     window.localStorage.setItem(RIGHT_PANEL_VISIBLE_STORAGE_KEY, String(visible))
   }
 
-  const openTab = (tabId: TabId) => {
-    const meta = TAB_META[tabId]
+  const openTab = (view: View) => {
+    const meta = TAB_META[view]
     setOpenTabs((prev) => {
-      if (prev.some((tab) => tab.id === tabId)) return prev
-      return [...prev, { id: tabId, title: meta.title, icon: meta.icon }]
+      if (prev.some((tab) => tab.id === view)) return prev
+      return [...prev, { id: view, title: meta.title, icon: meta.icon }]
     })
-    setActiveTab(tabId)
   }
 
   const handleViewChange = (view: View) => {
     setActiveView(view)
     setMobileSidebarOpen(false)
     openTab(view)
+
+    const nextSelectedId = selectedItemsByView[view] ?? SIDEBAR_ITEMS[view][0]?.id ?? null
+    if (nextSelectedId && !selectedItemsByView[view]) {
+      setSelectedItemsByView((prev) => ({ ...prev, [view]: nextSelectedId }))
+    }
+
+    setCenterMode(nextSelectedId ? 'detail' : 'empty')
   }
 
   const handleSelectSidebarItem = (itemId: string) => {
-    setSelectedSidebarItemId(itemId)
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      [activeView]: itemId,
+    }))
+    setCenterMode('detail')
     setMobileSidebarOpen(false)
     openTab(activeView)
   }
 
-  const handleCloseTab = (tabId: TabId) => {
+  const handleSidebarAction = (actionId: string) => {
+    if (actionId === 'create-task') {
+      setActiveView('tasks')
+      openTab('tasks')
+      setCenterMode('create-task')
+      setMobileSidebarOpen(false)
+      return
+    }
+
+    if (actionId === 'refresh-accounts' || actionId === 'refresh-workspace') {
+      setCenterMode(selectedItemsByView[activeView] ? 'detail' : 'empty')
+      return
+    }
+
+    setCenterMode(activeView === 'tasks' ? 'create-task' : selectedItemsByView[activeView] ? 'detail' : 'empty')
+  }
+
+  const handleCloseTab = (tabId: View) => {
     if (tabId === 'workspace' && openTabs.length === 1) return
 
     setOpenTabs((prev) => {
       const nextTabs = prev.filter((tab) => tab.id !== tabId)
       const fallbackTab = nextTabs[nextTabs.length - 1]?.id ?? 'workspace'
 
-      if (activeTab === tabId) {
-        setActiveTab(fallbackTab)
-        if (fallbackTab !== 'claude-chat') {
-          setActiveView(fallbackTab as View)
-        }
+      if (activeView === tabId) {
+        setActiveView(fallbackTab)
+        const fallbackSelectedId = selectedItemsByView[fallbackTab] ?? SIDEBAR_ITEMS[fallbackTab][0]?.id ?? null
+        setCenterMode(fallbackSelectedId ? 'detail' : 'empty')
       }
 
       return nextTabs.length > 0 ? nextTabs : [prev[0]]
     })
   }
 
-  const handleActivateTab = (tabId: TabId) => {
-    setActiveTab(tabId)
-    if (tabId !== 'claude-chat') {
-      setActiveView(tabId as View)
+  const handleActivateTab = (tabId: View) => {
+    setActiveView(tabId)
+    const nextSelectedId = selectedItemsByView[tabId] ?? SIDEBAR_ITEMS[tabId][0]?.id ?? null
+    if (nextSelectedId && !selectedItemsByView[tabId]) {
+      setSelectedItemsByView((prev) => ({ ...prev, [tabId]: nextSelectedId }))
     }
+    setCenterMode(nextSelectedId ? 'detail' : 'empty')
+  }
+
+  const openSettingsDialog = () => {
+    setSettingsDialogOpen(true)
+  }
+
+  const closeSettingsDialog = () => {
+    setSettingsDialogOpen(false)
   }
 
   const toggleLeftSidebarVisible = () => {
@@ -188,12 +247,14 @@ export function useAppLayoutState() {
   }
 
   return {
-    activeTab,
     activeView,
+    centerMode,
     currentSidebarItems,
+    currentSidebarSection,
     handleActivateTab,
     handleCloseTab,
     handleSelectSidebarItem,
+    handleSidebarAction,
     handleViewChange,
     instances,
     instancesError,
@@ -201,6 +262,7 @@ export function useAppLayoutState() {
     leftSidebarVisible,
     leftWidth,
     mobileSidebarOpen,
+    openSettingsDialog,
     openTabs,
     persistLeftWidth,
     persistRightPanelVisible,
@@ -208,7 +270,10 @@ export function useAppLayoutState() {
     rightPanelVisible,
     rightWidth,
     selectedSidebarItem,
+    selectedSidebarItemId,
     setMobileSidebarOpen,
+    settingsDialogOpen,
+    closeSettingsDialog,
     toggleLeftSidebarVisible,
     toggleRightPanelVisible,
   }
