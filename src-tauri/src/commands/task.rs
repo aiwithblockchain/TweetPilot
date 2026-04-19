@@ -576,6 +576,22 @@ pub async fn execute_task(task_id: String) -> Result<ExecutionResult, String> {
 }
 
 async fn execute_python_script(task: &Task) -> Result<String, String> {
+    // Check if account is online before executing
+    if let Some(screen_name) = &task.account_screen_name {
+        let accounts = crate::commands::account::get_mapped_accounts().await?;
+        let account = accounts.iter().find(|a| &a.screen_name == screen_name);
+
+        match account {
+            None => {
+                return Err(format!("账号 {} 未找到，请先配置账号映射", screen_name));
+            }
+            Some(acc) if !acc.is_logged_in => {
+                return Err(format!("账号 {} 未在线，请先登录该账号", screen_name));
+            }
+            _ => {}
+        }
+    }
+
     let runner = PythonRunner::new(None);
 
     // Parse parameters from task.parameters
@@ -592,6 +608,17 @@ async fn execute_python_script(task: &Task) -> Result<String, String> {
     let mut env_vars = HashMap::new();
     if let Some(screen_name) = &task.account_screen_name {
         env_vars.insert("TWITTER_ACCOUNT".to_string(), screen_name.clone());
+
+        // Also pass instanceId and tabId if available
+        let accounts = crate::commands::account::get_mapped_accounts().await?;
+        if let Some(account) = accounts.iter().find(|a| &a.screen_name == screen_name) {
+            if let Some(instance_id) = &account.instance_id {
+                env_vars.insert("TWITTER_INSTANCE_ID".to_string(), instance_id.clone());
+            }
+            if let Some(tab_id) = account.default_tab_id {
+                env_vars.insert("TWITTER_TAB_ID".to_string(), tab_id.to_string());
+            }
+        }
     }
     if let Some(tweet_id) = &task.tweet_id {
         env_vars.insert("TWEET_ID".to_string(), tweet_id.clone());
