@@ -18,6 +18,9 @@ export interface MappedAccount {
   extensionName?: string
   defaultTabId?: number
   isLoggedIn?: boolean
+  followersCount?: number
+  followingCount?: number
+  tweetCount?: number
 }
 
 export interface AccountSettings {

@@ -174,44 +174,72 @@ impl LocalBridgeClient {
     }
 
     fn parse_user_from_response(&self, raw: &serde_json::Value) -> Result<XUser, String> {
+        println!("=== 解析 API 返回数据 ===");
+        println!("原始数据: {}", serde_json::to_string_pretty(&raw).unwrap_or_default());
 
-        let data = raw
+        // 尝试两种路径: data.user.result 或 data.data.viewer.user_results.result
+        let user_result = raw
             .get("data")
-            .and_then(|d| d.get("data"))
-            .unwrap_or(&raw);
+            .and_then(|d| d.get("user"))
+            .and_then(|u| u.get("result"))
+            .or_else(|| {
+                raw.get("data")
+                    .and_then(|d| d.get("data"))
+                    .and_then(|d| d.get("viewer"))
+                    .and_then(|v| v.get("user_results"))
+                    .and_then(|ur| ur.get("result"))
+            })
+            .ok_or_else(|| "无法找到用户数据".to_string())?;
 
-        let user_result = data
-            .get("viewer")
-            .and_then(|v| v.get("user_results"))
-            .and_then(|ur| ur.get("result"))
-            .unwrap_or(data);
+        let core = user_result.get("core");
+        let legacy = user_result.get("legacy");
+        let avatar = user_result.get("avatar");
 
-        let legacy = user_result
-            .get("legacy")
-            .unwrap_or(&serde_json::Value::Null);
+        let screen_name = core
+            .and_then(|c| c.get("screen_name"))
+            .and_then(|v| v.as_str())
+            .or_else(|| legacy.and_then(|l| l.get("screen_name")).and_then(|v| v.as_str()))
+            .map(String::from);
 
-        Ok(XUser {
+        let name = core
+            .and_then(|c| c.get("name"))
+            .and_then(|v| v.as_str())
+            .or_else(|| legacy.and_then(|l| l.get("name")).and_then(|v| v.as_str()))
+            .map(String::from);
+
+        let profile_image_url = avatar
+            .and_then(|a| a.get("image_url"))
+            .and_then(|v| v.as_str())
+            .or_else(|| legacy.and_then(|l| l.get("profile_image_url_https")).and_then(|v| v.as_str()))
+            .map(String::from);
+
+        let user = XUser {
             id: user_result
                 .get("rest_id")
                 .and_then(|v| v.as_str())
                 .map(String::from),
-            name: legacy
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            screen_name: legacy
-                .get("screen_name")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+            name,
+            screen_name,
             description: legacy
-                .get("description")
+                .and_then(|l| l.get("description"))
                 .and_then(|v| v.as_str())
                 .map(String::from),
-            followers_count: legacy.get("followers_count").and_then(|v| v.as_i64()),
-            following_count: legacy.get("friends_count").and_then(|v| v.as_i64()),
-            tweet_count: legacy.get("statuses_count").and_then(|v| v.as_i64()),
-            profile_image_url: legacy.get("profile_image_url_https").and_then(|v| v.as_str()).map(String::from),
-        })
+            followers_count: legacy.and_then(|l| l.get("followers_count")).and_then(|v| v.as_i64()),
+            following_count: legacy.and_then(|l| l.get("friends_count")).and_then(|v| v.as_i64()),
+            tweet_count: legacy.and_then(|l| l.get("statuses_count")).and_then(|v| v.as_i64()),
+            profile_image_url,
+        };
+
+        println!("解析结果:");
+        println!("  ID: {:?}", user.id);
+        println!("  Name: {:?}", user.name);
+        println!("  Screen Name: {:?}", user.screen_name);
+        println!("  Followers: {:?}", user.followers_count);
+        println!("  Following: {:?}", user.following_count);
+        println!("  Tweets: {:?}", user.tweet_count);
+        println!("========================\n");
+
+        Ok(user)
     }
 
     pub async fn test_connection(&self) -> Result<(), String> {

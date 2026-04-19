@@ -25,6 +25,9 @@ interface TauriMappedAccount {
   extensionName?: string
   defaultTabId?: number
   isLoggedIn?: boolean
+  followersCount?: number
+  followingCount?: number
+  tweetCount?: number
 }
 
 interface TauriAccountSettings {
@@ -51,6 +54,9 @@ function mapTauriMappedAccount(account: TauriMappedAccount): MappedAccount {
     extensionName: account.extensionName,
     defaultTabId: account.defaultTabId,
     isLoggedIn: account.isLoggedIn,
+    followersCount: account.followersCount,
+    followingCount: account.followingCount,
+    tweetCount: account.tweetCount,
   }
 }
 

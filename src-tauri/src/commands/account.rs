@@ -108,6 +108,9 @@ pub struct TwitterAccount {
     pub default_tab_id: Option<i32>,
     #[serde(default = "default_is_logged_in")]
     pub is_logged_in: bool,
+    pub followers_count: Option<i64>,
+    pub following_count: Option<i64>,
+    pub tweet_count: Option<i64>,
 }
 
 fn default_is_logged_in() -> bool {
@@ -256,6 +259,9 @@ pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> 
             extension_name: extension_name.clone(),
             default_tab_id,
             is_logged_in,
+            followers_count: basic_info.as_ref().and_then(|info| info.followers_count),
+            following_count: basic_info.as_ref().and_then(|info| info.following_count),
+            tweet_count: basic_info.as_ref().and_then(|info| info.tweet_count),
         };
 
         mapped.push(new_account.clone());
@@ -323,7 +329,8 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
 
     let mut synced_accounts = Vec::new();
 
-    for instance in instances {
+    // Process all instances
+    for instance in instances.iter() {
         let instance_id = instance.get("instanceId")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "Instance missing instanceId".to_string())?;
@@ -346,7 +353,15 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
                 let avatar = basic_info.profile_image_url.clone()
                     .unwrap_or_else(|| "https://pbs.twimg.com/profile_images/default_profile_400x400.png".to_string());
 
-                println!("  账号: {} ({})", display_name, screen_name);
+                println!("  账号信息:");
+                println!("    - Screen Name: {}", screen_name);
+                println!("    - Display Name: {}", display_name);
+                println!("    - Twitter ID: {:?}", basic_info.id);
+                println!("    - Avatar: {}", avatar);
+                println!("    - Description: {:?}", basic_info.description);
+                println!("    - Followers: {:?}", basic_info.followers_count);
+                println!("    - Following: {:?}", basic_info.following_count);
+                println!("    - Tweets: {:?}", basic_info.tweet_count);
 
                 synced_accounts.push(TwitterAccount {
                     screen_name,
@@ -360,6 +375,9 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
                     extension_name: Some(instance_name.to_string()),
                     default_tab_id: None,
                     is_logged_in: true,
+                    followers_count: basic_info.followers_count,
+                    following_count: basic_info.following_count,
+                    tweet_count: basic_info.tweet_count,
                 });
             }
             Err(e) => {
@@ -368,39 +386,27 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
         }
     }
 
-    // Update mapped accounts with synced data
-    with_mapped_accounts(|mapped| {
-        let now = chrono::Utc::now().to_rfc3339();
+    println!("=== 账号状态刷新成功 ===");
+    println!("当前映射账号数量: {}", synced_accounts.len());
+    for account in &synced_accounts {
+        println!("  - {} ({}) | 状态: {:?} | 实例: {} | 最后验证: {}",
+            account.display_name,
+            account.screen_name,
+            account.status,
+            account.extension_name.as_deref().unwrap_or("未知"),
+            account.last_verified
+        );
+    }
+    println!("========================\n");
 
-        // Update existing accounts or add new ones
-        for synced in &synced_accounts {
-            if let Some(existing) = mapped.iter_mut().find(|a| a.screen_name == synced.screen_name) {
-                existing.status = synced.status.clone();
-                existing.last_verified = synced.last_verified.clone();
-                existing.display_name = synced.display_name.clone();
-                existing.avatar = synced.avatar.clone();
-                existing.twitter_id = synced.twitter_id.clone();
-                existing.description = synced.description.clone();
-                existing.instance_id = synced.instance_id.clone();
-                existing.extension_name = synced.extension_name.clone();
-                existing.is_logged_in = synced.is_logged_in;
-            } else {
-                mapped.push(synced.clone());
-            }
-        }
+    // Update mapped accounts with synced data (only in memory, don't persist)
+    {
+        let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+        // Replace all accounts with synced data (don't merge, just replace)
+        *mapped = synced_accounts;
+    }
 
-        // Mark accounts not in LocalBridge as offline
-        let synced_names: Vec<String> = synced_accounts.iter().map(|a| a.screen_name.clone()).collect();
-        for account in mapped.iter_mut() {
-            if !synced_names.contains(&account.screen_name) {
-                account.status = AccountStatus::Offline;
-                account.is_logged_in = false;
-                account.last_verified = now.clone();
-            }
-        }
-
-        Ok(())
-    })
+    Ok(())
 }
 
 #[tauri::command]

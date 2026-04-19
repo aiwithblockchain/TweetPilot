@@ -28,3 +28,4 @@ src-tauri/target
 .gstack/
 docs/clawBotCli
 docs/clawBotCli.zip
+api_docs.json

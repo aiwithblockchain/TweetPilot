@@ -34,10 +34,8 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
   const selectedAccount = useMemo(() => {
     if (!item) return null
 
-    return (
-      accounts.find((account) => `account-${account.screenName.replace('@', '')}` === item.id) ??
-      accounts.find((account) => account.screenName === item.label)
-    )
+    // item.id is the screenName from the sidebar
+    return accounts.find((account) => account.screenName === item.id)
   }, [accounts, item])
 
   const linkedInstance = useMemo(() => {
@@ -77,9 +75,20 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
         <InfoGrid
           items={[
             { label: '账号名称', value: selectedAccount?.displayName ?? item.label },
-            { label: '头像', value: selectedAccount?.avatar ? '已接入' : '暂未提供' },
             { label: '用户名', value: selectedAccount?.screenName ?? 'TODO' },
+            { label: 'Twitter ID', value: selectedAccount?.twitterId ?? '未知' },
             { label: '状态', value: selectedAccount?.status ?? 'TODO' },
+          ]}
+        />
+      </InfoPanel>
+
+      <InfoPanel title="账号统计">
+        <InfoGrid
+          items={[
+            { label: '粉丝数', value: selectedAccount?.followersCount?.toString() ?? '0' },
+            { label: '关注数', value: selectedAccount?.followingCount?.toString() ?? '0' },
+            { label: '推文数', value: selectedAccount?.tweetCount?.toString() ?? '0' },
+            { label: '简介', value: selectedAccount?.description || '暂无简介' },
           ]}
         />
       </InfoPanel>
@@ -87,10 +96,8 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
       <InfoPanel title="关联实例信息">
         <InfoGrid
           items={[
-            { label: '实例名称', value: linkedInstance?.name ?? selectedAccount?.extensionName ?? 'TODO' },
-            { label: '实例 ID', value: linkedInstance?.id ?? selectedAccount?.instanceId ?? 'TODO' },
-            { label: '连接状态', value: linkedInstance ? formatInstanceStatus(linkedInstance.status) : 'TODO' },
-            { label: '最后活跃', value: linkedInstance?.lastActive ?? 'TODO' },
+            { label: '实例名称', value: linkedInstance?.name ?? selectedAccount?.extensionName ?? '未知' },
+            { label: '实例 ID', value: linkedInstance?.id ?? selectedAccount?.instanceId ?? '未知' },
           ]}
         />
       </InfoPanel>
