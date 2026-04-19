@@ -23,6 +23,7 @@ function App() {
     handleCloseTab,
     handleSelectSidebarItem,
     handleSidebarAction,
+    handleTaskCreated,
     handleViewChange,
     instances,
     instancesError,
@@ -98,7 +99,13 @@ function App() {
             />
 
             <div className="flex-1 min-h-0 overflow-auto">
-              <CenterContentRouter activeView={activeView} selectedSidebarItem={selectedSidebarItem} centerMode={centerMode} instances={instances} />
+              <CenterContentRouter
+                activeView={activeView}
+                selectedSidebarItem={selectedSidebarItem}
+                centerMode={centerMode}
+                instances={instances}
+                onTaskCreated={handleTaskCreated}
+              />
             </div>
           </div>
 

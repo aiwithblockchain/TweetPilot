@@ -5,6 +5,8 @@ interface SidebarItem {
   id: string
   label: string
   description: string
+  badge?: string
+  badgeTone?: 'default' | 'success' | 'warning' | 'danger'
 }
 
 interface LeftSidebarProps {
@@ -23,6 +25,13 @@ const ACTION_ICONS: Record<NonNullable<SidebarSectionAction['icon']>, typeof Plu
   'add-file': FilePlus2,
   'add-folder': FolderPlus,
   refresh: RefreshCw,
+}
+
+const BADGE_TONES: Record<NonNullable<SidebarItem['badgeTone']>, string> = {
+  default: 'text-[#858585] bg-[#1E1E1E] border-[#2A2A2A]',
+  success: 'text-[#4EC9B0] bg-[#4EC9B0]/10 border-[#4EC9B0]/30',
+  warning: 'text-[#D7BA7D] bg-[#D7BA7D]/10 border-[#D7BA7D]/30',
+  danger: 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/30',
 }
 
 export function LeftSidebar({
@@ -83,14 +92,30 @@ export function LeftSidebar({
                   type="button"
                   onClick={() => onSelectItem(item.id)}
                   className={[
-                    'w-full text-left px-2 py-2 rounded-sm border transition-colors',
+                    'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
                     isSelected
-                      ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF]'
+                      ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
                       : 'border-transparent text-[#CCCCCC] hover:bg-[#2A2D2E] hover:border-[#2A2A2A]',
                   ].join(' ')}
                 >
-                  <div className="text-sm truncate">{item.label}</div>
-                  <div className={[ 'text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[#858585]' ].join(' ')}>{item.description}</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm truncate">{item.label}</div>
+                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[#858585]'].join(' ')}>
+                        {item.description}
+                      </div>
+                    </div>
+                    {item.badge && (
+                      <span
+                        className={[
+                          'text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap mt-0.5',
+                          BADGE_TONES[item.badgeTone ?? 'default'],
+                        ].join(' ')}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 </button>
               )
             })}

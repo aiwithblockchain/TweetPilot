@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
+import { useTasksSidebarItems } from './useTasksSidebarItems'
 import {
   DEFAULT_LEFT_WIDTH,
   DEFAULT_RIGHT_WIDTH,
@@ -41,6 +42,7 @@ function getStoredBoolean(key: string, fallback: boolean) {
 }
 
 export function useAppLayoutState() {
+  const tasksSidebar = useTasksSidebarItems()
   const [activeView, setActiveView] = useState<View>('workspace')
   const [leftWidth, setLeftWidth] = useState(() => getStoredNumber(LEFT_WIDTH_STORAGE_KEY, DEFAULT_LEFT_WIDTH))
   const [rightWidth, setRightWidth] = useState(() => getStoredNumber(RIGHT_WIDTH_STORAGE_KEY, DEFAULT_RIGHT_WIDTH))
@@ -69,8 +71,27 @@ export function useAppLayoutState() {
     },
   ])
 
-  const currentSidebarItems = useMemo(() => SIDEBAR_ITEMS[activeView], [activeView])
-  const currentSidebarSection = useMemo(() => SIDEBAR_SECTION_CONFIG[activeView], [activeView])
+  const currentSidebarItems = useMemo(() => {
+    if (activeView === 'tasks') {
+      return tasksSidebar.items
+    }
+    return SIDEBAR_ITEMS[activeView]
+  }, [activeView, tasksSidebar.items])
+  const currentSidebarSection = useMemo(() => {
+    if (activeView === 'tasks' && tasksSidebar.error) {
+      return {
+        ...SIDEBAR_SECTION_CONFIG.tasks,
+        description: `任务列表加载失败：${tasksSidebar.error}`,
+      }
+    }
+    if (activeView === 'tasks' && tasksSidebar.loading) {
+      return {
+        ...SIDEBAR_SECTION_CONFIG.tasks,
+        description: '正在加载真实任务列表...'
+      }
+    }
+    return SIDEBAR_SECTION_CONFIG[activeView]
+  }, [activeView, tasksSidebar.error, tasksSidebar.loading])
   const selectedSidebarItemId = selectedItemsByView[activeView]
   const selectedSidebarItem = useMemo<SidebarItem | null>(
     () => currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? null,
@@ -123,8 +144,12 @@ export function useAppLayoutState() {
   }, [])
 
   useEffect(() => {
+    if (centerMode === 'create-task') {
+      return
+    }
+
     if (currentSidebarItems.length === 0) {
-      setCenterMode(activeView === 'tasks' ? 'empty' : 'empty')
+      setCenterMode('empty')
       return
     }
 
@@ -140,7 +165,7 @@ export function useAppLayoutState() {
     if (activeView !== 'tasks') {
       setCenterMode('detail')
     }
-  }, [activeView, currentSidebarItems, selectedItemsByView])
+  }, [activeView, centerMode, currentSidebarItems, selectedItemsByView])
 
   const persistLeftWidth = (nextWidth: number) => {
     const width = clamp(nextWidth, MIN_LEFT_WIDTH, MAX_LEFT_WIDTH)
@@ -260,6 +285,27 @@ export function useAppLayoutState() {
     setCenterMode(nextSelectedId ? 'detail' : 'empty')
   }
 
+  const handleTaskCreated = async (taskId?: string) => {
+    await tasksSidebar.reload()
+
+    if (taskId) {
+      setSelectedItemsByView((prev) => ({
+        ...prev,
+        tasks: taskId,
+      }))
+      setActiveView('tasks')
+      setCenterMode('detail')
+      setOpenTabs((prev) => {
+        if (prev.some((tab) => tab.id === 'tasks')) return prev
+        return [...prev, { id: 'tasks', title: TAB_META.tasks.title, icon: TAB_META.tasks.icon }]
+      })
+      return
+    }
+
+    setActiveView('tasks')
+    setCenterMode('detail')
+  }
+
   const openSettingsDialog = () => {
     setSettingsDialogOpen(true)
   }
@@ -287,6 +333,7 @@ export function useAppLayoutState() {
     handleCloseTab,
     handleSelectSidebarItem,
     handleSidebarAction,
+    handleTaskCreated,
     handleViewChange,
     instances,
     instancesError,

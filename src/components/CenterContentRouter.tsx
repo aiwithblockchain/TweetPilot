@@ -11,6 +11,7 @@ interface CenterContentRouterProps {
   selectedSidebarItem: SidebarItem | null
   centerMode: 'empty' | 'detail' | 'create-task'
   instances: AppInstance[]
+  onTaskCreated?: (taskId?: string) => void
 }
 
 export function CenterContentRouter({
@@ -18,9 +19,10 @@ export function CenterContentRouter({
   selectedSidebarItem,
   centerMode,
   instances,
+  onTaskCreated,
 }: CenterContentRouterProps) {
   if (centerMode === 'create-task') {
-    return <TaskDetailPane item={selectedSidebarItem} mode="create" />
+    return <TaskDetailPane item={selectedSidebarItem} mode="create" onCreated={onTaskCreated} />
   }
 
   if (!selectedSidebarItem) {
