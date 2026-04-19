@@ -1,6 +1,7 @@
 use crate::commands::account;
 use crate::services::localbridge::LocalBridgeClient;
 use crate::services::storage;
+use crate::services::python_runner::PythonRunner;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -160,13 +161,7 @@ pub struct ExecutionResult {
     pub duration: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum TaskAction {
-    PostTweet,
-    ReplyTweet,
-    LikeTweet,
-}
+// Removed: TaskAction enum - now using script_path directly
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -195,14 +190,7 @@ fn default_statistics() -> TaskStatistics {
     }
 }
 
-fn parse_task_action(script_path: &str) -> Option<TaskAction> {
-    match script_path {
-        "tweetclaw.post_tweet" => Some(TaskAction::PostTweet),
-        "tweetclaw.reply_tweet" => Some(TaskAction::ReplyTweet),
-        "tweetclaw.like_tweet" => Some(TaskAction::LikeTweet),
-        _ => None,
-    }
-}
+// Removed: parse_task_action - no longer needed with Python script execution
 
 fn get_required_parameter<'a>(
     value: &'a Option<String>,
@@ -501,11 +489,14 @@ pub async fn execute_task(task_id: String) -> Result<ExecutionResult, String> {
     };
 
     let start = chrono::Utc::now();
-    let task_action = parse_task_action(&task.script_path);
-    let execution_result = match task_action {
-        Some(action) => execute_tweetclaw_task(&task, action).await,
-        None => Err(format!("不支持的任务动作: {}", task.script_path)),
+
+    // Check if this is a legacy tweetclaw action or a Python script
+    let execution_result = if task.script_path.starts_with("tweetclaw.") {
+        execute_tweetclaw_task(&task).await
+    } else {
+        execute_python_script(&task).await
     };
+
     let end = chrono::Utc::now();
     let duration_ms = (end - start).num_milliseconds().max(0) as f32;
 
@@ -584,7 +575,46 @@ pub async fn execute_task(task_id: String) -> Result<ExecutionResult, String> {
     Ok(result)
 }
 
-async fn execute_tweetclaw_task(task: &Task, action: TaskAction) -> Result<String, String> {
+async fn execute_python_script(task: &Task) -> Result<String, String> {
+    let runner = PythonRunner::new(None);
+
+    // Parse parameters from task.parameters
+    let args: Vec<String> = task.parameters
+        .as_ref()
+        .map(|params| {
+            params.iter()
+                .map(|(k, v)| format!("--{}={}", k, v))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Prepare environment variables (pass account info to script)
+    let mut env_vars = HashMap::new();
+    if let Some(screen_name) = &task.account_screen_name {
+        env_vars.insert("TWITTER_ACCOUNT".to_string(), screen_name.clone());
+    }
+    if let Some(tweet_id) = &task.tweet_id {
+        env_vars.insert("TWEET_ID".to_string(), tweet_id.clone());
+    }
+    if let Some(text) = &task.text {
+        env_vars.insert("TWEET_TEXT".to_string(), text.clone());
+    }
+
+    let output = runner.execute(&task.script_path, args, Some(env_vars)).await?;
+
+    if output.exit_code != Some(0) {
+        let error_msg = if !output.stderr.is_empty() {
+            output.stderr.join("\n")
+        } else {
+            format!("脚本执行失败，退出码: {:?}", output.exit_code)
+        };
+        return Err(error_msg);
+    }
+
+    Ok(output.stdout.join("\n"))
+}
+
+async fn execute_tweetclaw_task(task: &Task) -> Result<String, String> {
     let account_screen_name = get_required_parameter(&task.account_screen_name, "account_screen_name")?;
     let config = crate::commands::preferences::get_local_bridge_config().await?;
     let client = LocalBridgeClient::new(config.endpoint, config.timeout_ms)?;
@@ -601,23 +631,25 @@ async fn execute_tweetclaw_task(task: &Task, action: TaskAction) -> Result<Strin
 
     let tab_id = account.default_tab_id;
 
-    match action {
-        TaskAction::PostTweet => {
+    // Parse action from script_path
+    match task.script_path.as_str() {
+        "tweetclaw.post_tweet" => {
             let text = get_required_parameter(&task.text, "text")?;
             client.create_tweet(text, None).await?;
             Ok(format!("已使用账号 {} 发布推文", account_screen_name))
         }
-        TaskAction::ReplyTweet => {
+        "tweetclaw.reply_tweet" => {
             let tweet_id = get_required_parameter(&task.tweet_id, "tweet_id")?;
             let text = get_required_parameter(&task.text, "text")?;
             client.reply(tweet_id, text, None).await?;
             Ok(format!("已使用账号 {} 回复推文 {}", account_screen_name, tweet_id))
         }
-        TaskAction::LikeTweet => {
+        "tweetclaw.like_tweet" => {
             let tweet_id = get_required_parameter(&task.tweet_id, "tweet_id")?;
             client.like(tweet_id, tab_id).await?;
             Ok(format!("已使用账号 {} 点赞推文 {}", account_screen_name, tweet_id))
         }
+        _ => Err(format!("不支持的 tweetclaw 动作: {}", task.script_path))
     }
 }
 

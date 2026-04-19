@@ -1,5 +1,6 @@
 export type TaskType = 'immediate' | 'scheduled'
-export type TaskAction = 'tweetclaw.post_tweet' | 'tweetclaw.reply_tweet' | 'tweetclaw.like_tweet'
+// TaskAction is now any string (script path or legacy action)
+export type TaskAction = string
 
 export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 

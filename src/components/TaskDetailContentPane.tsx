@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { taskService } from '@/services'
 import { TaskActionBar } from './TaskActionBar'
+import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
 import type { ExecutionResult, Task, TaskDetail } from '@/services/task'
 
 interface TaskDetailContentPaneProps {
@@ -97,6 +98,14 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
 
         <div className="space-y-5">
           <TaskActionBar task={task} onChanged={() => void loadDetail()} />
+
+          {task.lastExecution && (
+            <ScriptExecutionMonitor
+              output={task.lastExecution.output}
+              error={task.lastExecution.error}
+              status={task.status === 'running' ? 'running' : task.lastExecution.status === 'success' ? 'completed' : 'failed'}
+            />
+          )}
 
           <SidePanel title="执行统计">
             <InfoGrid

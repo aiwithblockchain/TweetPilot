@@ -1,49 +1,23 @@
 import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { accountService, taskService } from '@/services'
-import type { MappedAccount, TaskAction, TaskType } from '@/services'
+import type { MappedAccount, TaskType } from '@/services'
+import { ScriptSelector } from './ScriptSelector'
+import { ParameterEditor } from './ParameterEditor'
 
 interface TaskCreatePaneProps {
   onCreated?: (taskId?: string) => void
-}
-
-type TaskFormAction = TaskAction
-
-const ACTION_OPTIONS: Array<{ value: TaskFormAction; label: string; description: string }> = [
-  {
-    value: 'tweetclaw.post_tweet',
-    label: '发帖任务',
-    description: '使用选定账号直接发布一条新推文',
-  },
-  {
-    value: 'tweetclaw.reply_tweet',
-    label: '回复任务',
-    description: '针对指定 tweetId 发送回复内容',
-  },
-  {
-    value: 'tweetclaw.like_tweet',
-    label: '点赞任务',
-    description: '使用选定账号为指定 tweetId 点赞',
-  },
-]
-
-const ACTION_NAME_PRESETS: Record<TaskFormAction, string> = {
-  'tweetclaw.post_tweet': '发布推文',
-  'tweetclaw.reply_tweet': '回复推文',
-  'tweetclaw.like_tweet': '点赞推文',
 }
 
 export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('immediate')
-  const [taskAction, setTaskAction] = useState<TaskFormAction>('tweetclaw.post_tweet')
+  const [scriptPath, setScriptPath] = useState('')
+  const [parameters, setParameters] = useState<Record<string, string>>({})
   const [intervalValue, setIntervalValue] = useState(1)
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [accountScreenName, setAccountScreenName] = useState('')
-  const [tweetId, setTweetId] = useState('')
-  const [text, setText] = useState('')
-  const [query, setQuery] = useState('')
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -77,33 +51,19 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     }
   }, [])
 
-  useEffect(() => {
-    const presetName = ACTION_NAME_PRESETS[taskAction]
-    setName((current) => (current.trim() ? current : presetName))
-  }, [taskAction])
-
-  const selectedAction = useMemo(
-    () => ACTION_OPTIONS.find((option) => option.value === taskAction) ?? ACTION_OPTIONS[0],
-    [taskAction]
-  )
+  const scriptFileName = useMemo(() => {
+    if (!scriptPath) return '未选择脚本'
+    return scriptPath.split('/').pop() || scriptPath
+  }, [scriptPath])
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.screenName === accountScreenName) ?? null,
     [accounts, accountScreenName]
   )
 
-  const requiresTweetId = taskAction === 'tweetclaw.reply_tweet' || taskAction === 'tweetclaw.like_tweet'
-  const requiresText = taskAction === 'tweetclaw.post_tweet' || taskAction === 'tweetclaw.reply_tweet'
-
   const validateForm = () => {
     if (!name.trim()) return '请输入任务名称'
-    if (accountsLoading) return '账号列表加载中，请稍后重试'
-    if (accounts.length === 0) return '请先在账号管理中映射至少一个账号'
-    if (!accountScreenName) return '请选择执行账号'
-    if (requiresTweetId && !tweetId.trim()) return '请输入目标 tweetId'
-    if (requiresText && !text.trim()) {
-      return taskAction === 'tweetclaw.post_tweet' ? '请输入推文内容' : '请输入回复内容'
-    }
+    if (!scriptPath.trim()) return '请选择 Python 脚本'
     if (taskType === 'scheduled' && intervalValue < 1) return '执行间隔必须大于 0'
     return null
   }
@@ -112,12 +72,10 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     setName('')
     setDescription('')
     setTaskType('immediate')
-    setTaskAction('tweetclaw.post_tweet')
+    setScriptPath('')
+    setParameters({})
     setIntervalValue(1)
     setIntervalUnit('hours')
-    setTweetId('')
-    setText('')
-    setQuery('')
   }
 
   const handleSubmit = async () => {
@@ -147,12 +105,10 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       name: name.trim(),
       description: description.trim() || undefined,
       taskType,
-      scriptPath: taskAction,
+      scriptPath: scriptPath.trim(),
       schedule: taskType === 'scheduled' ? `*/${getIntervalMinutes()} * * * *` : undefined,
-      accountScreenName,
-      tweetId: requiresTweetId ? tweetId.trim() : undefined,
-      text: requiresText ? text.trim() : undefined,
-      query: query.trim() || undefined,
+      parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
+      accountScreenName: accountScreenName || undefined,
     }
 
     try {
@@ -189,8 +145,8 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
             <HeroStat label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
-            <HeroStat label="任务动作" value={selectedAction.label} />
-            <HeroStat label="目标账号" value={selectedAccount?.displayName ?? '请选择账号'} />
+            <HeroStat label="脚本文件" value={scriptFileName} />
+            <HeroStat label="目标账号" value={selectedAccount?.displayName ?? '可选'} />
           </div>
         </div>
       </div>
@@ -217,47 +173,28 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="任务类型">
-              <select
-                value={taskAction}
-                onChange={(e) => setTaskAction(e.target.value as TaskFormAction)}
-                className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
-              >
-                {ACTION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-2 text-xs text-[#858585] leading-5">{selectedAction.description}</div>
-            </Field>
+          <Field label="Python 脚本">
+            <ScriptSelector value={scriptPath} onChange={setScriptPath} />
+          </Field>
 
-            <Field label="执行账号">
-              <select
-                value={accountScreenName}
-                onChange={(e) => setAccountScreenName(e.target.value)}
-                disabled={accountsLoading || accounts.length === 0}
-                className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
-              >
-                {accounts.length === 0 ? (
-                  <option value="">暂无可用账号</option>
-                ) : (
-                  accounts.map((account) => (
-                    <option key={account.screenName} value={account.screenName}>
-                      {account.displayName} · {account.screenName}
-                    </option>
-                  ))
-                )}
-              </select>
-              {selectedAccount && (
-                <div className="mt-2 text-xs text-[#858585]">
-                  当前账号状态：{selectedAccount.isLoggedIn === false ? '未登录' : '可执行'}
-                  {selectedAccount.extensionName ? `，实例：${selectedAccount.extensionName}` : ''}
-                </div>
-              )}
-            </Field>
-          </div>
+          <Field label="执行账号（可选）">
+            <select
+              value={accountScreenName}
+              onChange={(e) => setAccountScreenName(e.target.value)}
+              disabled={accountsLoading || accounts.length === 0}
+              className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
+            >
+              <option value="">不指定账号</option>
+              {accounts.map((account) => (
+                <option key={account.screenName} value={account.screenName}>
+                  {account.displayName} · {account.screenName}
+                </option>
+              ))}
+            </select>
+            <div className="mt-2 text-xs text-[#858585]">
+              如果脚本需要 Twitter 账号信息，会通过环境变量 TWITTER_ACCOUNT 传递
+            </div>
+          </Field>
 
           <Field label="任务名称">
             <input
@@ -273,44 +210,14 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="说明这个任务的触发场景或执行目标"
+              placeholder="说明这个脚本的用途或执行目标"
               rows={2}
               className="w-full rounded border border-[#2A2A2A] bg-[#171718] px-3 py-2 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] resize-none"
             />
           </Field>
 
-          {requiresTweetId && (
-            <Field label="目标 tweetId">
-              <input
-                type="text"
-                value={tweetId}
-                onChange={(e) => setTweetId(e.target.value)}
-                placeholder="输入要回复或点赞的 tweetId"
-                className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
-              />
-            </Field>
-          )}
-
-          {requiresText && (
-            <Field label={taskAction === 'tweetclaw.post_tweet' ? '推文内容' : '回复内容'}>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={taskAction === 'tweetclaw.post_tweet' ? '输入要发布的推文内容' : '输入要发送的回复内容'}
-                rows={4}
-                className="w-full rounded border border-[#2A2A2A] bg-[#171718] px-3 py-2 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] resize-y"
-              />
-            </Field>
-          )}
-
-          <Field label="查询备注（可选）">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="记录关键词、来源或后续扩展信息"
-              className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
-            />
+          <Field label="脚本参数（可选）">
+            <ParameterEditor value={parameters} onChange={setParameters} />
           </Field>
 
           {taskType === 'scheduled' && (
@@ -357,14 +264,15 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
         <aside className="space-y-4">
           <SidePanel title="当前任务形态">
             <InfoLine label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
-            <InfoLine label="动作" value={selectedAction.label} />
-            <InfoLine label="目标账号" value={selectedAccount?.displayName ?? '未选择'} />
+            <InfoLine label="脚本文件" value={scriptFileName} />
+            <InfoLine label="目标账号" value={selectedAccount?.displayName ?? '未指定'} />
           </SidePanel>
 
-          <SidePanel title="创建说明">
+          <SidePanel title="使用说明">
             <div className="space-y-2 text-sm text-[#CCCCCC] leading-7">
-              <p>即时任务适合人工触发的一次性动作，比如发一条推文、回复某条推文或点赞。</p>
-              <p>定时任务适合周期执行的运营动作，比如每隔几小时同步或定时发帖。</p>
+              <p>选择一个 Python 脚本文件，系统会自动执行并捕获输出。</p>
+              <p>脚本可以通过环境变量获取账号信息：TWITTER_ACCOUNT、TWEET_ID、TWEET_TEXT。</p>
+              <p>即时任务适合手动触发，定时任务适合周期性自动执行。</p>
             </div>
           </SidePanel>
         </aside>
