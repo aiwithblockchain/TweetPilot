@@ -22,11 +22,8 @@ export default function WorkspaceSelector({
   const [cloneProgress, setCloneProgress] = useState<string>('')
 
   useEffect(() => {
-    if (currentWorkspace) {
-      onWorkspaceSelected(currentWorkspace)
-    }
-    loadRecentWorkspaces()
-  }, [currentWorkspace, onWorkspaceSelected])
+    void loadRecentWorkspaces()
+  }, [])
 
   const loadRecentWorkspaces = async () => {
     try {

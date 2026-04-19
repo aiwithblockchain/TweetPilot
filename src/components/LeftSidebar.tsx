@@ -1,7 +1,7 @@
-import { FolderPlus, FilePlus2, Plus, RefreshCw, type ReactNode } from 'lucide-react'
+import { FolderPlus, FilePlus2, Plus, RefreshCw, ChevronRight, ChevronDown, File, Folder, Image as ImageIcon, FileCode2, type ReactNode } from 'lucide-react'
 import type { SidebarSectionAction, SidebarSectionConfig, View } from '@/config/layout'
 
-interface SidebarItem {
+export interface SidebarItem {
   id: string
   label: string
   description: string
@@ -9,15 +9,28 @@ interface SidebarItem {
   badgeTone?: 'default' | 'success' | 'warning' | 'danger'
 }
 
+export interface SidebarTreeItem {
+  id: string
+  label: string
+  description: string
+  depth: number
+  kind: 'file' | 'directory'
+  expanded?: boolean
+  isBranch?: boolean
+  icon?: 'file' | 'text' | 'image' | 'folder'
+}
+
 interface LeftSidebarProps {
   activeView: View
   width: number
   items: SidebarItem[]
+  treeItems?: SidebarTreeItem[]
   section: SidebarSectionConfig
   footer?: ReactNode
   selectedItemId?: string | null
   onSelectItem: (itemId: string) => void
   onAction?: (actionId: string) => void
+  onToggleTreeItem?: (itemId: string) => void
 }
 
 const ACTION_ICONS: Record<NonNullable<SidebarSectionAction['icon']>, typeof Plus> = {
@@ -34,16 +47,27 @@ const BADGE_TONES: Record<NonNullable<SidebarItem['badgeTone']>, string> = {
   danger: 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/30',
 }
 
+const TREE_ICON_MAP = {
+  file: File,
+  text: FileCode2,
+  image: ImageIcon,
+  folder: Folder,
+} as const
+
 export function LeftSidebar({
   activeView,
   width,
   items,
+  treeItems,
   section,
   footer,
   selectedItemId,
   onSelectItem,
   onAction,
+  onToggleTreeItem,
 }: LeftSidebarProps) {
+  const shouldRenderTree = activeView === 'workspace' && treeItems
+
   return (
     <aside
       className="bg-[#252526] border-r border-[#2A2A2A] flex flex-col flex-shrink-0 min-w-0"
@@ -79,7 +103,60 @@ export function LeftSidebar({
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2">
-        {items.length === 0 ? (
+        {shouldRenderTree ? (
+          treeItems.length === 0 ? (
+            <div className="px-2 py-3 text-xs text-[#858585] leading-5">{section.emptyMessage}</div>
+          ) : (
+            <div className="space-y-0.5">
+              {treeItems.map((item) => {
+                const isSelected = selectedItemId === item.id
+                const Icon = TREE_ICON_MAP[item.icon ?? (item.kind === 'directory' ? 'folder' : 'file')]
+                const ChevronIcon = item.expanded ? ChevronDown : ChevronRight
+
+                return (
+                  <div key={item.id} className="group">
+                    <button
+                      type="button"
+                      onClick={() => onSelectItem(item.id)}
+                      className={[
+                        'w-full text-left rounded-md border transition-colors pr-2',
+                        isSelected
+                          ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
+                          : 'border-transparent text-[#CCCCCC] hover:bg-[#2A2D2E] hover:border-[#2A2A2A]',
+                      ].join(' ')}
+                      style={{ paddingLeft: `${8 + item.depth * 14}px`, paddingTop: '6px', paddingBottom: '6px' }}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (item.isBranch) {
+                              onToggleTreeItem?.(item.id)
+                            }
+                          }}
+                          className={[
+                            'h-4 w-4 flex items-center justify-center rounded',
+                            item.isBranch ? 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]' : 'text-transparent pointer-events-none',
+                          ].join(' ')}
+                          tabIndex={-1}
+                          aria-label={item.expanded ? '折叠文件夹' : '展开文件夹'}
+                        >
+                          <ChevronIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <Icon className={[
+                          'w-4 h-4 flex-shrink-0',
+                          item.kind === 'directory' ? 'text-[#D7BA7D]' : item.icon === 'image' ? 'text-[#9CDCFE]' : 'text-[#4EC9B0]',
+                        ].join(' ')} />
+                        <span className="text-sm truncate">{item.label}</span>
+                      </div>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        ) : items.length === 0 ? (
           <div className="px-2 py-3 text-xs text-[#858585] leading-5">{section.emptyMessage}</div>
         ) : (
           <div className="space-y-0.5">

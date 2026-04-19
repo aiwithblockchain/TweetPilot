@@ -1,9 +1,9 @@
-import { type LazyExoticComponent } from 'react'
 import { AccountDetailPane } from './AccountDetailPane'
 import { DataBlockDetailPane } from './DataBlockDetailPane'
 import { TaskDetailPane } from './TaskDetailPane'
 import { WorkspaceDetailPane } from './WorkspaceDetailPane'
 import type { SidebarItem, View } from '@/config/layout'
+import type { WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
 
 interface CenterContentRouterProps {
@@ -11,6 +11,10 @@ interface CenterContentRouterProps {
   selectedSidebarItem: SidebarItem | null
   centerMode: 'empty' | 'detail' | 'create-task'
   instances: AppInstance[]
+  workspaceFileContent?: WorkspaceFileContent | null
+  workspaceFolderSummary?: WorkspaceFolderSummary | null
+  workspaceLoading?: boolean
+  workspaceError?: string | null
   onTaskCreated?: (taskId?: string) => void
 }
 
@@ -19,6 +23,10 @@ export function CenterContentRouter({
   selectedSidebarItem,
   centerMode,
   instances,
+  workspaceFileContent,
+  workspaceFolderSummary,
+  workspaceLoading,
+  workspaceError,
   onTaskCreated,
 }: CenterContentRouterProps) {
   if (centerMode === 'create-task') {
@@ -38,7 +46,15 @@ export function CenterContentRouter({
       return <TaskDetailPane item={selectedSidebarItem} />
     case 'workspace':
     default:
-      return <WorkspaceDetailPane item={selectedSidebarItem} />
+      return (
+        <WorkspaceDetailPane
+          item={selectedSidebarItem}
+          fileContent={workspaceFileContent}
+          folderSummary={workspaceFolderSummary}
+          loading={workspaceLoading}
+          error={workspaceError}
+        />
+      )
   }
 }
 

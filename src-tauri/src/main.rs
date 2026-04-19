@@ -132,6 +132,11 @@ fn main() {
             workspace::get_current_workspace,
             workspace::open_workspace_in_new_window,
             workspace::check_directory_exists,
+            workspace::list_workspace_directory,
+            workspace::read_workspace_file,
+            workspace::get_workspace_folder_summary,
+            workspace::create_workspace_file,
+            workspace::create_workspace_folder,
             // Account commands
             account::get_available_accounts,
             account::map_account,

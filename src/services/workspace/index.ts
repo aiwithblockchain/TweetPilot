@@ -1,5 +1,12 @@
 import { workspaceTauriService } from './tauri'
 
-export { type WorkspaceHistory, type WorkspaceService } from './types'
+export type {
+  CreateWorkspaceEntryInput,
+  WorkspaceEntry,
+  WorkspaceFileContent,
+  WorkspaceFolderSummary,
+  WorkspaceHistory,
+  WorkspaceService,
+} from './types'
 
 export const workspaceService = workspaceTauriService
