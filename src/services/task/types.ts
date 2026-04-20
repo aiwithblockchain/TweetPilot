@@ -2,6 +2,8 @@ export type TaskType = 'immediate' | 'scheduled'
 
 export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 
+export type ScheduleType = 'cron' | 'interval'
+
 export interface ExecutionResult {
   id: string
   taskId: string
@@ -36,6 +38,8 @@ export interface Task {
   scriptContent?: string
   scriptHash?: string
   schedule?: string
+  scheduleType: ScheduleType
+  intervalSeconds?: number
   timeout?: number
   retryCount?: number
   retryDelay?: number
@@ -60,13 +64,15 @@ export interface TaskDetail {
 export interface TaskConfigInput {
   name: string
   description?: string
-  type: TaskType
+  taskType: TaskType
   scriptPath: string
   schedule?: string
+  scheduleType?: ScheduleType
+  intervalSeconds?: number
   timeout?: number
   retryCount?: number
   retryDelay?: number
-  accountId: string
+  accountScreenName?: string
   parameters?: Record<string, any>
   tags?: string[]
 }

@@ -99,18 +99,23 @@ impl TaskScheduler {
                 continue;
             }
 
-            // Check if task has a schedule
-            let schedule_str = match &task.schedule {
-                Some(s) => s,
-                None => continue,
-            };
+            // For interval timers, we don't need to parse cron schedule
+            let schedule = if task.schedule_type == "interval" {
+                // Dummy schedule, won't be used for interval timers
+                Schedule::from_str("0 0 * * * *").unwrap()
+            } else {
+                // Parse cron schedule for cron timers
+                let schedule_str = match &task.schedule {
+                    Some(s) => s,
+                    None => continue,
+                };
 
-            // Parse cron schedule
-            let schedule = match Schedule::from_str(schedule_str) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Invalid cron schedule for task {}: {}", task.id, e);
-                    continue;
+                match Schedule::from_str(schedule_str) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Invalid cron schedule for task {}: {}", task.id, e);
+                        continue;
+                    }
                 }
             };
 
@@ -150,8 +155,8 @@ impl TaskScheduler {
                                 let _ = db_ref.save_execution(&exec_result);
 
                                 // Update next_execution_time for scheduled tasks
-                                if let Some(schedule) = &task_clone.schedule {
-                                    let _ = db_ref.update_next_execution_time(&task_clone.id, schedule);
+                                if task_clone.task_type == "scheduled" {
+                                    let _ = db_ref.update_next_execution_time(&task_clone.id, &task_clone);
                                 }
 
                                 let _ = db_ref.update_task_status(&task_clone.id, "idle");
@@ -179,14 +184,29 @@ impl TaskScheduler {
             }
         }
 
-        // Check if current time matches schedule
-        let upcoming = schedule.upcoming(chrono::Utc).take(1).next();
-        if let Some(next_time) = upcoming {
-            let diff = next_time.signed_duration_since(now);
-            // If next scheduled time is within 60 seconds, run now
-            diff.num_seconds() <= 60
-        } else {
-            false
+        // Check based on schedule_type
+        match task.schedule_type.as_str() {
+            "interval" => {
+                // Interval timer: check if next_execution_time has passed
+                if let Some(ref next_exec) = task.next_execution_time {
+                    if let Ok(next_time) = chrono::DateTime::parse_from_rfc3339(next_exec) {
+                        return now >= next_time.with_timezone(&chrono::Utc);
+                    }
+                }
+                false
+            }
+            "cron" => {
+                // Cron timer: check if current time matches schedule
+                let upcoming = schedule.upcoming(chrono::Utc).take(1).next();
+                if let Some(next_time) = upcoming {
+                    let diff = next_time.signed_duration_since(now);
+                    // If next scheduled time is within 60 seconds, run now
+                    diff.num_seconds() <= 60
+                } else {
+                    false
+                }
+            }
+            _ => false
         }
     }
 }

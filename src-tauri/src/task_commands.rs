@@ -85,15 +85,13 @@ pub async fn execute_task(
 
             // Update next_execution_time for scheduled tasks if execution was successful
             if task.task_type == "scheduled" && exec_result.status == "success" {
-                if let Some(schedule) = &task.schedule {
-                    writeln!(file, "Calling update_next_execution_time...").unwrap();
-                    match db_ref.update_next_execution_time(&task_id, schedule) {
-                        Ok(_) => {
-                            writeln!(file, "Update returned Ok").unwrap();
-                        }
-                        Err(e) => {
-                            writeln!(file, "Update failed: {:?}", e).unwrap();
-                        }
+                writeln!(file, "Calling update_next_execution_time...").unwrap();
+                match db_ref.update_next_execution_time(&task_id, &task) {
+                    Ok(_) => {
+                        writeln!(file, "Update returned Ok").unwrap();
+                    }
+                    Err(e) => {
+                        writeln!(file, "Update failed: {:?}", e).unwrap();
                     }
                 }
             }

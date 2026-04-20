@@ -16,11 +16,10 @@ interface TauriTaskConfigInput {
   type: TaskType
   script_path: string
   schedule?: string
+  schedule_type?: string
+  interval_seconds?: number
   parameters?: Record<string, string>
   account_id: string
-  tweet_id?: string
-  query?: string
-  text?: string
 }
 
 interface TauriTask {
@@ -111,11 +110,10 @@ function toTauriTaskConfig(config: TaskConfigInput): TauriTaskConfigInput {
     type: config.taskType,
     script_path: config.scriptPath,
     schedule: config.schedule,
+    schedule_type: config.scheduleType,
+    interval_seconds: config.intervalSeconds,
     parameters: config.parameters,
     account_id: config.accountScreenName || '',
-    tweet_id: config.tweetId,
-    query: config.query,
-    text: config.text,
   }
 }
 

@@ -13,9 +13,10 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('immediate')
+  const [scheduleType, setScheduleType] = useState<'interval' | 'cron'>('interval')
   const [scriptPath, setScriptPath] = useState('')
   const [parameters, setParameters] = useState<Record<string, string>>({})
-  const [intervalValue, setIntervalValue] = useState(1)
+  const [intervalValue, setIntervalValue] = useState(2)
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [accountScreenName, setAccountScreenName] = useState('')
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
@@ -90,32 +91,28 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     setError(null)
     setSuccessMessage(null)
 
-    const getIntervalMinutes = () => {
+    const getIntervalSeconds = () => {
       switch (intervalUnit) {
         case 'minutes':
-          return intervalValue
-        case 'hours':
           return intervalValue * 60
+        case 'hours':
+          return intervalValue * 3600
         case 'days':
-          return intervalValue * 1440
+          return intervalValue * 86400
       }
     }
 
     const getCronSchedule = () => {
       switch (intervalUnit) {
         case 'minutes':
-          // For minutes: 0 */N * * * * (every N minutes, at second 0)
-          // Cron format: second minute hour day month weekday
           if (intervalValue >= 60) {
             const hours = Math.floor(intervalValue / 60)
             return `0 0 */${hours} * * *`
           }
           return `0 */${intervalValue} * * * *`
         case 'hours':
-          // For hours: 0 0 */N * * * (every N hours, at minute 0, second 0)
           return `0 0 */${intervalValue} * * *`
         case 'days':
-          // For days: 0 0 0 */N * * (every N days, at 00:00:00)
           return `0 0 0 */${intervalValue} * *`
       }
     }
@@ -125,7 +122,9 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       description: description.trim() || undefined,
       taskType,
       scriptPath: scriptPath.trim(),
-      schedule: taskType === 'scheduled' ? getCronSchedule() : undefined,
+      scheduleType: taskType === 'scheduled' ? scheduleType : undefined,
+      schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronSchedule() : undefined,
+      intervalSeconds: taskType === 'scheduled' && scheduleType === 'interval' ? getIntervalSeconds() : undefined,
       parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
       accountScreenName: accountScreenName || undefined,
     }
@@ -240,28 +239,69 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           </Field>
 
           {taskType === 'scheduled' && (
-            <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-4">
-              <Field label="执行间隔">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    type="number"
-                    value={intervalValue}
-                    onChange={(e) => setIntervalValue(Number(e.target.value))}
-                    min="1"
-                    className="w-24 h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
-                  />
-                  <select
-                    value={intervalUnit}
-                    onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
-                    className="h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+            <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-4 space-y-4">
+              <Field label="定时方式">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleType('interval')}
+                    className={[
+                      'rounded-xl border p-4 text-left transition-colors',
+                      scheduleType === 'interval' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[#2A2A2A] bg-[#171718] hover:border-[#6D5BF6]/50',
+                    ].join(' ')}
                   >
-                    <option value="minutes">分钟</option>
-                    <option value="hours">小时</option>
-                    <option value="days">天</option>
-                  </select>
-                  <span className="text-sm text-[#858585]">执行一次</span>
+                    <div className="text-sm font-medium text-[#CCCCCC] mb-2">简单间隔</div>
+                    <div className="text-xs text-[#858585] leading-5">从现在开始，每隔固定时间执行一次</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleType('cron')}
+                    className={[
+                      'rounded-xl border p-4 text-left transition-colors',
+                      scheduleType === 'cron' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[#2A2A2A] bg-[#171718] hover:border-[#6D5BF6]/50',
+                    ].join(' ')}
+                  >
+                    <div className="text-sm font-medium text-[#CCCCCC] mb-2">固定时间 (Cron)</div>
+                    <div className="text-xs text-[#858585] leading-5">在特定时间点执行（如每天早上9点）</div>
+                  </button>
                 </div>
               </Field>
+
+              {scheduleType === 'interval' && (
+                <Field label="执行间隔">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-[#858585]">每隔</span>
+                    <input
+                      type="number"
+                      value={intervalValue}
+                      onChange={(e) => setIntervalValue(Number(e.target.value))}
+                      min="1"
+                      className="w-24 h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+                    />
+                    <select
+                      value={intervalUnit}
+                      onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
+                      className="h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+                    >
+                      <option value="minutes">分钟</option>
+                      <option value="hours">小时</option>
+                      <option value="days">天</option>
+                    </select>
+                    <span className="text-sm text-[#858585]">执行一次</span>
+                  </div>
+                  <div className="mt-2 text-xs text-[#858585]">
+                    每次执行后，下次执行时间 = 当前时间 + {intervalValue} {intervalUnit === 'minutes' ? '分钟' : intervalUnit === 'hours' ? '小时' : '天'}
+                  </div>
+                </Field>
+              )}
+
+              {scheduleType === 'cron' && (
+                <Field label="Cron 表达式">
+                  <div className="text-xs text-[#858585] mb-2">
+                    暂不支持 Cron 定时器，请使用"简单间隔"方式
+                  </div>
+                </Field>
+              )}
             </div>
           )}
 

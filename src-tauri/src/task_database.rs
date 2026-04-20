@@ -18,6 +18,8 @@ pub struct Task {
     pub script_content: Option<String>,
     pub script_hash: Option<String>,
     pub schedule: Option<String>,
+    pub schedule_type: String,
+    pub interval_seconds: Option<i64>,
     pub timeout: Option<i64>,
     pub retry_count: Option<i64>,
     pub retry_delay: Option<i64>,
@@ -59,6 +61,8 @@ pub struct TaskConfigInput {
     pub task_type: String,
     pub script_path: String,
     pub schedule: Option<String>,
+    pub schedule_type: Option<String>,
+    pub interval_seconds: Option<i64>,
     pub timeout: Option<i64>,
     pub retry_count: Option<i64>,
     pub retry_delay: Option<i64>,
@@ -91,22 +95,31 @@ impl TaskDatabase {
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
 
+        let schedule_type = input.schedule_type.as_deref().unwrap_or("cron");
+
         // Calculate next_execution_time for scheduled tasks
         let next_execution_time = if input.task_type == "scheduled" {
-            input.schedule.as_ref().and_then(|schedule_str| {
-                println!("=== DEBUG: Calculating next_execution_time ===");
-                println!("schedule_str: {}", schedule_str);
-                match Self::calculate_next_execution(schedule_str, now) {
-                    Ok(next_time) => {
-                        println!("✅ Calculated next_execution_time: {}", next_time);
-                        Some(next_time)
-                    }
-                    Err(e) => {
-                        println!("❌ Failed to calculate next_execution_time: {:?}", e);
+            match schedule_type {
+                "interval" => {
+                    // Interval timer: current time + interval_seconds
+                    if let Some(interval_secs) = input.interval_seconds {
+                        let next = now + chrono::Duration::seconds(interval_secs);
+                        Some(next.to_rfc3339())
+                    } else {
                         None
                     }
                 }
-            })
+                "cron" => {
+                    // Cron timer: calculate next cron time
+                    input.schedule.as_ref().and_then(|schedule_str| {
+                        match Self::calculate_next_execution(schedule_str, now) {
+                            Ok(next_time) => Some(next_time),
+                            Err(_) => None,
+                        }
+                    })
+                }
+                _ => None
+            }
         } else {
             None
         };
@@ -114,9 +127,9 @@ impl TaskDatabase {
         self.conn.execute(
             "INSERT INTO tasks (
                 id, name, description, type, status, enabled,
-                script_path, schedule, timeout, retry_count, retry_delay,
+                script_path, schedule, schedule_type, interval_seconds, timeout, retry_count, retry_delay,
                 account_id, parameters, tags, next_execution_time, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 id,
                 input.name,
@@ -126,6 +139,8 @@ impl TaskDatabase {
                 true,
                 input.script_path,
                 input.schedule,
+                schedule_type,
+                input.interval_seconds,
                 input.timeout,
                 input.retry_count,
                 input.retry_delay,
@@ -180,20 +195,22 @@ impl TaskDatabase {
                 script_content: row.get(7)?,
                 script_hash: row.get(8)?,
                 schedule: row.get(9)?,
-                timeout: row.get(10)?,
-                retry_count: row.get(11)?,
-                retry_delay: row.get(12)?,
-                account_id: row.get(13)?,
-                parameters: row.get(14)?,
-                last_execution_time: row.get(15)?,
-                next_execution_time: row.get(16)?,
-                total_executions: row.get(17)?,
-                success_count: row.get(18)?,
-                failure_count: row.get(19)?,
-                average_duration: row.get(20)?,
-                created_at: row.get(21)?,
-                updated_at: row.get(22)?,
-                tags: row.get(23)?,
+                schedule_type: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "cron".to_string()),
+                interval_seconds: row.get(11)?,
+                timeout: row.get(12)?,
+                retry_count: row.get(13)?,
+                retry_delay: row.get(14)?,
+                account_id: row.get(15)?,
+                parameters: row.get(16)?,
+                last_execution_time: row.get(17)?,
+                next_execution_time: row.get(18)?,
+                total_executions: row.get(19)?,
+                success_count: row.get(20)?,
+                failure_count: row.get(21)?,
+                average_duration: row.get(22)?,
+                created_at: row.get(23)?,
+                updated_at: row.get(24)?,
+                tags: row.get(25)?,
             })
         })
     }
@@ -212,20 +229,22 @@ impl TaskDatabase {
                 script_content: row.get(7)?,
                 script_hash: row.get(8)?,
                 schedule: row.get(9)?,
-                timeout: row.get(10)?,
-                retry_count: row.get(11)?,
-                retry_delay: row.get(12)?,
-                account_id: row.get(13)?,
-                parameters: row.get(14)?,
-                last_execution_time: row.get(15)?,
-                next_execution_time: row.get(16)?,
-                total_executions: row.get(17)?,
-                success_count: row.get(18)?,
-                failure_count: row.get(19)?,
-                average_duration: row.get(20)?,
-                created_at: row.get(21)?,
-                updated_at: row.get(22)?,
-                tags: row.get(23)?,
+                schedule_type: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "cron".to_string()),
+                interval_seconds: row.get(11)?,
+                timeout: row.get(12)?,
+                retry_count: row.get(13)?,
+                retry_delay: row.get(14)?,
+                account_id: row.get(15)?,
+                parameters: row.get(16)?,
+                last_execution_time: row.get(17)?,
+                next_execution_time: row.get(18)?,
+                total_executions: row.get(19)?,
+                success_count: row.get(20)?,
+                failure_count: row.get(21)?,
+                average_duration: row.get(22)?,
+                created_at: row.get(23)?,
+                updated_at: row.get(24)?,
+                tags: row.get(25)?,
             })
         })?;
 
@@ -237,18 +256,21 @@ impl TaskDatabase {
         let parameters = serde_json::to_string(&input.parameters.unwrap_or(serde_json::json!({})))
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
+        let schedule_type = input.schedule_type.as_deref().unwrap_or("cron");
 
         self.conn.execute(
             "UPDATE tasks SET
-                name = ?1, description = ?2, script_path = ?3, schedule = ?4,
-                timeout = ?5, retry_count = ?6, retry_delay = ?7, parameters = ?8,
-                tags = ?9, updated_at = ?10
-            WHERE id = ?11",
+                name = ?1, description = ?2, script_path = ?3, schedule = ?4, schedule_type = ?5, interval_seconds = ?6,
+                timeout = ?7, retry_count = ?8, retry_delay = ?9, parameters = ?10,
+                tags = ?11, updated_at = ?12
+            WHERE id = ?13",
             params![
                 input.name,
                 input.description,
                 input.script_path,
                 input.schedule,
+                schedule_type,
+                input.interval_seconds,
                 input.timeout,
                 input.retry_count,
                 input.retry_delay,
@@ -314,9 +336,29 @@ impl TaskDatabase {
         Ok(())
     }
 
-    pub fn update_next_execution_time(&self, task_id: &str, schedule_str: &str) -> Result<()> {
+    pub fn update_next_execution_time(&self, task_id: &str, task: &Task) -> Result<()> {
         let now = chrono::Utc::now();
-        let next_execution_time = Self::calculate_next_execution(schedule_str, now)?;
+
+        let next_execution_time = match task.schedule_type.as_str() {
+            "interval" => {
+                // Interval timer: current time + interval_seconds
+                if let Some(interval_secs) = task.interval_seconds {
+                    let next = now + chrono::Duration::seconds(interval_secs);
+                    next.to_rfc3339()
+                } else {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+            }
+            "cron" => {
+                // Cron timer: calculate next cron time
+                if let Some(ref schedule_str) = task.schedule {
+                    Self::calculate_next_execution(schedule_str, now)?
+                } else {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+            }
+            _ => return Err(rusqlite::Error::InvalidQuery)
+        };
 
         let rows_affected = self.conn.execute(
             "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",

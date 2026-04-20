@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   script_hash TEXT,
 
   schedule TEXT,
+  schedule_type TEXT DEFAULT 'cron' CHECK(schedule_type IN ('cron', 'interval')),
+  interval_seconds INTEGER,
   timeout INTEGER,
   retry_count INTEGER DEFAULT 0,
   retry_delay INTEGER DEFAULT 60,
