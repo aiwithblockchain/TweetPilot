@@ -12,6 +12,8 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [outputExpanded, setOutputExpanded] = useState(false)
+  const [showAllHistory, setShowAllHistory] = useState(false)
 
   const loadDetail = async () => {
     try {
@@ -32,7 +34,10 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
   }, [taskId])
 
   const task = detail?.task
-  const latestHistory = useMemo(() => detail?.history.slice(0, 5) ?? [], [detail])
+  const latestHistory = useMemo(() => {
+    const history = detail?.history ?? []
+    return showAllHistory ? history : history.slice(0, 5)
+  }, [detail, showAllHistory])
 
   if (loading) {
     return <CenteredMessage tone="neutral" message="正在加载任务详情..." />
@@ -77,66 +82,149 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-5">
-        <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-          <div className="text-sm font-semibold text-[#CCCCCC] mb-4">基础信息</div>
-          <InfoGrid
-            items={[
-              { label: '脚本路径', value: task.scriptPath },
-              { label: '调度规则', value: task.schedule || '即时执行' },
-              { label: '目标 tweetId', value: task.tweetId || '未设置' },
-              { label: '查询备注', value: task.query || '未设置' },
-            ]}
-          />
+        <div className="space-y-5">
+          <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+            <div className="text-sm font-semibold text-[#CCCCCC] mb-4">📋 基本信息</div>
+            <InfoGrid
+              items={[
+                { label: '脚本路径', value: task.scriptPath },
+                { label: '调度规则', value: task.schedule || '即时执行' },
+                { label: '目标 tweetId', value: task.tweetId || '未设置' },
+                { label: '查询备注', value: task.query || '未设置' },
+              ]}
+            />
 
-          {task.text && (
-            <div className="mt-5 rounded-xl border border-[#2A2A2A] bg-[#171718] p-4 shadow-[0_8px_18px_rgba(0,0,0,0.16)]">
-              <div className="text-[11px] text-[#858585]">任务文本内容</div>
-              <div className="text-sm text-[#CCCCCC] mt-2 leading-7 whitespace-pre-wrap">{task.text}</div>
+            {task.text && (
+              <div className="mt-5 rounded-xl border border-[#2A2A2A] bg-[#171718] p-4 shadow-[0_8px_18px_rgba(0,0,0,0.16)]">
+                <div className="text-[11px] text-[#858585]">任务文本内容</div>
+                <div className="text-sm text-[#CCCCCC] mt-2 leading-7 whitespace-pre-wrap">{task.text}</div>
+              </div>
+            )}
+          </section>
+
+          <SidePanel title="📊 执行统计">
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div>
+                <div className="text-2xl font-semibold text-[#CCCCCC]">{detail.statistics.totalExecutions}</div>
+                <div className="text-xs text-[#858585] mt-1">总次数</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold text-[#4EC9B0]">{detail.statistics.successCount}</div>
+                <div className="text-xs text-[#858585] mt-1">成功</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold text-[#F48771]">{detail.statistics.failureCount}</div>
+                <div className="text-xs text-[#858585] mt-1">失败</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold text-[#CCCCCC]">{detail.statistics.successRate}%</div>
+                <div className="text-xs text-[#858585] mt-1">成功率</div>
+              </div>
             </div>
-          )}
-        </section>
+            <div className="text-xs text-[#858585] mt-3 text-center">
+              平均耗时: {detail.statistics.averageDuration}s
+            </div>
+          </SidePanel>
+
+          <SidePanel title="📜 最近执行记录">
+            {detail.history.length === 0 ? (
+              <div className="text-sm text-[#858585]">还没有执行记录。</div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {latestHistory.map((item, index) => (
+                    <div
+                      key={`${item.startTime}-${index}`}
+                      className="flex items-center justify-between text-xs p-2 rounded-lg bg-[#171718] border border-[#2A2A2A]"
+                    >
+                      <span className="text-[#858585]">
+                        {item.status === 'success' ? '✓' : '✗'} {formatDateTime(item.startTime).split(' ')[1]}
+                      </span>
+                      <span
+                        className={[
+                          'px-2 py-0.5 rounded',
+                          item.status === 'success' ? 'bg-[#4EC9B0]/12 text-[#4EC9B0]' : 'bg-[#F48771]/12 text-[#F48771]',
+                        ].join(' ')}
+                      >
+                        {item.duration.toFixed(1)}s
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {detail.history.length > 5 && (
+                  <button
+                    onClick={() => setShowAllHistory(!showAllHistory)}
+                    className="text-xs text-[#6D5BF6] hover:text-[#5B4AD4] mt-3 w-full text-center"
+                  >
+                    {showAllHistory ? '收起 ↑' : `查看全部 (${detail.history.length}条) →`}
+                  </button>
+                )}
+              </>
+            )}
+          </SidePanel>
+        </div>
 
         <div className="space-y-5">
           <TaskActionBar task={task} onChanged={() => void loadDetail()} />
 
           {task.lastExecution && (
-            <ScriptExecutionMonitor
-              output={task.lastExecution.output}
-              error={task.lastExecution.error}
-              status={task.status === 'running' ? 'running' : task.lastExecution.status === 'success' ? 'completed' : 'failed'}
-            />
-          )}
-
-          <SidePanel title="执行统计">
-            <InfoGrid
-              items={[
-                { label: '总执行次数', value: String(detail.statistics.totalExecutions) },
-                { label: '成功次数', value: String(detail.statistics.successCount) },
-                { label: '失败次数', value: String(detail.statistics.failureCount) },
-                { label: '成功率', value: `${detail.statistics.successRate}%` },
-              ]}
-            />
-          </SidePanel>
-
-          {task.lastExecutionStatus === 'failure' && task.lastExecution?.error && (
-            <SidePanel title="最近失败原因">
-              <div className="rounded-xl border border-[#5A1D1D] bg-[#3A1F1F] p-3 text-sm text-[#F48771] leading-6">
-                {task.lastExecution.error}
+            <SidePanel title="⏱ 最后执行">
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-[#858585]">状态</span>
+                  <span
+                    className={[
+                      'px-2 py-0.5 rounded',
+                      task.lastExecution.status === 'success'
+                        ? 'bg-[#4EC9B0]/12 text-[#4EC9B0]'
+                        : 'bg-[#F48771]/12 text-[#F48771]',
+                    ].join(' ')}
+                  >
+                    {task.lastExecution.status === 'success' ? '成功' : '失败'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#858585]">时间</span>
+                  <span className="text-[#CCCCCC]">{formatDateTime(task.lastExecution.startTime)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#858585]">耗时</span>
+                  <span className="text-[#CCCCCC]">{task.lastExecution.duration.toFixed(2)}s</span>
+                </div>
+                {task.lastExecution.output && (
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setOutputExpanded(!outputExpanded)}
+                      className="text-[#858585] hover:text-[#CCCCCC] flex items-center gap-1 text-xs"
+                    >
+                      输出 {outputExpanded ? '▼' : '▶'}
+                    </button>
+                    {outputExpanded && (
+                      <pre className="text-xs bg-[#171718] border border-[#2A2A2A] p-3 rounded-lg mt-2 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
+                        {task.lastExecution.output}
+                      </pre>
+                    )}
+                  </div>
+                )}
+                {task.lastExecution.error && (
+                  <div className="pt-2">
+                    <div className="text-[#F48771] text-xs mb-2">错误信息</div>
+                    <pre className="text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">
+                      {task.lastExecution.error}
+                    </pre>
+                  </div>
+                )}
               </div>
             </SidePanel>
           )}
 
-          <SidePanel title="最近执行记录">
-            {latestHistory.length === 0 ? (
-              <div className="text-sm text-[#858585]">还没有执行记录。</div>
-            ) : (
-              <div className="space-y-3">
-                {latestHistory.map((item, index) => (
-                  <HistoryCard key={`${item.startTime}-${index}`} item={item} />
-                ))}
-              </div>
-            )}
-          </SidePanel>
+          {task.status === 'running' && (
+            <ScriptExecutionMonitor
+              output={task.lastExecution?.output || ''}
+              error={task.lastExecution?.error || ''}
+              status="running"
+            />
+          )}
         </div>
       </div>
     </div>

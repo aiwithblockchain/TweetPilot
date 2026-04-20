@@ -127,16 +127,16 @@ export default function TaskCard({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 pt-2 border-t border-[var(--color-border)]">
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--color-border)] min-h-[32px]">
         <button
           onClick={onViewDetail}
-          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors flex-shrink-0"
         >
           查看详情
         </button>
         <button
           onClick={onEdit}
-          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+          className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors flex-shrink-0"
         >
           编辑
         </button>
@@ -144,28 +144,28 @@ export default function TaskCard({
           <button
             onClick={onExecute}
             disabled={task.status === 'running'}
-            className="h-6 px-2 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+            className="h-6 px-2 text-xs bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 flex-shrink-0"
           >
             立即执行
           </button>
         ) : task.status === 'running' ? (
           <button
             onClick={onPause}
-            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors flex-shrink-0"
           >
             暂停
           </button>
         ) : (
           <button
             onClick={onResume}
-            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+            className="h-6 px-2 text-xs bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors flex-shrink-0"
           >
             恢复
           </button>
         )}
         <button
           onClick={onDelete}
-          className="h-6 px-2 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+          className="h-6 px-2 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex-shrink-0 ml-auto"
         >
           删除
         </button>
