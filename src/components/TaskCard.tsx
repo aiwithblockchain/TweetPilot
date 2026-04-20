@@ -10,10 +10,10 @@ interface TaskCardProps {
   onDelete: () => void
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  'tweetclaw.post_tweet': '发帖任务',
-  'tweetclaw.reply_tweet': '回复任务',
-  'tweetclaw.like_tweet': '点赞任务',
+// Extract script filename for display
+const getScriptLabel = (scriptPath: string) => {
+  const filename = scriptPath.split('/').pop() || scriptPath
+  return filename.replace('.py', '')
 }
 
 const STATUS_LABELS: Record<Task['status'], string> = {
@@ -48,7 +48,7 @@ export default function TaskCard({
     return date.toLocaleDateString('zh-CN')
   }
 
-  const actionLabel = ACTION_LABELS[task.scriptPath] || task.scriptPath
+  const scriptLabel = getScriptLabel(task.scriptPath)
   const statusLabel = STATUS_LABELS[task.status] || '未知状态'
 
   return (
@@ -57,7 +57,7 @@ export default function TaskCard({
       <div className="flex justify-between items-start mb-2 gap-2">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold mb-1">{task.name}</div>
-          <div className="text-xs text-[var(--color-text-secondary)] mb-2">{actionLabel}</div>
+          <div className="text-xs text-[var(--color-text-secondary)] mb-2">{scriptLabel}</div>
           <div className="flex gap-1 flex-wrap">
             <span
               className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${

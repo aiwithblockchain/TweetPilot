@@ -338,12 +338,57 @@ pub async fn get_recent_workspaces() -> Result<Vec<WorkspaceHistory>, String> {
 }
 
 #[tauri::command]
-pub async fn set_current_workspace(path: String) -> Result<(), String> {
+pub async fn set_current_workspace(
+    path: String,
+    task_state: tauri::State<'_, crate::task_commands::TaskState>,
+) -> Result<(), String> {
     if path.trim().is_empty() {
         return Err("工作目录不能为空".to_string());
     }
 
+    let workspace_path = Path::new(&path);
+    let marker_file = workspace_path.join(".tweetpilot.json");
+
+    // Auto-initialize if marker doesn't exist
+    if !marker_file.exists() {
+        initialize_workspace(path.clone()).await?;
+    }
+
+    // Update TaskState workspace_root and initialize database
+    let mut workspace_root = task_state.workspace_root.lock().map_err(|e| e.to_string())?;
+    *workspace_root = path.clone();
+    drop(workspace_root);
+
+    // Initialize database for this workspace
+    task_state.init_database(&path)?;
+
     persist_current_workspace(path)
+}
+
+#[tauri::command]
+pub async fn check_workspace_initialized(path: String) -> Result<bool, String> {
+    let workspace_path = Path::new(&path);
+    let marker_file = workspace_path.join(".tweetpilot.json");
+    Ok(marker_file.exists())
+}
+
+#[tauri::command]
+pub async fn initialize_workspace(path: String) -> Result<(), String> {
+    let workspace_path = Path::new(&path);
+
+    // Create .tweetpilot.json marker file
+    let marker_file = workspace_path.join(".tweetpilot.json");
+    std::fs::write(&marker_file, "{}").map_err(|e| e.to_string())?;
+
+    // Create .tweetpilot/ directory
+    let config_dir = workspace_path.join(".tweetpilot");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+
+    // Create logs/ subdirectory
+    let logs_dir = config_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]

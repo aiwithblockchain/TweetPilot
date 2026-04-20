@@ -4,8 +4,15 @@
 mod commands;
 mod models;
 mod services;
+mod task_database;
+mod task_executor;
+mod task_commands;
+mod task_scheduler;
+mod task_module;
 
-use commands::{workspace, account, task, data_blocks, preferences};
+use commands::{workspace, account, data_blocks, preferences};
+use task_commands::TaskState;
+use std::sync::Mutex;
 
 async fn test_localbridge_connection() {
     use crate::services::storage;
@@ -112,12 +119,38 @@ async fn start_account_sync_task() {
 }
 
 fn main() {
+    use std::sync::Arc;
+
+    // Initialize task state (database will be initialized when workspace is selected)
+    let task_executor = task_module::TaskExecutor::new();
+    let db = Arc::new(Mutex::new(None));
+    let workspace_root = Arc::new(Mutex::new(String::new()));
+
+    let task_state = TaskState {
+        db: db.clone(),
+        executor: Arc::new(task_executor),
+        workspace_root: workspace_root.clone(),
+    };
+
+    // Initialize task scheduler
+    let scheduler = task_scheduler::TaskScheduler::new(
+        db.clone(),
+        task_state.executor.clone(),
+        workspace_root.clone(),
+    );
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .setup(|_app| {
-            tauri::async_runtime::spawn(async {
+        .manage(task_state)
+        .setup(move |_app| {
+            let scheduler_clone = scheduler.clone();
+            tauri::async_runtime::spawn(async move {
                 test_localbridge_connection().await;
+
+                // Start task scheduler
+                scheduler_clone.start().await;
+
                 start_account_sync_task().await;
             });
             Ok(())
@@ -132,6 +165,8 @@ fn main() {
             workspace::get_current_workspace,
             workspace::open_workspace_in_new_window,
             workspace::check_directory_exists,
+            workspace::check_workspace_initialized,
+            workspace::initialize_workspace,
             workspace::list_workspace_directory,
             workspace::read_workspace_file,
             workspace::get_workspace_folder_summary,
@@ -150,16 +185,16 @@ fn main() {
             account::save_account_personality,
             account::unlink_account,
             account::delete_account_completely,
-            // Task commands
-            task::create_task,
-            task::get_tasks,
-            task::get_task_detail,
-            task::update_task,
-            task::delete_task,
-            task::pause_task,
-            task::resume_task,
-            task::execute_task,
-            task::get_execution_history,
+            // Task commands (new implementation)
+            task_module::create_task,
+            task_module::get_tasks,
+            task_module::get_task_detail,
+            task_module::update_task,
+            task_module::delete_task,
+            task_module::pause_task,
+            task_module::resume_task,
+            task_module::execute_task,
+            task_module::get_execution_history,
             // Data blocks commands
             data_blocks::get_layout,
             data_blocks::save_layout,

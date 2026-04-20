@@ -1,96 +1,11 @@
-use crate::services::storage;
 use crate::services::localbridge::LocalBridgeClient;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-const ACCOUNTS_FILE: &str = "accounts.json";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PersistedAccountData {
-    mapped_accounts: Vec<TwitterAccount>,
-    personalities: Vec<AccountPersonalityRecord>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AccountPersonalityRecord {
-    screen_name: String,
-    personality: String,
-}
-
-fn default_persisted_accounts() -> PersistedAccountData {
-    PersistedAccountData {
-        mapped_accounts: vec![],
-        personalities: vec![],
-    }
-}
-
-fn load_persisted_accounts() -> Result<PersistedAccountData, String> {
-    storage::read_json(ACCOUNTS_FILE, default_persisted_accounts())
-}
-
-fn save_persisted_accounts(data: &PersistedAccountData) -> Result<(), String> {
-    storage::write_json(ACCOUNTS_FILE, data)
-}
-
-fn load_mapped_accounts() -> Result<Vec<TwitterAccount>, String> {
-    Ok(load_persisted_accounts()?.mapped_accounts)
-}
-
-fn save_mapped_accounts(mapped_accounts: Vec<TwitterAccount>) -> Result<(), String> {
-    let mut data = load_persisted_accounts()?;
-    data.mapped_accounts = mapped_accounts;
-    save_persisted_accounts(&data)
-}
-
-fn load_personality(screen_name: &str) -> Result<String, String> {
-    let data = load_persisted_accounts()?;
-    let personality = data
-        .personalities
-        .iter()
-        .find(|item| item.screen_name == screen_name)
-        .map(|item| item.personality.clone())
-        .unwrap_or_default();
-    Ok(personality)
-}
-
-fn save_personality(screen_name: &str, personality: String) -> Result<(), String> {
-    let mut data = load_persisted_accounts()?;
-    if let Some(entry) = data
-        .personalities
-        .iter_mut()
-        .find(|item| item.screen_name == screen_name)
-    {
-        entry.personality = personality;
-    } else {
-        data.personalities.push(AccountPersonalityRecord {
-            screen_name: screen_name.to_string(),
-            personality,
-        });
-    }
-    save_persisted_accounts(&data)
-}
-
-fn remove_personality(screen_name: &str) -> Result<(), String> {
-    let mut data = load_persisted_accounts()?;
-    data.personalities.retain(|item| item.screen_name != screen_name);
-    save_persisted_accounts(&data)
-}
-
-fn with_mapped_accounts<R>(
-    mut operation: impl FnMut(&mut Vec<TwitterAccount>) -> Result<R, String>,
-) -> Result<R, String> {
-    let mut in_memory_accounts = MAPPED_ACCOUNTS.lock().unwrap();
-    let result = operation(&mut in_memory_accounts)?;
-    save_mapped_accounts(in_memory_accounts.clone())?;
-    Ok(result)
-}
-
-// Global storage for mapped accounts
+// Global in-memory storage for accounts (no persistence needed)
 static MAPPED_ACCOUNTS: Lazy<Mutex<Vec<TwitterAccount>>> = Lazy::new(|| {
-    let initial = load_mapped_accounts()
-        .unwrap_or_else(|_| default_persisted_accounts().mapped_accounts);
-    Mutex::new(initial)
+    Mutex::new(Vec::new())
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,39 +157,37 @@ pub async fn map_account(screen_name: String) -> Result<TwitterAccount, String> 
         .and_then(|s| s.tabs.first())
         .and_then(|t| t.tab_id);
 
-    with_mapped_accounts(|mapped| {
-        if mapped.iter().any(|item| item.screen_name == normalized_screen_name) {
-            return Err(format!("Account {} already mapped", screen_name));
-        }
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    if mapped.iter().any(|item| item.screen_name == normalized_screen_name) {
+        return Err(format!("Account {} already mapped", screen_name));
+    }
 
-        let new_account = TwitterAccount {
-            screen_name: normalized_screen_name.clone(),
-            display_name: display_name.clone(),
-            avatar: avatar.clone(),
-            status: if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline },
-            last_verified: chrono::Utc::now().to_rfc3339(),
-            twitter_id: twitter_id.clone(),
-            description: description.clone(),
-            instance_id: instance_id.clone(),
-            extension_name: extension_name.clone(),
-            default_tab_id,
-            is_logged_in,
-            followers_count: basic_info.as_ref().and_then(|info| info.followers_count),
-            following_count: basic_info.as_ref().and_then(|info| info.following_count),
-            tweet_count: basic_info.as_ref().and_then(|info| info.tweet_count),
-        };
+    let new_account = TwitterAccount {
+        screen_name: normalized_screen_name.clone(),
+        display_name: display_name.clone(),
+        avatar: avatar.clone(),
+        status: if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline },
+        last_verified: chrono::Utc::now().to_rfc3339(),
+        twitter_id: twitter_id.clone(),
+        description: description.clone(),
+        instance_id: instance_id.clone(),
+        extension_name: extension_name.clone(),
+        default_tab_id,
+        is_logged_in,
+        followers_count: basic_info.as_ref().and_then(|info| info.followers_count),
+        following_count: basic_info.as_ref().and_then(|info| info.following_count),
+        tweet_count: basic_info.as_ref().and_then(|info| info.tweet_count),
+    };
 
-        mapped.push(new_account.clone());
-        Ok(new_account)
-    })
+    mapped.push(new_account.clone());
+    Ok(new_account)
 }
 
 #[tauri::command]
 pub async fn delete_account_mapping(screen_name: String) -> Result<(), String> {
-    with_mapped_accounts(|mapped| {
-        mapped.retain(|a| a.screen_name != screen_name);
-        Ok(())
-    })
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
+    Ok(())
 }
 
 #[tauri::command]
@@ -293,17 +206,14 @@ pub async fn verify_account_status(screen_name: String) -> Result<AccountStatus,
                 let is_logged_in = status.is_logged_in;
 
                 // Update the account status in memory
-                with_mapped_accounts(|mapped| {
-                    if let Some(account) = mapped.iter_mut().find(|a| a.screen_name == screen_name) {
-                        account.status = if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline };
-                        account.is_logged_in = is_logged_in;
-                        account.last_verified = chrono::Utc::now().to_rfc3339();
-                        return Ok(account.status.clone());
-                    }
-                    Err("Account not found".to_string())
-                })?;
-
-                return Ok(if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline });
+                let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+                if let Some(account) = mapped.iter_mut().find(|a| a.screen_name == screen_name) {
+                    account.status = if is_logged_in { AccountStatus::Online } else { AccountStatus::Offline };
+                    account.is_logged_in = is_logged_in;
+                    account.last_verified = chrono::Utc::now().to_rfc3339();
+                    return Ok(account.status.clone());
+                }
+                return Err("Account not found".to_string());
             }
         }
     }
@@ -418,17 +328,16 @@ pub async fn get_instances() -> Result<Vec<serde_json::Value>, String> {
 
 #[tauri::command]
 pub async fn reconnect_account(screen_name: String) -> Result<(), String> {
-    with_mapped_accounts(|mapped| {
-        let account = mapped
-            .iter_mut()
-            .find(|a| a.screen_name == screen_name)
-            .ok_or_else(|| format!("Account not found: {}", screen_name))?;
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    let account = mapped
+        .iter_mut()
+        .find(|a| a.screen_name == screen_name)
+        .ok_or_else(|| format!("Account not found: {}", screen_name))?;
 
-        account.status = AccountStatus::Online;
-        account.last_verified = chrono::Utc::now().to_rfc3339();
+    account.status = AccountStatus::Online;
+    account.last_verified = chrono::Utc::now().to_rfc3339();
 
-        Ok(())
-    })
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,8 +364,6 @@ pub async fn get_account_settings(screen_name: String) -> Result<AccountSettings
             .ok_or_else(|| "Account not found".to_string())?
     };
 
-    let personality = load_personality(&screen_name)?;
-
     Ok(AccountSettings {
         twitter_id: account.twitter_id.unwrap_or_else(|| "unknown".to_string()),
         name: account.display_name,
@@ -465,29 +372,26 @@ pub async fn get_account_settings(screen_name: String) -> Result<AccountSettings
         is_linked: account.is_logged_in,
         extension_id: account.instance_id,
         extension_name: account.extension_name,
-        personality,
+        personality: String::new(), // Personality feature removed
     })
 }
 
 #[tauri::command]
-pub async fn save_account_personality(screen_name: String, personality: String) -> Result<(), String> {
-    save_personality(&screen_name, personality)
+pub async fn save_account_personality(_screen_name: String, _personality: String) -> Result<(), String> {
+    // Personality feature removed - no-op for backwards compatibility
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn unlink_account(screen_name: String) -> Result<(), String> {
-    with_mapped_accounts(|mapped| {
-        mapped.retain(|a| a.screen_name != screen_name);
-        Ok(())
-    })?;
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_account_completely(screen_name: String) -> Result<(), String> {
-    with_mapped_accounts(|mapped| {
-        mapped.retain(|a| a.screen_name != screen_name);
-        Ok(())
-    })?;
-    remove_personality(&screen_name)
+    let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
+    mapped.retain(|a| a.screen_name != screen_name);
+    Ok(())
 }

@@ -29,4 +29,5 @@ src-tauri/target
 docs/clawBotCli
 docs/clawBotCli.zip
 api_docs.json
-__pycache__/test_script.cpython-313.pyc
+__pycache__/
+.tweetpilot/
