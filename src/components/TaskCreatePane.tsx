@@ -101,12 +101,31 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       }
     }
 
+    const getCronSchedule = () => {
+      switch (intervalUnit) {
+        case 'minutes':
+          // For minutes: 0 */N * * * * (every N minutes, at second 0)
+          // Cron format: second minute hour day month weekday
+          if (intervalValue >= 60) {
+            const hours = Math.floor(intervalValue / 60)
+            return `0 0 */${hours} * * *`
+          }
+          return `0 */${intervalValue} * * * *`
+        case 'hours':
+          // For hours: 0 0 */N * * * (every N hours, at minute 0, second 0)
+          return `0 0 */${intervalValue} * * *`
+        case 'days':
+          // For days: 0 0 0 */N * * (every N days, at 00:00:00)
+          return `0 0 0 */${intervalValue} * *`
+      }
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
       taskType,
       scriptPath: scriptPath.trim(),
-      schedule: taskType === 'scheduled' ? `*/${getIntervalMinutes()} * * * *` : undefined,
+      schedule: taskType === 'scheduled' ? getCronSchedule() : undefined,
       parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
       accountScreenName: accountScreenName || undefined,
     }
@@ -249,7 +268,15 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           {error && <Message tone="error">{error}</Message>}
           {successMessage && <Message tone="success">{successMessage}</Message>}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => onCreated?.()}
+              disabled={creating}
+              className="h-10 px-5 rounded border border-[#3A3A3A] bg-[#1E1E1E] text-[#CCCCCC] text-sm hover:border-[#4A4A4A] hover:bg-[#2A2A2A] transition-colors disabled:opacity-50"
+            >
+              取消创建
+            </button>
             <button
               type="button"
               onClick={handleSubmit}

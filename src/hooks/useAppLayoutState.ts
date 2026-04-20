@@ -716,6 +716,15 @@ export function useAppLayoutState() {
     setCenterMode('detail')
   }
 
+  const handleTaskDeleted = async () => {
+    await tasksSidebar.reload()
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      tasks: null,
+    }))
+    setCenterMode('empty')
+  }
+
   const openSettingsDialog = () => {
     setSettingsDialogOpen(true)
   }
@@ -744,6 +753,7 @@ export function useAppLayoutState() {
     handleSelectSidebarItem,
     handleSidebarAction,
     handleTaskCreated,
+    handleTaskDeleted,
     handleToggleWorkspaceItem,
     handleViewChange,
     instances,

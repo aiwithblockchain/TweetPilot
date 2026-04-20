@@ -40,6 +40,7 @@ export interface Task {
   retryCount?: number
   retryDelay?: number
   accountId: string
+  accountScreenName?: string
   parameters: Record<string, any>
   lastExecution?: ExecutionResult
   lastExecutionTime?: string

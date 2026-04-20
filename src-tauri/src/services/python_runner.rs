@@ -16,7 +16,9 @@ pub struct ExecutionOutput {
     pub exit_code: Option<i32>,
 }
 
+#[allow(dead_code)]
 impl PythonRunner {
+    #[allow(dead_code)]
     pub fn new(python_path: Option<String>) -> Self {
         Self {
             python_path: python_path.unwrap_or_else(|| {

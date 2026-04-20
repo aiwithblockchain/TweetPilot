@@ -6,9 +6,10 @@ interface TaskDetailPaneProps {
   item: SidebarItem | null
   mode?: 'detail' | 'create'
   onCreated?: (taskId?: string) => void
+  onDeleted?: () => void
 }
 
-export function TaskDetailPane({ item, mode = 'detail', onCreated }: TaskDetailPaneProps) {
+export function TaskDetailPane({ item, mode = 'detail', onCreated, onDeleted }: TaskDetailPaneProps) {
   if (mode === 'create') {
     return <TaskCreatePane onCreated={onCreated} />
   }
@@ -17,7 +18,7 @@ export function TaskDetailPane({ item, mode = 'detail', onCreated }: TaskDetailP
     return <EmptyState title="任务" description="请先在左侧选择一个任务，或点击左上角 + 号新建任务。" />
   }
 
-  return <TaskDetailContentPane taskId={item.id} />
+  return <TaskDetailContentPane taskId={item.id} onDeleted={onDeleted} />
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {

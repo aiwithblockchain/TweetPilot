@@ -26,6 +26,7 @@ function AppShell() {
     handleSelectSidebarItem,
     handleSidebarAction,
     handleTaskCreated,
+    handleTaskDeleted,
     handleToggleWorkspaceItem,
     handleViewChange,
     instances,
@@ -117,6 +118,7 @@ function AppShell() {
               workspaceLoading={workspaceDetailLoading}
               workspaceError={workspaceError}
               onTaskCreated={handleTaskCreated}
+              onTaskDeleted={handleTaskDeleted}
             />
           </div>
         </div>

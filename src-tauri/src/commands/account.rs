@@ -277,12 +277,17 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
             println!("刷新账号详细信息: {} (ID: {})", instance_name, instance_id);
             match client.get_basic_info_with_instance(instance_id).await {
                 Ok(basic_info) => {
+                    // Use real screen_name from Twitter API, not instanceName
+                    let real_screen_name = basic_info.screen_name.clone()
+                        .map(|sn| if sn.starts_with('@') { sn } else { format!("@{}", sn) })
+                        .unwrap_or_else(|| screen_name.clone());
+
                     let display_name = basic_info.name.clone().unwrap_or_else(|| instance_name.to_string());
                     let avatar = basic_info.profile_image_url.clone()
                         .unwrap_or_else(|| "https://pbs.twimg.com/profile_images/default_profile_400x400.png".to_string());
 
                     synced_accounts.push(TwitterAccount {
-                        screen_name: screen_name.clone(),
+                        screen_name: real_screen_name,
                         display_name,
                         avatar,
                         status: AccountStatus::Online,

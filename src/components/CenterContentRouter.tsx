@@ -16,6 +16,7 @@ interface CenterContentRouterProps {
   workspaceLoading?: boolean
   workspaceError?: string | null
   onTaskCreated?: (taskId?: string) => void
+  onTaskDeleted?: () => void
 }
 
 export function CenterContentRouter({
@@ -28,6 +29,7 @@ export function CenterContentRouter({
   workspaceLoading,
   workspaceError,
   onTaskCreated,
+  onTaskDeleted,
 }: CenterContentRouterProps) {
   if (centerMode === 'create-task') {
     return <TaskDetailPane item={selectedSidebarItem} mode="create" onCreated={onTaskCreated} />
@@ -43,7 +45,7 @@ export function CenterContentRouter({
     case 'data-blocks':
       return <DataBlockDetailPane item={selectedSidebarItem} />
     case 'tasks':
-      return <TaskDetailPane item={selectedSidebarItem} />
+      return <TaskDetailPane item={selectedSidebarItem} onDeleted={onTaskDeleted} />
     case 'workspace':
     default:
       return (

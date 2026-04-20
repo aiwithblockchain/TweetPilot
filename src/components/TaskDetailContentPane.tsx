@@ -6,9 +6,10 @@ import type { ExecutionResult, Task, TaskDetail } from '@/services/task'
 
 interface TaskDetailContentPaneProps {
   taskId: string
+  onDeleted?: () => void
 }
 
-export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
+export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPaneProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +76,14 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
             <HeroStat label="任务类型" value={task.type === 'scheduled' ? '定时任务' : '即时任务'} />
-            <HeroStat label="当前状态" value={formatTaskStatus(task.status)} />
+            <HeroStat
+              label={task.type === 'scheduled' ? '下次执行' : '最近执行'}
+              value={
+                task.type === 'scheduled'
+                  ? (task.nextExecutionTime ? formatDateTime(task.nextExecutionTime) : '未安排')
+                  : (task.lastExecutionTime ? formatDateTime(task.lastExecutionTime) : '从未执行')
+              }
+            />
             <HeroStat label="执行账号" value={task.accountScreenName || '未指定'} />
           </div>
         </div>
@@ -146,7 +154,7 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
         </div>
 
         <div className="space-y-5">
-          <TaskActionBar task={task} onChanged={() => void loadDetail()} />
+          <TaskActionBar task={task} onChanged={() => void loadDetail()} onDeleted={onDeleted} />
 
           {task.lastExecution && (
             <SidePanel title="⏱ 最后执行">
@@ -206,7 +214,7 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
                         复制
                       </button>
                     </div>
-                    <pre className="text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                    <pre className="error-output text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
                       {task.lastExecution.error}
                     </pre>
                   </div>

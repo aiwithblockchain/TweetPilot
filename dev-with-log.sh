@@ -29,8 +29,9 @@ REDACTED_ENV_KEYS=(
 # 创建日志目录
 mkdir -p "$LOG_DIR"
 
-# 每次启动清空固定日志文件
+# 每次启动清空所有日志文件
 : > "$LATEST_LOG"
+rm -f "$LOG_DIR"/dev_*.log
 
 log_both() {
   local message="$1"

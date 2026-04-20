@@ -2,6 +2,8 @@ use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+use cron::Schedule;
+use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
@@ -22,7 +24,9 @@ pub struct Task {
     #[serde(rename = "accountScreenName")]
     pub account_id: String,
     pub parameters: String,
+    #[serde(rename = "lastExecutionTime")]
     pub last_execution_time: Option<String>,
+    #[serde(rename = "nextExecutionTime")]
     pub next_execution_time: Option<String>,
     pub total_executions: i64,
     pub success_count: i64,
@@ -81,17 +85,38 @@ impl TaskDatabase {
 
     pub fn create_task(&self, input: TaskConfigInput) -> Result<Task> {
         let id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now();
+        let now_str = now.to_rfc3339();
         let parameters = serde_json::to_string(&input.parameters.unwrap_or(serde_json::json!({})))
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
+
+        // Calculate next_execution_time for scheduled tasks
+        let next_execution_time = if input.task_type == "scheduled" {
+            input.schedule.as_ref().and_then(|schedule_str| {
+                println!("=== DEBUG: Calculating next_execution_time ===");
+                println!("schedule_str: {}", schedule_str);
+                match Self::calculate_next_execution(schedule_str, now) {
+                    Ok(next_time) => {
+                        println!("✅ Calculated next_execution_time: {}", next_time);
+                        Some(next_time)
+                    }
+                    Err(e) => {
+                        println!("❌ Failed to calculate next_execution_time: {:?}", e);
+                        None
+                    }
+                }
+            })
+        } else {
+            None
+        };
 
         self.conn.execute(
             "INSERT INTO tasks (
                 id, name, description, type, status, enabled,
                 script_path, schedule, timeout, retry_count, retry_delay,
-                account_id, parameters, tags, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                account_id, parameters, tags, next_execution_time, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 id,
                 input.name,
@@ -107,12 +132,35 @@ impl TaskDatabase {
                 input.account_id,
                 parameters,
                 tags,
-                now,
-                now,
+                next_execution_time,
+                now_str,
+                now_str,
             ],
         )?;
 
         self.get_task(&id)
+    }
+
+    fn calculate_next_execution(schedule_str: &str, _from_time: chrono::DateTime<chrono::Utc>) -> Result<String> {
+        println!("=== DEBUG: calculate_next_execution called ===");
+        println!("Input schedule_str: {}", schedule_str);
+
+        let schedule = Schedule::from_str(schedule_str)
+            .map_err(|e| {
+                println!("❌ Failed to parse cron schedule: {:?}", e);
+                rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+            })?;
+
+        println!("✅ Cron schedule parsed successfully");
+
+        let next = schedule.upcoming(chrono::Utc).next()
+            .ok_or_else(|| {
+                println!("❌ No upcoming execution time found");
+                rusqlite::Error::InvalidQuery
+            })?;
+
+        println!("✅ Next execution time: {}", next.to_rfc3339());
+        Ok(next.to_rfc3339())
     }
 
     pub fn get_task(&self, task_id: &str) -> Result<Task> {
@@ -262,6 +310,58 @@ impl TaskDatabase {
             WHERE id = ?5",
             params![success, failure, result.end_time, result.end_time, result.task_id],
         )?;
+
+        Ok(())
+    }
+
+    pub fn update_next_execution_time(&self, task_id: &str, schedule_str: &str) -> Result<()> {
+        let now = chrono::Utc::now();
+        let next_execution_time = Self::calculate_next_execution(schedule_str, now)?;
+
+        let rows_affected = self.conn.execute(
+            "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",
+            params![next_execution_time, now.to_rfc3339(), task_id],
+        )?;
+
+        eprintln!("📝 Updated {} rows, new next_execution_time: {}", rows_affected, next_execution_time);
+
+        Ok(())
+    }
+
+    pub fn recalculate_missed_executions(&self) -> Result<()> {
+        let now = chrono::Utc::now();
+
+        // Get all scheduled tasks
+        let mut stmt = self.conn.prepare(
+            "SELECT id, schedule, next_execution_time FROM tasks WHERE type = 'scheduled' AND enabled = 1"
+        )?;
+
+        let tasks: Vec<(String, Option<String>, Option<String>)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        for (task_id, schedule_opt, next_exec_opt) in tasks {
+            if let (Some(schedule_str), Some(next_exec_str)) = (schedule_opt, next_exec_opt) {
+                if let Ok(next_exec_time) = chrono::DateTime::parse_from_rfc3339(&next_exec_str) {
+                    let next_exec_utc = next_exec_time.with_timezone(&chrono::Utc);
+
+                    // If next_execution_time is in the past, calculate new next execution
+                    if next_exec_utc < now {
+                        if let Ok(schedule) = Schedule::from_str(&schedule_str) {
+                            // Find the next valid execution time from now
+                            if let Some(next_time) = schedule.upcoming(chrono::Utc).next() {
+                                self.conn.execute(
+                                    "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",
+                                    params![next_time.to_rfc3339(), now.to_rfc3339(), task_id],
+                                )?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(())
     }

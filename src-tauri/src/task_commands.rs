@@ -40,11 +40,15 @@ pub async fn execute_task(
     task_id: String,
     state: State<'_, TaskState>,
 ) -> Result<ExecutionResult, String> {
+    println!("🚀 execute_task called with task_id: {}", task_id);
+
     // Get task
     let task = {
         let db = state.get_db()?;
         db.as_ref().unwrap().get_task(&task_id).map_err(|e| e.to_string())?
     };
+
+    println!("📋 Task retrieved: type={}, status={}", task.task_type, task.status);
 
     // Check if task is already running
     if task.status == "running" {
@@ -69,6 +73,31 @@ pub async fn execute_task(
             let db = state.get_db()?;
             let db_ref = db.as_ref().unwrap();
             db_ref.save_execution(&exec_result).map_err(|e| e.to_string())?;
+
+            // Write debug info to file
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("/tmp/tweetpilot_debug.log")
+                .unwrap();
+            writeln!(file, "task_type={}, exec_result.status={}", task.task_type, exec_result.status).unwrap();
+
+            // Update next_execution_time for scheduled tasks if execution was successful
+            if task.task_type == "scheduled" && exec_result.status == "success" {
+                if let Some(schedule) = &task.schedule {
+                    writeln!(file, "Calling update_next_execution_time...").unwrap();
+                    match db_ref.update_next_execution_time(&task_id, schedule) {
+                        Ok(_) => {
+                            writeln!(file, "Update returned Ok").unwrap();
+                        }
+                        Err(e) => {
+                            writeln!(file, "Update failed: {:?}", e).unwrap();
+                        }
+                    }
+                }
+            }
+
             db_ref.update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
             Ok(exec_result)
         }
@@ -125,15 +154,33 @@ pub async fn get_task_detail(
     });
 
     let mut task_json = serde_json::to_value(&task).map_err(|e| e.to_string())?;
+
+    // Debug: Print task fields before serialization
+    println!("=== DEBUG: Task fields from database ===");
+    println!("task.next_execution_time: {:?}", task.next_execution_time);
+    println!("task.last_execution_time: {:?}", task.last_execution_time);
+    println!("task.schedule: {:?}", task.schedule);
+    println!("task.task_type: {}", task.task_type);
+
+    // Debug: Print serialized JSON
+    println!("=== DEBUG: Serialized task JSON ===");
+    println!("{}", serde_json::to_string_pretty(&task_json).unwrap_or_default());
+
     if let Some(obj) = task_json.as_object_mut() {
         obj.insert("lastExecution".to_string(), last_execution.unwrap_or(serde_json::Value::Null));
     }
 
-    Ok(serde_json::json!({
+    let result = serde_json::json!({
         "task": task_json,
         "statistics": statistics,
         "history": history,
-    }))
+    });
+
+    // Debug: Print final response
+    println!("=== DEBUG: Final response to frontend ===");
+    println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+
+    Ok(result)
 }
 
 #[tauri::command]

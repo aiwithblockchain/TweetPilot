@@ -37,6 +37,14 @@ impl TaskScheduler {
         *running = true;
         drop(running);
 
+        // Recalculate missed executions on startup
+        {
+            let db_guard = self.db.lock().unwrap();
+            if let Some(ref db_ref) = *db_guard {
+                let _ = db_ref.recalculate_missed_executions();
+            }
+        }
+
         let db = self.db.clone();
         let executor = self.executor.clone();
         let workspace_root = self.workspace_root.clone();
@@ -140,6 +148,12 @@ impl TaskScheduler {
                         match result {
                             Ok(exec_result) => {
                                 let _ = db_ref.save_execution(&exec_result);
+
+                                // Update next_execution_time for scheduled tasks
+                                if let Some(schedule) = &task_clone.schedule {
+                                    let _ = db_ref.update_next_execution_time(&task_clone.id, schedule);
+                                }
+
                                 let _ = db_ref.update_task_status(&task_clone.id, "idle");
                             }
                             Err(_) => {
