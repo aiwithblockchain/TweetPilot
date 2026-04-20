@@ -86,6 +86,21 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
             />
             <HeroStat label="执行账号" value={task.accountScreenName || '未指定'} />
           </div>
+
+          {task.type === 'scheduled' && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+              <div className="text-[11px] text-[#B8B8B8] mb-2">定时配置</div>
+              <div className="text-sm text-white space-y-1">
+                <div>类型: {task.scheduleType === 'interval' ? '简单间隔' : 'Cron 表达式'}</div>
+                {task.scheduleType === 'interval' && task.intervalSeconds && (
+                  <div>间隔: {formatInterval(task.intervalSeconds)}</div>
+                )}
+                {task.scheduleType === 'cron' && task.schedule && (
+                  <div className="font-mono text-xs">表达式: {task.schedule}</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -302,5 +317,20 @@ function formatDateTime(value?: string) {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN')
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
+}
+
+function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`
+  return `${Math.floor(seconds / 86400)} 天`
 }

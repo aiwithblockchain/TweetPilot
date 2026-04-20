@@ -18,7 +18,9 @@ pub struct Task {
     pub script_content: Option<String>,
     pub script_hash: Option<String>,
     pub schedule: Option<String>,
+    #[serde(rename = "scheduleType")]
     pub schedule_type: String,
+    #[serde(rename = "intervalSeconds")]
     pub interval_seconds: Option<i64>,
     pub timeout: Option<i64>,
     pub retry_count: Option<i64>,
@@ -341,10 +343,30 @@ impl TaskDatabase {
 
         let next_execution_time = match task.schedule_type.as_str() {
             "interval" => {
-                // Interval timer: current time + interval_seconds
+                // Interval timer with smart catch-up logic
                 if let Some(interval_secs) = task.interval_seconds {
-                    let next = now + chrono::Duration::seconds(interval_secs);
-                    next.to_rfc3339()
+                    // If there's a last execution time, calculate based on it
+                    if let Some(ref last_exec_str) = task.last_execution_time {
+                        if let Ok(last_exec_time) = chrono::DateTime::parse_from_rfc3339(last_exec_str) {
+                            let last_exec_utc = last_exec_time.with_timezone(&chrono::Utc);
+                            let time_since_last = now.signed_duration_since(last_exec_utc);
+
+                            // Calculate n = ceil((now - last_execution) / interval)
+                            let n = (time_since_last.num_seconds() as f64 / interval_secs as f64).ceil() as i64;
+
+                            // Next execution = last_execution + (interval * n)
+                            let next = last_exec_utc + chrono::Duration::seconds(interval_secs * n);
+                            next.to_rfc3339()
+                        } else {
+                            // Fallback: if parsing fails, use current time + interval
+                            let next = now + chrono::Duration::seconds(interval_secs);
+                            next.to_rfc3339()
+                        }
+                    } else {
+                        // No last execution: use current time + interval
+                        let next = now + chrono::Duration::seconds(interval_secs);
+                        next.to_rfc3339()
+                    }
                 } else {
                     return Err(rusqlite::Error::InvalidQuery);
                 }
@@ -373,32 +395,71 @@ impl TaskDatabase {
     pub fn recalculate_missed_executions(&self) -> Result<()> {
         let now = chrono::Utc::now();
 
-        // Get all scheduled tasks
+        // Get all scheduled tasks with their schedule_type, interval_seconds, and last_execution_time
         let mut stmt = self.conn.prepare(
-            "SELECT id, schedule, next_execution_time FROM tasks WHERE type = 'scheduled' AND enabled = 1"
+            "SELECT id, schedule, schedule_type, interval_seconds, next_execution_time, last_execution_time
+             FROM tasks WHERE type = 'scheduled' AND enabled = 1"
         )?;
 
-        let tasks: Vec<(String, Option<String>, Option<String>)> = stmt
+        let tasks: Vec<(String, Option<String>, String, Option<i64>, Option<String>, Option<String>)> = stmt
             .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "cron".to_string()),
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
             })?
             .collect::<Result<Vec<_>>>()?;
 
-        for (task_id, schedule_opt, next_exec_opt) in tasks {
-            if let (Some(schedule_str), Some(next_exec_str)) = (schedule_opt, next_exec_opt) {
+        for (task_id, schedule_opt, schedule_type, interval_seconds_opt, next_exec_opt, last_exec_opt) in tasks {
+            if let Some(next_exec_str) = next_exec_opt {
                 if let Ok(next_exec_time) = chrono::DateTime::parse_from_rfc3339(&next_exec_str) {
                     let next_exec_utc = next_exec_time.with_timezone(&chrono::Utc);
 
-                    // If next_execution_time is in the past, calculate new next execution
+                    // If next_execution_time is in the past, recalculate
                     if next_exec_utc < now {
-                        if let Ok(schedule) = Schedule::from_str(&schedule_str) {
-                            // Find the next valid execution time from now
-                            if let Some(next_time) = schedule.upcoming(chrono::Utc).next() {
-                                self.conn.execute(
-                                    "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",
-                                    params![next_time.to_rfc3339(), now.to_rfc3339(), task_id],
-                                )?;
+                        let new_next_time = match schedule_type.as_str() {
+                            "interval" => {
+                                // Interval timer: use smart catch-up logic
+                                if let (Some(interval_secs), Some(last_exec_str)) = (interval_seconds_opt, last_exec_opt) {
+                                    if let Ok(last_exec_time) = chrono::DateTime::parse_from_rfc3339(&last_exec_str) {
+                                        let last_exec_utc = last_exec_time.with_timezone(&chrono::Utc);
+                                        let time_since_last = now.signed_duration_since(last_exec_utc);
+                                        let n = (time_since_last.num_seconds() as f64 / interval_secs as f64).ceil() as i64;
+                                        let next = last_exec_utc + chrono::Duration::seconds(interval_secs * n);
+                                        Some(next.to_rfc3339())
+                                    } else {
+                                        // Fallback: current time + interval
+                                        let next = now + chrono::Duration::seconds(interval_secs);
+                                        Some(next.to_rfc3339())
+                                    }
+                                } else {
+                                    None
+                                }
                             }
+                            "cron" => {
+                                // Cron timer: find next valid cron time
+                                if let Some(schedule_str) = schedule_opt {
+                                    if let Ok(schedule) = Schedule::from_str(&schedule_str) {
+                                        schedule.upcoming(chrono::Utc).next().map(|t| t.to_rfc3339())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None
+                        };
+
+                        if let Some(new_time) = new_next_time {
+                            self.conn.execute(
+                                "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",
+                                params![new_time, now.to_rfc3339(), task_id],
+                            )?;
                         }
                     }
                 }

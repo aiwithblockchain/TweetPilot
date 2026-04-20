@@ -33,6 +33,8 @@ interface TauriTask {
   lastExecution?: ExecutionResult
   lastExecutionStatus?: 'success' | 'failure'
   schedule?: string
+  scheduleType?: string
+  intervalSeconds?: number
   nextExecutionTime?: string
   lastExecutionTime?: string
   accountScreenName?: string
@@ -84,6 +86,8 @@ function mapTask(task: TauriTask): Task {
     lastExecution: task.lastExecution,
     lastExecutionStatus: task.lastExecutionStatus,
     schedule: task.schedule,
+    scheduleType: (task.scheduleType || 'cron') as ScheduleType,
+    intervalSeconds: task.intervalSeconds,
     nextExecutionTime: task.nextExecutionTime,
     lastExecutionTime: task.lastExecutionTime,
     statistics: task.statistics,

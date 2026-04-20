@@ -18,6 +18,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [parameters, setParameters] = useState<Record<string, string>>({})
   const [intervalValue, setIntervalValue] = useState(2)
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
+  const [cronFields, setCronFields] = useState({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
   const [accountScreenName, setAccountScreenName] = useState('')
   const [accounts, setAccounts] = useState<MappedAccount[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
@@ -52,6 +53,42 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     }
   }, [])
 
+  const cronExpression = useMemo(() => {
+    return `${cronFields.second} ${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
+  }, [cronFields])
+
+  const cronDescription = useMemo(() => {
+    const { second, minute, hour, day, month, weekday } = cronFields
+
+    // 简单的人类可读描述生成
+    const parts: string[] = []
+
+    // 时间部分
+    if (hour === '*' && minute === '*') {
+      parts.push('每分钟')
+    } else if (hour === '*') {
+      parts.push(`每小时的第 ${minute} 分钟`)
+    } else if (minute === '0') {
+      parts.push(`${hour} 点整`)
+    } else {
+      parts.push(`${hour}:${minute.padStart(2, '0')}`)
+    }
+
+    // 日期部分
+    if (weekday !== '*' && day === '*') {
+      const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+      parts.push(`每周${weekdays[parseInt(weekday)] || weekday}`)
+    } else if (day !== '*' && month === '*') {
+      parts.push(`每月 ${day} 号`)
+    } else if (day === '*' && month === '*' && weekday === '*') {
+      parts.push('每天')
+    } else if (day !== '*' && month !== '*') {
+      parts.push(`每年 ${month} 月 ${day} 号`)
+    }
+
+    return parts.join(' ')
+  }, [cronFields])
+
   const scriptFileName = useMemo(() => {
     if (!scriptPath) return '未选择脚本'
     return scriptPath.split('/').pop() || scriptPath
@@ -65,7 +102,22 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const validateForm = () => {
     if (!name.trim()) return '请输入任务名称'
     if (!scriptPath.trim()) return '请选择 Python 脚本'
-    if (taskType === 'scheduled' && intervalValue < 1) return '执行间隔必须大于 0'
+    if (taskType === 'scheduled') {
+      if (scheduleType === 'interval' && intervalValue < 1) {
+        return '执行间隔必须大于 0'
+      }
+      if (scheduleType === 'cron') {
+        const cronExpr = `${cronFields.second} ${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
+        const parts = cronExpr.trim().split(/\s+/)
+        if (parts.length !== 6) {
+          return 'Cron 表达式必须包含 6 个字段（秒 分 时 日 月 周）'
+        }
+        // 简单验证每个字段不为空
+        if (parts.some(p => !p || p.trim() === '')) {
+          return 'Cron 表达式的每个字段都不能为空'
+        }
+      }
+    }
     return null
   }
 
@@ -77,6 +129,10 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     setParameters({})
     setIntervalValue(1)
     setIntervalUnit('hours')
+  }
+
+  const getCronFromTemplate = (): string => {
+    return `${cronFields.second} ${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
   }
 
   const handleSubmit = async () => {
@@ -102,28 +158,13 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       }
     }
 
-    const getCronSchedule = () => {
-      switch (intervalUnit) {
-        case 'minutes':
-          if (intervalValue >= 60) {
-            const hours = Math.floor(intervalValue / 60)
-            return `0 0 */${hours} * * *`
-          }
-          return `0 */${intervalValue} * * * *`
-        case 'hours':
-          return `0 0 */${intervalValue} * * *`
-        case 'days':
-          return `0 0 0 */${intervalValue} * *`
-      }
-    }
-
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
       taskType,
       scriptPath: scriptPath.trim(),
       scheduleType: taskType === 'scheduled' ? scheduleType : undefined,
-      schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronSchedule() : undefined,
+      schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronFromTemplate() : undefined,
       intervalSeconds: taskType === 'scheduled' && scheduleType === 'interval' ? getIntervalSeconds() : undefined,
       parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
       accountScreenName: accountScreenName || undefined,
@@ -296,9 +337,37 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               )}
 
               {scheduleType === 'cron' && (
-                <Field label="Cron 表达式">
-                  <div className="text-xs text-[#858585] mb-2">
-                    暂不支持 Cron 定时器，请使用"简单间隔"方式
+                <Field label="Cron 表达式（6字段格式）">
+                  <input
+                    type="text"
+                    value={cronExpression}
+                    onChange={(e) => {
+                      const parts = e.target.value.trim().split(/\s+/)
+                      if (parts.length === 6) {
+                        setCronFields({
+                          second: parts[0],
+                          minute: parts[1],
+                          hour: parts[2],
+                          day: parts[3],
+                          month: parts[4],
+                          weekday: parts[5],
+                        })
+                      }
+                    }}
+                    placeholder="0 0 9 * * * (每天早上9点)"
+                    className="w-full h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] font-mono outline-none focus:border-[#6D5BF6]"
+                  />
+                  <div className="mt-2 p-3 rounded-lg bg-[#1E1E1E] border border-[#2A2A2A]">
+                    <div className="text-xs text-[#858585] mb-1">预览：</div>
+                    <div className="text-sm text-[#4EC9B0] font-medium">{cronDescription}</div>
+                  </div>
+                  <div className="mt-2 text-xs text-[#858585] space-y-1">
+                    <div>格式：秒 分 时 日 月 周（使用空格分隔）</div>
+                    <div>示例：</div>
+                    <div className="font-mono">0 0 9 * * * - 每天早上9点</div>
+                    <div className="font-mono">0 30 18 * * * - 每天晚上6点30分</div>
+                    <div className="font-mono">0 0 9 * * 1 - 每周一早上9点</div>
+                    <div className="font-mono">0 0 9 1 * * - 每月1号早上9点</div>
                   </div>
                 </Field>
               )}
