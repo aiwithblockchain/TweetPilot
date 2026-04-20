@@ -54,6 +54,7 @@ pub struct LocalBridgeClient {
     client: Client,
 }
 
+#[allow(dead_code)]
 impl LocalBridgeClient {
     pub fn new(base_url: String, timeout_ms: u64) -> Result<Self, String> {
         let client = Client::builder()

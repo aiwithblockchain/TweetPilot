@@ -48,8 +48,8 @@
   }
 
   *::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
   }
 
   *::-webkit-scrollbar-track {
@@ -58,23 +58,41 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(109, 91, 246, 0.15) 0%, rgba(109, 91, 246, 0.25) 100%);
-    border-radius: 2px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(109, 91, 246, 0.2);
+    border-radius: 3px;
+    transition: all 0.2s ease;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, rgba(109, 91, 246, 0.35) 0%, rgba(109, 91, 246, 0.5) 100%);
-    width: 6px;
+    background: rgba(109, 91, 246, 0.4);
   }
 
   *::-webkit-scrollbar-thumb:active {
-    background: linear-gradient(180deg, rgba(109, 91, 246, 0.5) 0%, rgba(109, 91, 246, 0.7) 100%);
+    background: rgba(109, 91, 246, 0.6);
   }
 
   /* Hide scrollbar corner */
   *::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /* Error output custom scrollbar */
+  .error-output::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .error-output::-webkit-scrollbar-track {
+    background: rgba(90, 29, 29, 0.3);
+    border-radius: 4px;
+  }
+
+  .error-output::-webkit-scrollbar-thumb {
+    background: rgba(244, 135, 113, 0.3);
+    border-radius: 4px;
+  }
+
+  .error-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(244, 135, 113, 0.5);
   }
 
   /* Smooth scrolling behavior */

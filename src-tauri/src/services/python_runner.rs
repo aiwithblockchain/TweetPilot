@@ -3,10 +3,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use std::process::Stdio;
 
+#[allow(dead_code)]
 pub struct PythonRunner {
     python_path: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ExecutionOutput {
     pub stdout: Vec<String>,

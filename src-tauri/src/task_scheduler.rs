@@ -63,6 +63,7 @@ impl TaskScheduler {
         });
     }
 
+    #[allow(dead_code)]
     pub fn stop(&self) {
         let mut running = self.running.lock().unwrap();
         *running = false;

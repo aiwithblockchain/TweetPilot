@@ -26,7 +26,7 @@ impl TaskState {
         Ok(())
     }
 
-    fn get_db(&self) -> Result<std::sync::MutexGuard<Option<TaskDatabase>>, String> {
+    fn get_db(&self) -> Result<std::sync::MutexGuard<'_, Option<TaskDatabase>>, String> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
         if db.is_none() {
             return Err("数据库未初始化，请先选择工作区".to_string());
@@ -96,6 +96,21 @@ pub async fn get_task_detail(
     let task = db_ref.get_task(&task_id).map_err(|e| e.to_string())?;
     let history = db_ref.get_execution_history(&task_id, Some(50)).map_err(|e| e.to_string())?;
 
+    // Get last execution for the task
+    let last_execution = history.first().map(|exec| {
+        serde_json::json!({
+            "id": exec.id,
+            "taskId": exec.task_id,
+            "startTime": exec.start_time,
+            "endTime": exec.end_time,
+            "duration": exec.duration,
+            "status": exec.status,
+            "exitCode": exec.exit_code,
+            "output": exec.stdout,
+            "error": exec.stderr,
+        })
+    });
+
     // Calculate statistics
     let statistics = serde_json::json!({
         "totalExecutions": task.total_executions,
@@ -109,8 +124,13 @@ pub async fn get_task_detail(
         "averageDuration": task.average_duration,
     });
 
+    let mut task_json = serde_json::to_value(&task).map_err(|e| e.to_string())?;
+    if let Some(obj) = task_json.as_object_mut() {
+        obj.insert("lastExecution".to_string(), last_execution.unwrap_or(serde_json::Value::Null));
+    }
+
     Ok(serde_json::json!({
-        "task": task,
+        "task": task_json,
         "statistics": statistics,
         "history": history,
     }))

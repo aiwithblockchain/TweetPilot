@@ -19,6 +19,7 @@ pub struct Task {
     pub timeout: Option<i64>,
     pub retry_count: Option<i64>,
     pub retry_delay: Option<i64>,
+    #[serde(rename = "accountScreenName")]
     pub account_id: String,
     pub parameters: String,
     pub last_execution_time: Option<String>,

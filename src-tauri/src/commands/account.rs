@@ -224,22 +224,23 @@ pub async fn verify_account_status(screen_name: String) -> Result<AccountStatus,
 
 #[tauri::command]
 pub async fn refresh_all_accounts_status() -> Result<(), String> {
-    // Try to sync from LocalBridge
     let config = match crate::commands::preferences::get_local_bridge_config().await {
         Ok(c) => c,
         Err(_) => return Err("LocalBridge 配置未设置".to_string()),
     };
 
     let client = LocalBridgeClient::new(config.endpoint.clone(), config.timeout_ms)?;
-
-    // Get all extension instances
     let instances = client.get_instances().await?;
 
     println!("=== 发现 {} 个实例 ===", instances.len());
 
+    let existing_accounts = {
+        let mapped = MAPPED_ACCOUNTS.lock().unwrap();
+        mapped.clone()
+    };
+
     let mut synced_accounts = Vec::new();
 
-    // Process all instances
     for instance in instances.iter() {
         let instance_id = instance.get("instanceId")
             .and_then(|v| v.as_str())
@@ -249,70 +250,73 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown");
 
-        println!("处理实例: {} (ID: {})", instance_name, instance_id);
+        let screen_name = instance.get("screen_name")
+            .and_then(|v| v.as_str())
+            .map(|sn| if sn.starts_with('@') { sn.to_string() } else { format!("@{}", sn) })
+            .unwrap_or_else(|| format!("@{}", instance_name));
 
-        // Try to get basic info for this instance
-        match client.get_basic_info_with_instance(instance_id).await {
-            Ok(basic_info) => {
-                let screen_name = basic_info.screen_name
-                    .as_ref()
-                    .map(|sn| if sn.starts_with('@') { sn.clone() } else { format!("@{}", sn) })
-                    .unwrap_or_else(|| format!("@{}", instance_name));
+        let existing = existing_accounts.iter().find(|a| a.screen_name == screen_name);
 
-                let display_name = basic_info.name.clone().unwrap_or_else(|| instance_name.to_string());
-                let avatar = basic_info.profile_image_url.clone()
-                    .unwrap_or_else(|| "https://pbs.twimg.com/profile_images/default_profile_400x400.png".to_string());
+        let should_fetch_details = if let Some(existing_account) = existing {
+            let last_verified = chrono::DateTime::parse_from_rfc3339(&existing_account.last_verified)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .ok();
 
-                println!("  账号信息:");
-                println!("    - Screen Name: {}", screen_name);
-                println!("    - Display Name: {}", display_name);
-                println!("    - Twitter ID: {:?}", basic_info.id);
-                println!("    - Avatar: {}", avatar);
-                println!("    - Description: {:?}", basic_info.description);
-                println!("    - Followers: {:?}", basic_info.followers_count);
-                println!("    - Following: {:?}", basic_info.following_count);
-                println!("    - Tweets: {:?}", basic_info.tweet_count);
-
-                synced_accounts.push(TwitterAccount {
-                    screen_name,
-                    display_name,
-                    avatar,
-                    status: AccountStatus::Online,
-                    last_verified: chrono::Utc::now().to_rfc3339(),
-                    twitter_id: basic_info.id.clone(),
-                    description: basic_info.description.clone(),
-                    instance_id: Some(instance_id.to_string()),
-                    extension_name: Some(instance_name.to_string()),
-                    default_tab_id: None,
-                    is_logged_in: true,
-                    followers_count: basic_info.followers_count,
-                    following_count: basic_info.following_count,
-                    tweet_count: basic_info.tweet_count,
-                });
+            if let Some(last_time) = last_verified {
+                let now = chrono::Utc::now();
+                let duration = now.signed_duration_since(last_time);
+                duration.num_minutes() >= 5
+            } else {
+                true
             }
-            Err(e) => {
-                eprintln!("  获取实例 {} 的账号信息失败: {}", instance_name, e);
+        } else {
+            true
+        };
+
+        if should_fetch_details {
+            println!("刷新账号详细信息: {} (ID: {})", instance_name, instance_id);
+            match client.get_basic_info_with_instance(instance_id).await {
+                Ok(basic_info) => {
+                    let display_name = basic_info.name.clone().unwrap_or_else(|| instance_name.to_string());
+                    let avatar = basic_info.profile_image_url.clone()
+                        .unwrap_or_else(|| "https://pbs.twimg.com/profile_images/default_profile_400x400.png".to_string());
+
+                    synced_accounts.push(TwitterAccount {
+                        screen_name: screen_name.clone(),
+                        display_name,
+                        avatar,
+                        status: AccountStatus::Online,
+                        last_verified: chrono::Utc::now().to_rfc3339(),
+                        twitter_id: basic_info.id.clone(),
+                        description: basic_info.description.clone(),
+                        instance_id: Some(instance_id.to_string()),
+                        extension_name: Some(instance_name.to_string()),
+                        default_tab_id: None,
+                        is_logged_in: true,
+                        followers_count: basic_info.followers_count,
+                        following_count: basic_info.following_count,
+                        tweet_count: basic_info.tweet_count,
+                    });
+                }
+                Err(e) => {
+                    eprintln!("  获取实例 {} 的账号信息失败: {}", instance_name, e);
+                    if let Some(existing_account) = existing {
+                        synced_accounts.push(existing_account.clone());
+                    }
+                }
+            }
+        } else {
+            if let Some(existing_account) = existing {
+                synced_accounts.push(existing_account.clone());
             }
         }
     }
 
     println!("=== 账号状态刷新成功 ===");
     println!("当前映射账号数量: {}", synced_accounts.len());
-    for account in &synced_accounts {
-        println!("  - {} ({}) | 状态: {:?} | 实例: {} | 最后验证: {}",
-            account.display_name,
-            account.screen_name,
-            account.status,
-            account.extension_name.as_deref().unwrap_or("未知"),
-            account.last_verified
-        );
-    }
-    println!("========================\n");
 
-    // Update mapped accounts with synced data (only in memory, don't persist)
     {
         let mut mapped = MAPPED_ACCOUNTS.lock().unwrap();
-        // Replace all accounts with synced data (don't merge, just replace)
         *mapped = synced_accounts;
     }
 

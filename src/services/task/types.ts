@@ -10,8 +10,10 @@ export interface ExecutionResult {
   duration: number
   status: 'success' | 'failure'
   exitCode: number
-  stdout: string
-  stderr: string
+  output?: string
+  error?: string
+  stdout?: string
+  stderr?: string
   metadata?: Record<string, any>
 }
 

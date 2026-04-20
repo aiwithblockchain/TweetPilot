@@ -83,25 +83,6 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_0.85fr] gap-5">
         <div className="space-y-5">
-          <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-            <div className="text-sm font-semibold text-[#CCCCCC] mb-4">📋 基本信息</div>
-            <InfoGrid
-              items={[
-                { label: '脚本路径', value: task.scriptPath },
-                { label: '调度规则', value: task.schedule || '即时执行' },
-                { label: '目标 tweetId', value: task.tweetId || '未设置' },
-                { label: '查询备注', value: task.query || '未设置' },
-              ]}
-            />
-
-            {task.text && (
-              <div className="mt-5 rounded-xl border border-[#2A2A2A] bg-[#171718] p-4 shadow-[0_8px_18px_rgba(0,0,0,0.16)]">
-                <div className="text-[11px] text-[#858585]">任务文本内容</div>
-                <div className="text-sm text-[#CCCCCC] mt-2 leading-7 whitespace-pre-wrap">{task.text}</div>
-              </div>
-            )}
-          </section>
-
           <SidePanel title="📊 执行统计">
             <div className="grid grid-cols-4 gap-3 text-center">
               <div>
@@ -191,6 +172,10 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
                   <span className="text-[#858585]">耗时</span>
                   <span className="text-[#CCCCCC]">{task.lastExecution.duration.toFixed(2)}s</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-[#858585]">退出码</span>
+                  <span className="text-[#CCCCCC]">{task.lastExecution.exitCode}</span>
+                </div>
                 {task.lastExecution.output && (
                   <div className="pt-2">
                     <button
@@ -208,8 +193,20 @@ export function TaskDetailContentPane({ taskId }: TaskDetailContentPaneProps) {
                 )}
                 {task.lastExecution.error && (
                   <div className="pt-2">
-                    <div className="text-[#F48771] text-xs mb-2">错误信息</div>
-                    <pre className="text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[#F48771] text-xs">错误信息</div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(task.lastExecution!.error!)
+                          // Optional: show a toast notification
+                        }}
+                        className="text-[10px] px-2 py-1 rounded bg-[#5A1D1D] text-[#F48771] hover:bg-[#6A2D2D] transition-colors"
+                        title="复制错误信息"
+                      >
+                        复制
+                      </button>
+                    </div>
+                    <pre className="text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
                       {task.lastExecution.error}
                     </pre>
                   </div>
@@ -246,19 +243,6 @@ function SidePanel({ title, children }: { title: string; children: React.ReactNo
       <div className="text-sm font-semibold text-[#CCCCCC] mb-3">{title}</div>
       {children}
     </section>
-  )
-}
-
-function InfoGrid({ items }: { items: Array<{ label: string; value: string }> }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-3">
-          <div className="text-[11px] text-[#858585]">{item.label}</div>
-          <div className="text-sm text-[#CCCCCC] mt-1 break-all leading-6">{item.value}</div>
-        </div>
-      ))}
-    </div>
   )
 }
 
