@@ -79,13 +79,13 @@ export function TitleBar({
   }
 
   return (
-    <div className="h-9 bg-[#323233] flex items-center select-none border-b border-[#2A2A2A]">
+    <div className="h-9 bg-[var(--vscode-bg-title-bar)] flex items-center select-none border-b border-[var(--color-border)]">
       <div
         onMouseDown={handleDragMouseDown}
         onDoubleClick={handleDragDoubleClick}
         className="flex items-center gap-2 flex-1 h-full min-w-0 pl-3 pr-2 cursor-move"
       >
-        <span className="text-[#CCCCCC] text-sm font-medium truncate">TweetPilot</span>
+        <span className="text-[var(--color-text)] text-sm font-medium truncate">TweetPilot</span>
       </div>
 
       <div className="flex items-center gap-1 px-2 h-full">
@@ -95,7 +95,7 @@ export function TitleBar({
           onClick={onToggleLeftSidebar}
           className={[
             'w-7 h-7 rounded flex items-center justify-center transition-colors',
-            leftSidebarVisible ? 'bg-[#2A2A2A] text-[#CCCCCC]' : 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]',
+            leftSidebarVisible ? 'bg-[var(--vscode-hover-bg)] text-[var(--color-text)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)]',
           ].join(' ')}
           aria-label={leftSidebarVisible ? '隐藏左侧栏' : '显示左侧栏'}
           title={leftSidebarVisible ? '隐藏左侧栏' : '显示左侧栏'}
@@ -108,7 +108,7 @@ export function TitleBar({
           onClick={onToggleRightPanel}
           className={[
             'w-7 h-7 rounded flex items-center justify-center transition-colors',
-            rightPanelVisible ? 'bg-[#2A2A2A] text-[#CCCCCC]' : 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]',
+            rightPanelVisible ? 'bg-[var(--vscode-hover-bg)] text-[var(--color-text)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)]',
           ].join(' ')}
           aria-label={rightPanelVisible ? '隐藏右侧栏' : '显示右侧栏'}
           title={rightPanelVisible ? '隐藏右侧栏' : '显示右侧栏'}
@@ -122,19 +122,19 @@ export function TitleBar({
           type="button"
           onMouseDown={stopWindowDrag}
           onClick={handleMinimize}
-          className="w-10 h-9 flex items-center justify-center hover:bg-[#2A2A2A] transition-colors"
+          className="w-10 h-9 flex items-center justify-center hover:bg-[var(--color-border)] transition-colors"
           aria-label="Minimize"
         >
-          <Minus className="w-4 h-4 text-[#CCCCCC]" />
+          <Minus className="w-4 h-4 text-[var(--color-text)]" />
         </button>
         <button
           type="button"
           onMouseDown={stopWindowDrag}
           onClick={handleMaximize}
-          className="w-10 h-9 flex items-center justify-center hover:bg-[#2A2A2A] transition-colors"
+          className="w-10 h-9 flex items-center justify-center hover:bg-[var(--color-border)] transition-colors"
           aria-label={isMaximized ? 'Restore' : 'Maximize'}
         >
-          {isMaximized ? <Copy className="w-3.5 h-3.5 text-[#CCCCCC]" /> : <Square className="w-3.5 h-3.5 text-[#CCCCCC]" />}
+          {isMaximized ? <Copy className="w-3.5 h-3.5 text-[var(--color-text)]" /> : <Square className="w-3.5 h-3.5 text-[var(--color-text)]" />}
         </button>
         <button
           type="button"
@@ -143,7 +143,7 @@ export function TitleBar({
           className="w-10 h-9 flex items-center justify-center hover:bg-[#F48771] transition-colors group"
           aria-label="Close"
         >
-          <X className="w-4 h-4 text-[#CCCCCC] group-hover:text-white" />
+          <X className="w-4 h-4 text-[var(--color-text)] group-hover:text-white" />
         </button>
       </div>
     </div>

@@ -46,8 +46,8 @@ export function AccountsOverview({ item }: AccountsOverviewProps) {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-[#CCCCCC]">{selected.label}</h2>
-        <p className="text-sm text-[#858585] mt-1 leading-6">{selected.description}</p>
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">{selected.label}</h2>
+        <p className="text-sm text-[var(--color-text-secondary)] mt-1 leading-6">{selected.description}</p>
       </div>
 
       {loading ? (
@@ -72,7 +72,7 @@ function AccountSummaryCard({ account }: { account: MappedAccount }) {
     online: 'text-[#4EC9B0] bg-[#4EC9B0]/10 border-[#4EC9B0]/40',
     offline: 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/40',
     verifying: 'text-[#D7BA7D] bg-[#D7BA7D]/10 border-[#D7BA7D]/40',
-    unknown: 'text-[#858585] bg-[#858585]/10 border-[#858585]/30',
+    unknown: 'text-[var(--color-text-secondary)] bg-[#858585]/10 border-[#858585]/30',
   }
 
   const statusText: Record<string, string> = {
@@ -83,16 +83,16 @@ function AccountSummaryCard({ account }: { account: MappedAccount }) {
   }
 
   return (
-    <div className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
+    <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex items-center gap-3">
         <img
           src={account.avatar}
           alt={account.displayName}
-          className="w-12 h-12 rounded-full object-cover border border-[#2A2A2A]"
+          className="w-12 h-12 rounded-full object-cover border border-[var(--color-border)]"
         />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-[#CCCCCC] truncate">{account.displayName}</div>
-          <div className="text-xs text-[#858585] mt-1 truncate">{account.screenName}</div>
+          <div className="text-sm font-semibold text-[var(--color-text)] truncate">{account.displayName}</div>
+          <div className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{account.screenName}</div>
         </div>
         <span className={['text-[11px] px-2 py-1 rounded border whitespace-nowrap', statusStyles[account.status] ?? statusStyles.unknown].join(' ')}>
           {statusText[account.status] ?? statusText.unknown}
@@ -111,9 +111,9 @@ function AccountSummaryCard({ account }: { account: MappedAccount }) {
 
 function InfoBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-[#2A2A2A] bg-[#1E1E1E] p-3">
-      <div className="text-[11px] text-[#858585]">{label}</div>
-      <div className="text-xs text-[#CCCCCC] mt-1 break-all leading-5">{value}</div>
+    <div className="rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+      <div className="text-[11px] text-[var(--color-text-secondary)]">{label}</div>
+      <div className="text-xs text-[var(--color-text)] mt-1 break-all leading-5">{value}</div>
     </div>
   )
 }
@@ -124,8 +124,8 @@ function PanelMessage({ message, tone = 'neutral' }: { message: string; tone?: '
       className={[
         'rounded border p-4 text-sm',
         tone === 'error'
-          ? 'border-[#5A1D1D] bg-[#3A1F1F] text-[#F48771]'
-          : 'border-[#2A2A2A] bg-[#252526] text-[#858585]',
+          ? 'border-red-800/50 bg-red-950/30 text-[#F48771]'
+          : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
       ].join(' ')}
     >
       {message}

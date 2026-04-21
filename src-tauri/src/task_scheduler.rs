@@ -152,16 +152,35 @@ impl TaskScheduler {
                     if let Some(ref db_ref) = *db_guard {
                         match result {
                             Ok(exec_result) => {
-                                let _ = db_ref.save_execution(&exec_result);
+                                eprintln!("✅ Task {} executed successfully", task_clone.id);
+
+                                if let Err(e) = db_ref.save_execution(&exec_result) {
+                                    eprintln!("❌ Failed to save execution: {}", e);
+                                }
 
                                 // Update next_execution_time for scheduled tasks
                                 if task_clone.task_type == "scheduled" {
-                                    let _ = db_ref.update_next_execution_time(&task_clone.id, &task_clone);
+                                    eprintln!("📅 Updating next execution time for task {}", task_clone.id);
+                                    // Re-fetch task to get updated last_execution_time
+                                    match db_ref.get_task(&task_clone.id) {
+                                        Ok(updated_task) => {
+                                            if let Err(e) = db_ref.update_next_execution_time(&task_clone.id, &updated_task) {
+                                                eprintln!("❌ Failed to update next execution time: {}", e);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("❌ Failed to re-fetch task: {}", e);
+                                        }
+                                    }
                                 }
 
-                                let _ = db_ref.update_task_status(&task_clone.id, "idle");
+                                eprintln!("🔄 Setting task {} status to idle", task_clone.id);
+                                if let Err(e) = db_ref.update_task_status(&task_clone.id, "idle") {
+                                    eprintln!("❌ Failed to update task status: {}", e);
+                                }
                             }
-                            Err(_) => {
+                            Err(e) => {
+                                eprintln!("❌ Task {} execution failed: {}", task_clone.id, e);
                                 let _ = db_ref.update_task_status(&task_clone.id, "failed");
                             }
                         }

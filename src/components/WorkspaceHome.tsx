@@ -39,8 +39,8 @@ export function WorkspaceHome({ item, instances, instancesError }: WorkspaceHome
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-[#CCCCCC]">{section.title}</h2>
-        <p className="text-sm text-[#858585] mt-1 leading-6">{section.description}</p>
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">{section.title}</h2>
+        <p className="text-sm text-[var(--color-text-secondary)] mt-1 leading-6">{section.description}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -49,27 +49,27 @@ export function WorkspaceHome({ item, instances, instancesError }: WorkspaceHome
         <MetricCard label="当前视图" value={selected.label} hint={selected.description} />
       </div>
 
-      <div className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
-        <div className="text-sm font-semibold text-[#CCCCCC] mb-3">当前重点</div>
-        <ul className="space-y-2 text-xs text-[#858585] leading-5">
+      <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div className="text-sm font-semibold text-[var(--color-text)] mb-3">当前重点</div>
+        <ul className="space-y-2 text-xs text-[var(--color-text-secondary)] leading-5">
           {section.highlights.map((highlight) => (
             <li key={highlight}>• {highlight}</li>
           ))}
         </ul>
       </div>
 
-      <div className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
+      <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="flex items-center justify-between mb-3 gap-3">
-          <div className="text-sm font-semibold text-[#CCCCCC]">实例快照</div>
+          <div className="text-sm font-semibold text-[var(--color-text)]">实例快照</div>
           {instancesError && <span className="text-[11px] text-[#F48771]">{instancesError}</span>}
         </div>
 
         <div className="space-y-2">
           {instances.map((instance) => (
-            <div key={instance.id} className="flex items-center justify-between gap-3 rounded border border-[#2A2A2A] bg-[#1E1E1E] px-3 py-2">
+            <div key={instance.id} className="flex items-center justify-between gap-3 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
               <div className="min-w-0">
-                <div className="text-sm text-[#CCCCCC] truncate">{instance.name}</div>
-                <div className="text-[11px] text-[#858585] mt-1">最后活跃：{instance.lastActive}</div>
+                <div className="text-sm text-[var(--color-text)] truncate">{instance.name}</div>
+                <div className="text-[11px] text-[var(--color-text-secondary)] mt-1">最后活跃：{instance.lastActive}</div>
               </div>
               <span
                 className={[
@@ -93,10 +93,10 @@ export function WorkspaceHome({ item, instances, instancesError }: WorkspaceHome
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
-      <div className="text-[11px] uppercase tracking-[0.08em] text-[#858585]">{label}</div>
-      <div className="text-lg font-semibold text-[#CCCCCC] mt-2">{value}</div>
-      <div className="text-xs text-[#858585] mt-2 leading-5">{hint}</div>
+    <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">{label}</div>
+      <div className="text-lg font-semibold text-[var(--color-text)] mt-2">{value}</div>
+      <div className="text-xs text-[var(--color-text-secondary)] mt-2 leading-5">{hint}</div>
     </div>
   )
 }

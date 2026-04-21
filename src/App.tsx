@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import WorkspaceSelector from './pages/WorkspaceSelector'
 import { TitleBar } from './components/TitleBar'
 import { ActivityBar } from './components/ActivityBar'
@@ -11,7 +11,31 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { AddDataBlockMenu } from './components/AddDataBlockMenu'
 import { ToastProvider } from './contexts/ToastContext'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
+import { settingsService } from './services'
+import type { AppSettings } from './services/settings'
 import './styles/vscode-theme.css'
+
+function applyTheme(theme: AppSettings['theme']) {
+  const root = document.documentElement
+
+  if (theme === 'light') {
+    root.classList.remove('dark')
+    return
+  }
+
+  if (theme === 'dark') {
+    root.classList.add('dark')
+    return
+  }
+
+  // system theme
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (prefersDark) {
+    root.classList.add('dark')
+  } else {
+    root.classList.remove('dark')
+  }
+}
 
 function AppShell() {
   const {
@@ -57,7 +81,7 @@ function AppShell() {
   } = useAppLayoutState()
 
   return (
-    <div className="h-screen flex flex-col bg-[#1E1E1E] text-[#CCCCCC]">
+    <div className="h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
       <TitleBar
         leftSidebarVisible={leftSidebarVisible}
         rightPanelVisible={rightPanelVisible}
@@ -85,7 +109,7 @@ function AppShell() {
           </div>
         )}
 
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-[#1E1E1E] transition-opacity duration-200 ease-out">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-[var(--color-bg)] transition-opacity duration-200 ease-out">
           <EditorTabsBar
             activeTab={activeView}
             openTabs={openTabs}
@@ -148,6 +172,22 @@ function AppContent() {
 }
 
 function App() {
+  useEffect(() => {
+    // Initialize theme on app startup
+    const initTheme = async () => {
+      try {
+        const settings = await settingsService.getSettings()
+        applyTheme(settings.theme)
+      } catch (error) {
+        console.error('Failed to load theme settings:', error)
+        // Fallback to dark theme
+        applyTheme('dark')
+      }
+    }
+
+    void initTheme()
+  }, [])
+
   return (
     <ToastProvider>
       <AppContent />

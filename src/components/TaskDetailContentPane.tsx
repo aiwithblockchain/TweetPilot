@@ -50,15 +50,15 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
 
   return (
     <div className="p-6 space-y-5">
-      <div className="rounded-2xl border border-[#2A2A2A] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.22)] bg-[linear-gradient(135deg,#6D5BF622_0%,#252526_50%,#171718_100%)]">
+      <div className="rounded-2xl border border-[var(--color-border)] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.22)]" style={{ background: `linear-gradient(135deg, #6D5BF626 0%, var(--color-surface) 48%, var(--color-bg) 100%)` }}>
         <div className="p-6 md:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-[#CCCCCC]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-input)] px-3 py-1 text-[11px] text-[var(--color-text)]">
                 任务详情
               </div>
-              <h2 className="text-2xl font-semibold text-white mt-4">{task.name}</h2>
-              <p className="text-sm text-[#D4D4D4] mt-2 leading-6 max-w-2xl">{task.description || '当前任务暂无详细描述。'}</p>
+              <h2 className="text-2xl font-semibold text-[var(--color-text)] mt-4">{task.name}</h2>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-2 leading-6 max-w-2xl">{task.description || '当前任务暂无详细描述。'}</p>
             </div>
             <div className={[
               'text-xs px-3 py-1.5 rounded-full border whitespace-nowrap',
@@ -68,7 +68,7 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                   ? 'border-[#F48771]/30 bg-[#F48771]/12 text-[#F48771]'
                   : task.status === 'paused'
                     ? 'border-[#D7BA7D]/30 bg-[#D7BA7D]/12 text-[#D7BA7D]'
-                    : 'border-white/10 bg-black/20 text-[#CCCCCC]',
+                    : 'border-[var(--color-border)] bg-[var(--color-input)] text-[var(--color-text)]',
             ].join(' ')}>
               {formatTaskStatus(task.status)}
             </div>
@@ -88,9 +88,9 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
           </div>
 
           {task.type === 'scheduled' && (
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-              <div className="text-[11px] text-[#B8B8B8] mb-2">定时配置</div>
-              <div className="text-sm text-white space-y-1">
+            <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 py-3">
+              <div className="text-[11px] text-[var(--color-text-secondary)] mb-2">定时配置</div>
+              <div className="text-sm text-[var(--color-text)] space-y-1">
                 <div>类型: {task.scheduleType === 'interval' ? '简单间隔' : 'Cron 表达式'}</div>
                 {task.scheduleType === 'interval' && task.intervalSeconds && (
                   <div>间隔: {formatInterval(task.intervalSeconds)}</div>
@@ -98,7 +98,7 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                 {task.scheduleType === 'cron' && task.schedule && (
                   <div className="font-mono text-xs">
                     表达式: {convertCronToLocalTime(task.schedule)}
-                    <div className="text-[10px] text-[#858585] mt-1">(本地时间)</div>
+                    <div className="text-[10px] text-[var(--color-text-secondary)] mt-1">(本地时间)</div>
                   </div>
                 )}
               </div>
@@ -112,41 +112,46 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
           <SidePanel title="📊 执行统计">
             <div className="grid grid-cols-4 gap-3 text-center">
               <div>
-                <div className="text-2xl font-semibold text-[#CCCCCC]">{detail.statistics.totalExecutions}</div>
-                <div className="text-xs text-[#858585] mt-1">总次数</div>
+                <div className="text-2xl font-semibold text-[var(--color-text)]">{detail.statistics.totalExecutions}</div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">总次数</div>
               </div>
               <div>
                 <div className="text-2xl font-semibold text-[#4EC9B0]">{detail.statistics.successCount}</div>
-                <div className="text-xs text-[#858585] mt-1">成功</div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">成功</div>
               </div>
               <div>
                 <div className="text-2xl font-semibold text-[#F48771]">{detail.statistics.failureCount}</div>
-                <div className="text-xs text-[#858585] mt-1">失败</div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">失败</div>
               </div>
               <div>
-                <div className="text-2xl font-semibold text-[#CCCCCC]">{detail.statistics.successRate}%</div>
-                <div className="text-xs text-[#858585] mt-1">成功率</div>
+                <div className="text-2xl font-semibold text-[var(--color-text)]">{detail.statistics.successRate}%</div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">成功率</div>
               </div>
             </div>
-            <div className="text-xs text-[#858585] mt-3 text-center">
+            <div className="text-xs text-[var(--color-text-secondary)] mt-3 text-center">
               平均耗时: {detail.statistics.averageDuration}s
             </div>
           </SidePanel>
 
           <SidePanel title="📜 最近执行记录">
             {detail.history.length === 0 ? (
-              <div className="text-sm text-[#858585]">还没有执行记录。</div>
+              <div className="text-sm text-[var(--color-text-secondary)]">还没有执行记录。</div>
             ) : (
               <>
                 <div className="space-y-2">
                   {latestHistory.map((item, index) => (
                     <div
                       key={`${item.startTime}-${index}`}
-                      className="flex items-center justify-between text-xs p-2 rounded-lg bg-[#171718] border border-[#2A2A2A]"
+                      className="flex items-center justify-between text-xs p-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)]"
                     >
-                      <span className="text-[#858585]">
-                        {item.status === 'success' ? '✓' : '✗'} {formatDateTime(item.startTime).split(' ')[1]}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={item.status === 'success' ? 'text-[#4EC9B0]' : 'text-[#F48771]'}>
+                          {item.status === 'success' ? '✓' : '✗'}
+                        </span>
+                        <span className="text-[var(--color-text)]">
+                          {formatDateTime(item.startTime)}
+                        </span>
+                      </div>
                       <span
                         className={[
                           'px-2 py-0.5 rounded',
@@ -178,7 +183,7 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
             <SidePanel title="⏱ 最后执行">
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-[#858585]">状态</span>
+                  <span className="text-[var(--color-text-secondary)]">状态</span>
                   <span
                     className={[
                       'px-2 py-0.5 rounded',
@@ -191,27 +196,27 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#858585]">时间</span>
-                  <span className="text-[#CCCCCC]">{formatDateTime(task.lastExecution.startTime)}</span>
+                  <span className="text-[var(--color-text-secondary)]">时间</span>
+                  <span className="text-[var(--color-text)]">{formatDateTime(task.lastExecution.startTime)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#858585]">耗时</span>
-                  <span className="text-[#CCCCCC]">{task.lastExecution.duration.toFixed(2)}s</span>
+                  <span className="text-[var(--color-text-secondary)]">耗时</span>
+                  <span className="text-[var(--color-text)]">{task.lastExecution.duration.toFixed(2)}s</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#858585]">退出码</span>
-                  <span className="text-[#CCCCCC]">{task.lastExecution.exitCode}</span>
+                  <span className="text-[var(--color-text-secondary)]">退出码</span>
+                  <span className="text-[var(--color-text)]">{task.lastExecution.exitCode}</span>
                 </div>
                 {task.lastExecution.output && (
                   <div className="pt-2">
                     <button
                       onClick={() => setOutputExpanded(!outputExpanded)}
-                      className="text-[#858585] hover:text-[#CCCCCC] flex items-center gap-1 text-xs"
+                      className="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] flex items-center gap-1 text-xs"
                     >
                       输出 {outputExpanded ? '▼' : '▶'}
                     </button>
                     {outputExpanded && (
-                      <pre className="text-xs bg-[#171718] border border-[#2A2A2A] p-3 rounded-lg mt-2 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
+                      <pre className="text-xs bg-[var(--color-input)] border border-[var(--color-border)] p-3 rounded-lg mt-2 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
                         {task.lastExecution.output}
                       </pre>
                     )}
@@ -226,13 +231,13 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                           navigator.clipboard.writeText(task.lastExecution!.error!)
                           // Optional: show a toast notification
                         }}
-                        className="text-[10px] px-2 py-1 rounded bg-[#5A1D1D] text-[#F48771] hover:bg-[#6A2D2D] transition-colors"
+                        className="text-[10px] px-2 py-1 rounded bg-red-900/30 text-[#F48771] hover:bg-[#6A2D2D] transition-colors"
                         title="复制错误信息"
                       >
                         复制
                       </button>
                     </div>
-                    <pre className="error-output text-xs bg-[#3A1F1F] border border-[#5A1D1D] text-[#F48771] p-3 rounded-lg whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                    <pre className="error-output text-xs bg-red-950/30 border border-red-800/50 text-[#F48771] p-3 rounded-lg whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
                       {task.lastExecution.error}
                     </pre>
                   </div>
@@ -256,17 +261,17 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 shadow-inner">
-      <div className="text-[11px] text-[#B8B8B8]">{label}</div>
-      <div className="text-sm text-white mt-1 leading-6">{value}</div>
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 py-3 shadow-inner">
+      <div className="text-[11px] text-[var(--color-text-secondary)]">{label}</div>
+      <div className="text-sm text-[var(--color-text)] mt-1 leading-6">{value}</div>
     </div>
   )
 }
 
 function SidePanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-      <div className="text-sm font-semibold text-[#CCCCCC] mb-3">{title}</div>
+    <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+      <div className="text-sm font-semibold text-[var(--color-text)] mb-3">{title}</div>
       {children}
     </section>
   )
@@ -274,16 +279,16 @@ function SidePanel({ title, children }: { title: string; children: React.ReactNo
 
 function HistoryCard({ item }: { item: ExecutionResult }) {
   return (
-    <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-3">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-[#CCCCCC]">{item.status === 'success' ? '执行成功' : '执行失败'}</div>
+        <div className="text-sm text-[var(--color-text)]">{item.status === 'success' ? '执行成功' : '执行失败'}</div>
         <div className={['text-[11px]', item.status === 'success' ? 'text-[#4EC9B0]' : 'text-[#F48771]'].join(' ')}>
           {item.status === 'success' ? 'SUCCESS' : 'FAILURE'}
         </div>
       </div>
-      <div className="text-[11px] text-[#858585] mt-2">开始：{formatDateTime(item.startTime)}</div>
-      <div className="text-[11px] text-[#858585] mt-1">结束：{formatDateTime(item.endTime)}</div>
-      <div className="text-[11px] text-[#858585] mt-1">耗时：{item.duration}s</div>
+      <div className="text-[11px] text-[var(--color-text-secondary)] mt-2">开始：{formatDateTime(item.startTime)}</div>
+      <div className="text-[11px] text-[var(--color-text-secondary)] mt-1">结束：{formatDateTime(item.endTime)}</div>
+      <div className="text-[11px] text-[var(--color-text-secondary)] mt-1">耗时：{item.duration}s</div>
     </div>
   )
 }
@@ -295,8 +300,8 @@ function CenteredMessage({ tone, message }: { tone: 'neutral' | 'error'; message
         className={[
           'max-w-md text-center rounded border px-6 py-8 text-sm',
           tone === 'error'
-            ? 'border-[#5A1D1D] bg-[#3A1F1F] text-[#F48771]'
-            : 'border-[#2A2A2A] bg-[#252526] text-[#858585]',
+            ? 'border-red-800/50 bg-red-950/30 text-[#F48771]'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
         ].join(' ')}
       >
         {message}

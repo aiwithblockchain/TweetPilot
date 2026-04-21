@@ -80,8 +80,8 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
 
   return (
     <>
-      <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-        <div className="text-sm font-semibold text-[#CCCCCC] mb-3">任务操作</div>
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+        <div className="text-sm font-semibold text-[var(--color-text)] mb-3">任务操作</div>
 
         {!showDeleteConfirm ? (
           <div className="flex flex-wrap gap-2">
@@ -149,7 +149,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(false)}
-              className="h-9 px-4 rounded bg-[#2A2A2A] text-[#CCCCCC] text-sm hover:bg-[#3A3A3A] transition-colors"
+              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors"
             >
               取消
             </button>
@@ -157,7 +157,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
         )}
 
         {actionError && (
-          <div className="mt-3 rounded-lg border border-[#5A1D1D] bg-[#3A1F1F] px-3 py-2 text-sm text-[#F48771]">
+          <div className="mt-3 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-sm text-[#F48771]">
             {actionError}
           </div>
         )}

@@ -29,7 +29,7 @@ export function MobileSidebarDrawer({
     <>
       <button
         onClick={onOpen}
-        className="h-7 w-7 flex items-center justify-center rounded text-[#CCCCCC] hover:bg-[#2A2A2A] transition-all duration-150 flex-shrink-0"
+        className="h-7 w-7 flex items-center justify-center rounded text-[var(--color-text)] hover:bg-[var(--color-border)] transition-all duration-150 flex-shrink-0"
         aria-label="打开侧边栏"
       >
         <Menu className="w-4 h-4" />
@@ -46,15 +46,15 @@ export function MobileSidebarDrawer({
 
       <div
         className={[
-          'fixed inset-y-8 left-12 z-50 w-[280px] max-w-[calc(100vw-3rem)] bg-[#252526] border-r border-[#2A2A2A] shadow-2xl md:hidden flex flex-col transition-transform duration-200 ease-out',
+          'fixed inset-y-8 left-12 z-50 w-[280px] max-w-[calc(100vw-3rem)] bg-[var(--color-surface)] border-r border-[var(--color-border)] shadow-2xl md:hidden flex flex-col transition-transform duration-200 ease-out',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-[calc(100%+3rem)] pointer-events-none',
         ].join(' ')}
       >
-        <div className="h-9 px-3 border-b border-[#2A2A2A] flex items-center justify-between bg-[#2D2D2D]">
-          <span className="text-xs font-semibold text-[#CCCCCC]">侧边栏</span>
+        <div className="h-9 px-3 border-b border-[var(--color-border)] flex items-center justify-between bg-[var(--color-surface)]">
+          <span className="text-xs font-semibold text-[var(--color-text)]">侧边栏</span>
           <button
             onClick={onClose}
-            className="h-7 w-7 flex items-center justify-center rounded text-[#CCCCCC] hover:bg-[#3C3C3C] transition-colors"
+            className="h-7 w-7 flex items-center justify-center rounded text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] transition-colors"
             aria-label="关闭侧边栏"
           >
             <X className="w-4 h-4" />

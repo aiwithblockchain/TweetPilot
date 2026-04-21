@@ -25,17 +25,17 @@ export default function Settings() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('account')
 
   return (
-    <div className="h-full flex flex-col bg-[#1E1E1E] text-[#CCCCCC]">
+    <div className="h-full flex flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <aside className="w-[220px] h-full flex-shrink-0 border-r border-[#2A2A2A] p-3 bg-[#252526] overflow-auto">
+        <aside className="w-[220px] h-full flex-shrink-0 border-r border-[var(--color-border)] p-3 bg-[var(--color-surface)] overflow-auto">
           <nav className="flex flex-col gap-1">
             <button
               onClick={() => setActiveSection('account')}
               className={[
                 'px-3 py-2 text-sm text-left rounded transition-colors',
                 activeSection === 'account'
-                  ? 'bg-[#1E1E1E] text-[#CCCCCC]'
-                  : 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]',
+                  ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]',
               ].join(' ')}
             >
               账号设置
@@ -45,8 +45,8 @@ export default function Settings() {
               className={[
                 'px-3 py-2 text-sm text-left rounded transition-colors',
                 activeSection === 'preferences'
-                  ? 'bg-[#1E1E1E] text-[#CCCCCC]'
-                  : 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]',
+                  ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]',
               ].join(' ')}
             >
               系统偏好
@@ -54,7 +54,7 @@ export default function Settings() {
           </nav>
         </aside>
 
-        <main className="flex-1 min-h-0 overflow-auto p-6 bg-[#1E1E1E]">
+        <main className="flex-1 min-h-0 overflow-auto p-6 bg-[var(--color-bg)]">
           {activeSection === 'account' && <AccountSettingsSection />}
           {activeSection === 'preferences' && <PreferencesSection />}
         </main>
@@ -73,15 +73,15 @@ function AccountSettingsSection() {
     <div className="max-w-xl">
       <h3 className="text-base font-semibold mb-4">账号设置</h3>
 
-      <div className="rounded-lg border border-[#2A2A2A] bg-[#252526] p-6">
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
         {!isLoggedIn || !user ? (
           <div className="flex flex-col items-start gap-5">
             <div className="w-14 h-14 rounded-full bg-white text-[#4285F4] flex items-center justify-center text-2xl font-semibold">
               G
             </div>
             <div>
-              <div className="text-base font-medium text-[#CCCCCC]">使用 Google 账号登录</div>
-              <div className="text-sm text-[#858585] mt-2 leading-6">
+              <div className="text-base font-medium text-[var(--color-text)]">使用 Google 账号登录</div>
+              <div className="text-sm text-[var(--color-text-secondary)] mt-2 leading-6">
                 登录后可同步您的设置、订阅状态以及未来的 Claude 助手能力。
               </div>
             </div>
@@ -102,20 +102,20 @@ function AccountSettingsSection() {
                 {user.avatar}
               </div>
               <div>
-                <div className="text-sm font-medium text-[#CCCCCC]">{user.email}</div>
-                <div className="text-xs text-[#858585] mt-1">订阅等级：{user.tier === 'free' ? 'Free' : 'Pro'}</div>
+                <div className="text-sm font-medium text-[var(--color-text)]">{user.email}</div>
+                <div className="text-xs text-[var(--color-text-secondary)] mt-1">订阅等级：{user.tier === 'free' ? 'Free' : 'Pro'}</div>
               </div>
             </div>
 
-            <div className="rounded border border-[#2A2A2A] bg-[#1E1E1E] p-4">
-              <div className="flex items-center justify-between text-xs text-[#858585] mb-2">
+            <div className="rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
+              <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)] mb-2">
                 <span>Token 使用额度</span>
                 <span>{Math.round(usagePercentage)}%</span>
               </div>
-              <div className="h-2 rounded bg-[#2A2A2A] overflow-hidden">
+              <div className="h-2 rounded bg-[var(--color-border)] overflow-hidden">
                 <div className="h-full bg-[#007ACC]" style={{ width: `${usagePercentage}%` }} />
               </div>
-              <div className="text-xs text-[#858585] mt-2">
+              <div className="text-xs text-[var(--color-text-secondary)] mt-2">
                 {user.tokenUsed.toLocaleString()} / {user.tokenLimit.toLocaleString()} tokens
               </div>
             </div>
@@ -125,7 +125,7 @@ function AccountSettingsSection() {
                 setIsLoggedIn(false)
                 setUser(null)
               }}
-              className="h-9 px-4 rounded border border-[#2A2A2A] text-sm text-[#CCCCCC] hover:bg-[#2A2A2A] transition-colors"
+              className="h-9 px-4 rounded border border-[var(--color-border)] text-sm text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
             >
               Sign Out
             </button>

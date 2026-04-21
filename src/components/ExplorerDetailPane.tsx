@@ -13,15 +13,15 @@ interface ExplorerDetailPaneProps {
 export function ExplorerDetailPane({ detail, loading, error }: ExplorerDetailPaneProps) {
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#1E1E1E]">
-        <div className="text-sm text-[#858585]">加载中...</div>
+      <div className="h-full flex items-center justify-center bg-[var(--color-bg)]">
+        <div className="text-sm text-[var(--color-text-secondary)]">加载中...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#1E1E1E]">
+      <div className="h-full flex items-center justify-center bg-[var(--color-bg)]">
         <div className="text-sm text-[#F48771]">{error}</div>
       </div>
     )
@@ -29,8 +29,8 @@ export function ExplorerDetailPane({ detail, loading, error }: ExplorerDetailPan
 
   if (detail.type === 'empty') {
     return (
-      <div className="h-full flex items-center justify-center bg-[#1E1E1E]">
-        <div className="text-sm text-[#858585]">请从左侧选择文件或文件夹</div>
+      <div className="h-full flex items-center justify-center bg-[var(--color-bg)]">
+        <div className="text-sm text-[var(--color-text-secondary)]">请从左侧选择文件或文件夹</div>
       </div>
     )
   }
@@ -54,8 +54,8 @@ export function ExplorerDetailPane({ detail, loading, error }: ExplorerDetailPan
   }
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#1E1E1E]">
-      <div className="text-sm text-[#858585]">未知内容类型</div>
+    <div className="h-full flex items-center justify-center bg-[var(--color-bg)]">
+      <div className="text-sm text-[var(--color-text-secondary)]">未知内容类型</div>
     </div>
   )
 }

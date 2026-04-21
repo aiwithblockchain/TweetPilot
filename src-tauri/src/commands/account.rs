@@ -255,9 +255,26 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
             .map(|sn| if sn.starts_with('@') { sn.to_string() } else { format!("@{}", sn) })
             .unwrap_or_else(|| format!("@{}", instance_name));
 
-        let existing = existing_accounts.iter().find(|a| a.screen_name == screen_name);
+        // Try to find existing account by instance_id first (more reliable than screen_name)
+        let existing = existing_accounts.iter().find(|a| {
+            if let Some(existing_instance_id) = &a.instance_id {
+                existing_instance_id == instance_id
+            } else {
+                // Fallback: match by screen_name
+                a.screen_name == screen_name
+            }
+        });
+
+        println!("=== 检查账号: {} ===", screen_name);
+        println!("  从 instances 获取的 screen_name: {}", screen_name);
+        println!("  现有账号数量: {}", existing_accounts.len());
+        for acc in &existing_accounts {
+            println!("    - {}", acc.screen_name);
+        }
+        println!("  是否找到匹配: {}", existing.is_some());
 
         let should_fetch_details = if let Some(existing_account) = existing {
+            println!("  找到现有账号，上次验证时间: {}", existing_account.last_verified);
             let last_verified = chrono::DateTime::parse_from_rfc3339(&existing_account.last_verified)
                 .map(|dt| dt.with_timezone(&chrono::Utc))
                 .ok();
@@ -265,11 +282,16 @@ pub async fn refresh_all_accounts_status() -> Result<(), String> {
             if let Some(last_time) = last_verified {
                 let now = chrono::Utc::now();
                 let duration = now.signed_duration_since(last_time);
-                duration.num_minutes() >= 5
+                let minutes = duration.num_minutes();
+                println!("  距离上次刷新: {} 分钟", minutes);
+                println!("  是否需要刷新 (>= 5分钟): {}", minutes >= 5);
+                minutes >= 5
             } else {
+                println!("  无法解析上次验证时间，需要刷新");
                 true
             }
         } else {
+            println!("  未找到现有账号，需要刷新");
             true
         };
 

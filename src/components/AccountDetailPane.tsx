@@ -58,16 +58,16 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full overflow-hidden border border-[#2A2A2A] bg-[#1E1E1E] flex items-center justify-center">
+        <div className="w-16 h-16 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)] flex items-center justify-center">
           {selectedAccount?.avatar ? (
             <img src={selectedAccount.avatar} alt={selectedAccount.displayName ?? item.label} className="w-full h-full object-cover" />
           ) : (
-            <span className="text-xl text-[#858585]">?</span>
+            <span className="text-xl text-[var(--color-text-secondary)]">?</span>
           )}
         </div>
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-[#CCCCCC] truncate">{selectedAccount?.displayName ?? item.label}</h2>
-          <p className="text-sm text-[#858585] mt-1 truncate">{selectedAccount?.screenName ?? item.description}</p>
+          <h2 className="text-lg font-semibold text-[var(--color-text)] truncate">{selectedAccount?.displayName ?? item.label}</h2>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-1 truncate">{selectedAccount?.screenName ?? item.description}</p>
         </div>
       </div>
 
@@ -107,8 +107,8 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
 
 function InfoPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
-      <div className="text-sm font-semibold text-[#CCCCCC] mb-3">{title}</div>
+    <section className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div className="text-sm font-semibold text-[var(--color-text)] mb-3">{title}</div>
       {children}
     </section>
   )
@@ -118,9 +118,9 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string }> })
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {items.map((item) => (
-        <div key={item.label} className="rounded border border-[#2A2A2A] bg-[#1E1E1E] p-3">
-          <div className="text-[11px] text-[#858585]">{item.label}</div>
-          <div className="text-sm text-[#CCCCCC] mt-1 break-all">{item.value}</div>
+        <div key={item.label} className="rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+          <div className="text-[11px] text-[var(--color-text-secondary)]">{item.label}</div>
+          <div className="text-sm text-[var(--color-text)] mt-1 break-all">{item.value}</div>
         </div>
       ))}
     </div>
@@ -134,8 +134,8 @@ function MessageState({ message, tone = 'neutral' }: { message: string; tone?: '
         className={[
           'max-w-md text-center rounded border px-6 py-8 text-sm',
           tone === 'error'
-            ? 'border-[#5A1D1D] bg-[#3A1F1F] text-[#F48771]'
-            : 'border-[#2A2A2A] bg-[#252526] text-[#858585]',
+            ? 'border-red-800/50 bg-red-950/30 text-[#F48771]'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
         ].join(' ')}
       >
         {message}
@@ -146,10 +146,4 @@ function MessageState({ message, tone = 'neutral' }: { message: string; tone?: '
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return <MessageState message={`${title}：${description}`} />
-}
-
-function formatInstanceStatus(status: AppInstance['status']) {
-  if (status === 'online') return '在线'
-  if (status === 'connecting') return '连接中'
-  return '离线'
 }

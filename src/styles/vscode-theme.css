@@ -1,22 +1,39 @@
 :root {
+  /* Light theme (default) */
+  --vscode-bg-main: #FFFFFF;
+  --vscode-bg-sidebar: #F3F3F3;
+  --vscode-bg-activity-bar: #2C2C2C;
+  --vscode-bg-title-bar: #DDDDDD;
+  --vscode-bg-surface: #F9FAFB;
+  --vscode-bg-input: #F3F3F3;
+  --vscode-border: #E5E7EB;
+  --vscode-text-primary: #0F172A;
+  --vscode-text-secondary: #64748B;
+  --vscode-accent: #007ACC;
+  --vscode-success: #4EC9B0;
+  --vscode-error: #F48771;
+  --vscode-warning: #D7BA7D;
+  --vscode-hover-bg: #E8E8E8;
+  --color-bg: var(--vscode-bg-main);
+  --color-surface: var(--vscode-bg-surface);
+  --color-input: var(--vscode-bg-input);
+  --color-border: var(--vscode-border);
+  --color-text: var(--vscode-text-primary);
+  --color-text-secondary: var(--vscode-text-secondary);
+}
+
+.dark {
+  /* Dark theme */
   --vscode-bg-main: #1E1E1E;
   --vscode-bg-sidebar: #252526;
   --vscode-bg-activity-bar: #333333;
   --vscode-bg-title-bar: #323233;
   --vscode-bg-surface: #2D2D30;
+  --vscode-bg-input: #171718;
   --vscode-border: #2A2A2A;
   --vscode-text-primary: #CCCCCC;
   --vscode-text-secondary: #858585;
-  --vscode-accent: #007ACC;
-  --vscode-success: #4EC9B0;
-  --vscode-error: #F48771;
-  --vscode-warning: #D7BA7D;
   --vscode-hover-bg: #2A2A2A;
-  --color-bg: var(--vscode-bg-main);
-  --color-surface: var(--vscode-bg-surface);
-  --color-border: var(--vscode-border);
-  --color-text: var(--vscode-text-primary);
-  --color-text-secondary: var(--vscode-text-secondary);
 }
 
 html,

@@ -17,7 +17,7 @@ export function ActivityBar({ activeView, onViewChange, onOpenSettings }: Activi
   ]
 
   return (
-    <div className="w-12 bg-[#333333] flex flex-col items-center py-2 gap-1">
+    <div className="w-12 bg-[var(--vscode-bg-activity-bar)] flex flex-col items-center py-2 gap-1">
       <div className="flex flex-col items-center gap-1">
         {items.map((item) => {
           const Icon = item.icon
@@ -28,8 +28,8 @@ export function ActivityBar({ activeView, onViewChange, onOpenSettings }: Activi
               key={item.id}
               onClick={() => onViewChange(item.id)}
               className={[
-                'relative w-12 h-12 flex items-center justify-center hover:bg-[#2A2A2A] transition-colors',
-                isActive ? 'text-white' : 'text-[#858585]',
+                'relative w-12 h-12 flex items-center justify-center hover:bg-[var(--color-border)] transition-colors',
+                isActive ? 'text-white' : 'text-[var(--color-text-secondary)]',
               ].join(' ')}
               aria-label={item.label}
               title={item.label}
@@ -43,11 +43,11 @@ export function ActivityBar({ activeView, onViewChange, onOpenSettings }: Activi
 
       <div className="flex-1" />
 
-      <div className="w-8 h-px bg-[#4B4B4B] mb-1" />
+      <div className="w-8 h-px bg-[var(--color-border)] mb-1" />
 
       <button
         onClick={onOpenSettings}
-        className="relative w-12 h-12 flex items-center justify-center text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC] transition-colors"
+        className="relative w-12 h-12 flex items-center justify-center text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)] transition-colors"
         aria-label="Settings"
         title="Settings"
       >

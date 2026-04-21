@@ -83,20 +83,31 @@ pub async fn execute_task(
                 .unwrap();
             writeln!(file, "task_type={}, exec_result.status={}", task.task_type, exec_result.status).unwrap();
 
+            // IMPORTANT: Update status to idle FIRST, before updating next_execution_time
+            // This ensures the task status is always updated even if next_execution_time calculation fails
+            db_ref.update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
+
             // Update next_execution_time for scheduled tasks if execution was successful
             if task.task_type == "scheduled" && exec_result.status == "success" {
                 writeln!(file, "Calling update_next_execution_time...").unwrap();
-                match db_ref.update_next_execution_time(&task_id, &task) {
-                    Ok(_) => {
-                        writeln!(file, "Update returned Ok").unwrap();
+                // Re-fetch task to get updated last_execution_time
+                match db_ref.get_task(&task_id) {
+                    Ok(updated_task) => {
+                        match db_ref.update_next_execution_time(&task_id, &updated_task) {
+                            Ok(_) => {
+                                writeln!(file, "Update returned Ok").unwrap();
+                            }
+                            Err(e) => {
+                                writeln!(file, "Update failed: {:?}", e).unwrap();
+                            }
+                        }
                     }
                     Err(e) => {
-                        writeln!(file, "Update failed: {:?}", e).unwrap();
+                        writeln!(file, "Failed to re-fetch task: {:?}", e).unwrap();
                     }
                 }
             }
 
-            db_ref.update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
             Ok(exec_result)
         }
         Err(e) => {

@@ -1,4 +1,5 @@
-import { FolderPlus, FilePlus2, Plus, RefreshCw, ChevronRight, ChevronDown, File, Folder, Image as ImageIcon, FileCode2, type ReactNode } from 'lucide-react'
+import { FolderPlus, FilePlus2, Plus, RefreshCw, ChevronRight, ChevronDown, File, Folder, Image as ImageIcon, FileCode2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { SidebarSectionAction, SidebarSectionConfig, View } from '@/config/layout'
 
 export interface SidebarItem {
@@ -41,7 +42,7 @@ const ACTION_ICONS: Record<NonNullable<SidebarSectionAction['icon']>, typeof Plu
 }
 
 const BADGE_TONES: Record<NonNullable<SidebarItem['badgeTone']>, string> = {
-  default: 'text-[#858585] bg-[#1E1E1E] border-[#2A2A2A]',
+  default: 'text-[var(--color-text-secondary)] bg-[var(--color-bg)] border-[var(--color-border)]',
   success: 'text-[#4EC9B0] bg-[#4EC9B0]/10 border-[#4EC9B0]/30',
   warning: 'text-[#D7BA7D] bg-[#D7BA7D]/10 border-[#D7BA7D]/30',
   danger: 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/30',
@@ -70,13 +71,13 @@ export function LeftSidebar({
 
   return (
     <aside
-      className="bg-[#252526] border-r border-[#2A2A2A] flex flex-col flex-shrink-0 min-w-0"
+      className="bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col flex-shrink-0 min-w-0"
       style={{ width }}
       data-view={activeView}
     >
-      <div className="px-3 pt-3 pb-2 border-b border-[#2A2A2A] bg-[#252526]">
+      <div className="px-3 pt-3 pb-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[11px] tracking-[0.08em] text-[#CCCCCC] font-semibold truncate">{section.title}</div>
+          <div className="text-[11px] tracking-[0.08em] text-[var(--color-text)] font-semibold truncate">{section.title}</div>
 
           {section.actions && section.actions.length > 0 && (
             <div className="flex items-center gap-0.5">
@@ -87,7 +88,7 @@ export function LeftSidebar({
                     key={action.id}
                     type="button"
                     onClick={() => onAction?.(action.id)}
-                    className="h-7 w-7 flex items-center justify-center rounded text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC] transition-colors"
+                    className="h-7 w-7 flex items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)] transition-colors"
                     aria-label={action.label}
                     title={action.label}
                   >
@@ -99,13 +100,13 @@ export function LeftSidebar({
           )}
         </div>
 
-        <p className="text-[11px] text-[#858585] mt-2 leading-5 pr-1">{section.description}</p>
+        <p className="text-[11px] text-[var(--color-text-secondary)] mt-2 leading-5 pr-1">{section.description}</p>
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2">
         {shouldRenderTree ? (
           treeItems.length === 0 ? (
-            <div className="px-2 py-3 text-xs text-[#858585] leading-5">{section.emptyMessage}</div>
+            <div className="px-2 py-3 text-xs text-[var(--color-text-secondary)] leading-5">{section.emptyMessage}</div>
           ) : (
             <div className="space-y-0.5">
               {treeItems.map((item) => {
@@ -122,7 +123,7 @@ export function LeftSidebar({
                         'w-full text-left rounded-md border transition-colors pr-2',
                         isSelected
                           ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
-                          : 'border-transparent text-[#CCCCCC] hover:bg-[#2A2D2E] hover:border-[#2A2A2A]',
+                          : 'border-transparent text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] hover:border-[var(--color-border)]',
                       ].join(' ')}
                       style={{ paddingLeft: `${8 + item.depth * 14}px`, paddingTop: '6px', paddingBottom: '6px' }}
                     >
@@ -137,7 +138,7 @@ export function LeftSidebar({
                           }}
                           className={[
                             'h-4 w-4 flex items-center justify-center rounded',
-                            item.isBranch ? 'text-[#858585] hover:bg-[#2A2A2A] hover:text-[#CCCCCC]' : 'text-transparent pointer-events-none',
+                            item.isBranch ? 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)]' : 'text-transparent pointer-events-none',
                           ].join(' ')}
                           tabIndex={-1}
                           aria-label={item.expanded ? '折叠文件夹' : '展开文件夹'}
@@ -157,7 +158,7 @@ export function LeftSidebar({
             </div>
           )
         ) : items.length === 0 ? (
-          <div className="px-2 py-3 text-xs text-[#858585] leading-5">{section.emptyMessage}</div>
+          <div className="px-2 py-3 text-xs text-[var(--color-text-secondary)] leading-5">{section.emptyMessage}</div>
         ) : (
           <div className="space-y-0.5">
             {items.map((item) => {
@@ -172,13 +173,13 @@ export function LeftSidebar({
                     'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
                     isSelected
                       ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
-                      : 'border-transparent text-[#CCCCCC] hover:bg-[#2A2D2E] hover:border-[#2A2A2A]',
+                      : 'border-transparent text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] hover:border-[var(--color-border)]',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm truncate">{item.label}</div>
-                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[#858585]'].join(' ')}>
+                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
                         {item.description}
                       </div>
                     </div>
@@ -200,7 +201,7 @@ export function LeftSidebar({
         )}
       </div>
 
-      {footer && <div className="border-t border-[#2A2A2A]">{footer}</div>}
+      {footer && <div className="border-t border-[var(--color-border)]">{footer}</div>}
     </aside>
   )
 }

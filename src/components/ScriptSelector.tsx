@@ -37,14 +37,14 @@ export function ScriptSelector({ value, onChange, disabled }: ScriptSelectorProp
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <div className="flex-1 flex items-center gap-2 h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3">
-          <FileCode className="w-4 h-4 text-[#858585]" />
+        <div className="flex-1 flex items-center gap-2 h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3">
+          <FileCode className="w-4 h-4 text-[var(--color-text-secondary)]" />
           <input
             type="text"
             value={fileName}
             readOnly
             placeholder="点击选择 Python 脚本文件"
-            className="flex-1 bg-transparent text-sm text-[#CCCCCC] outline-none placeholder:text-[#858585]"
+            className="flex-1 bg-transparent text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-secondary)]"
           />
         </div>
         <button
@@ -57,7 +57,7 @@ export function ScriptSelector({ value, onChange, disabled }: ScriptSelectorProp
         </button>
       </div>
       {value && (
-        <div className="text-xs text-[#858585] truncate" title={value}>
+        <div className="text-xs text-[var(--color-text-secondary)] truncate" title={value}>
           完整路径: {value}
         </div>
       )}

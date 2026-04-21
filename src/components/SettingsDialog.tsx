@@ -13,17 +13,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-[80] flex items-center justify-center px-6 py-8">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
 
-      <div className="relative z-[81] w-full max-w-5xl h-[720px] max-h-[calc(100vh-4rem)] overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] shadow-2xl flex flex-col">
-        <div className="h-11 px-4 border-b border-[#2A2A2A] bg-[#252526] flex items-center justify-between gap-3 flex-shrink-0">
+      <div className="relative z-[81] w-full max-w-5xl h-[720px] max-h-[calc(100vh-4rem)] overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xl flex flex-col">
+        <div className="h-11 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between gap-3 flex-shrink-0">
           <div>
-            <div className="text-sm font-semibold text-[#CCCCCC]">设置</div>
-            <div className="text-[11px] text-[#858585] mt-0.5">全局配置以对话框形式打开，不打断当前工作流。</div>
+            <div className="text-sm font-semibold text-[var(--color-text)]">设置</div>
+            <div className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">全局配置以对话框形式打开，不打断当前工作流。</div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded text-[#CCCCCC] hover:bg-[#2A2A2A] transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
             aria-label="关闭设置"
           >
             <X className="w-4 h-4" />

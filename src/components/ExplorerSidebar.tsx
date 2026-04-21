@@ -28,38 +28,38 @@ export function ExplorerSidebar({
   onCreateFolder,
 }: ExplorerSidebarProps) {
   return (
-    <div className="h-full flex flex-col bg-[#252526]">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2A2A2A]">
-        <span className="text-xs font-semibold text-[#CCCCCC] uppercase">工作区</span>
+    <div className="h-full flex flex-col bg-[var(--color-surface)]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+        <span className="text-xs font-semibold text-[var(--color-text)] uppercase">工作区</span>
         <div className="flex items-center gap-1">
           {onCreateFile && (
             <button
               type="button"
               onClick={onCreateFile}
-              className="p-1 hover:bg-[#2A2D2E] rounded transition-colors"
+              className="p-1 hover:bg-[var(--vscode-hover-bg)] rounded transition-colors"
               title="新建文件"
             >
-              <FilePlus className="w-4 h-4 text-[#CCCCCC]" />
+              <FilePlus className="w-4 h-4 text-[var(--color-text)]" />
             </button>
           )}
           {onCreateFolder && (
             <button
               type="button"
               onClick={onCreateFolder}
-              className="p-1 hover:bg-[#2A2D2E] rounded transition-colors"
+              className="p-1 hover:bg-[var(--vscode-hover-bg)] rounded transition-colors"
               title="新建文件夹"
             >
-              <FolderPlus className="w-4 h-4 text-[#CCCCCC]" />
+              <FolderPlus className="w-4 h-4 text-[var(--color-text)]" />
             </button>
           )}
           <button
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="p-1 hover:bg-[#2A2D2E] rounded transition-colors disabled:opacity-50"
+            className="p-1 hover:bg-[var(--vscode-hover-bg)] rounded transition-colors disabled:opacity-50"
             title="刷新"
           >
-            <RefreshCw className={['w-4 h-4 text-[#CCCCCC]', loading ? 'animate-spin' : ''].join(' ')} />
+            <RefreshCw className={['w-4 h-4 text-[var(--color-text)]', loading ? 'animate-spin' : ''].join(' ')} />
           </button>
         </div>
       </div>
@@ -70,7 +70,7 @@ export function ExplorerSidebar({
         )}
 
         {!error && treeData.length === 0 && !loading && (
-          <div className="px-3 py-2 text-xs text-[#858585]">当前目录为空</div>
+          <div className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">当前目录为空</div>
         )}
 
         {treeData.map((node) => (

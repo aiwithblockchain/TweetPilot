@@ -30,7 +30,7 @@ export function ChatInterface() {
   const [value, setValue] = useState('')
 
   return (
-    <div className="h-full flex flex-col bg-[#252526]">
+    <div className="h-full flex flex-col bg-[var(--color-surface)]">
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {MOCK_MESSAGES.map((message) => {
           const isAssistant = message.role === 'assistant'
@@ -41,7 +41,7 @@ export function ChatInterface() {
               className={[
                 'max-w-[85%] rounded-md px-3 py-2 text-xs leading-5',
                 isAssistant
-                  ? 'bg-[#1E1E1E] text-[#CCCCCC]'
+                  ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
                   : 'bg-[#007ACC] text-white ml-auto',
               ].join(' ')}
             >
@@ -51,16 +51,16 @@ export function ChatInterface() {
         })}
       </div>
 
-      <div className="border-t border-[#2A2A2A] p-3 space-y-2">
+      <div className="border-t border-[var(--color-border)] p-3 space-y-2">
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder="输入消息..."
-          className="w-full min-h-[84px] resize-none rounded border border-[#2A2A2A] bg-[#1E1E1E] px-3 py-2 text-xs text-[#CCCCCC] placeholder:text-[#858585] outline-none focus:border-[#007ACC]"
+          className="w-full min-h-[84px] resize-none rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#007ACC]"
         />
 
         <div className="flex items-center justify-between">
-          <button className="text-xs text-[#858585] hover:text-[#CCCCCC] transition-colors">📎 附件</button>
+          <button className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors">📎 附件</button>
           <button
             onClick={() => toast.info('功能开发中')}
             className="h-7 px-3 rounded bg-[#007ACC] text-white text-xs hover:bg-[#1485D1] transition-colors"

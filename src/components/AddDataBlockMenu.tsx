@@ -17,11 +17,11 @@ export function AddDataBlockMenu({ open, anchorTop = 76, anchorLeft = 176, onClo
     <>
       <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-[1px]" onClick={onClose} aria-hidden="true" />
       <div
-        className="fixed z-[71] w-[420px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[#2A2A2A] bg-[#181819] shadow-2xl overflow-hidden"
+        className="fixed z-[71] w-[420px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl overflow-hidden"
         style={{ top: anchorTop, left: anchorLeft }}
       >
-        <div className="px-5 py-4 border-b border-[#2A2A2A] bg-[linear-gradient(135deg,#6D5BF622_0%,#252526_55%,#1E1E1E_100%)]">
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#CCCCCC]">
+        <div className="px-5 py-4 border-b border-[var(--color-border)] bg-[linear-gradient(135deg,#6D5BF622_0%,#252526_55%,#1E1E1E_100%)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
             <Sparkles className="w-4 h-4 text-[#D7BA7D]" />
             选择要添加的数据积木
           </div>
@@ -37,7 +37,7 @@ export function AddDataBlockMenu({ open, anchorTop = 76, anchorLeft = 176, onClo
                 key={item.id}
                 type="button"
                 onClick={() => onSelect(item.id)}
-                className="w-full text-left rounded-xl border border-[#2A2A2A] bg-[#202022] hover:bg-[#252526] hover:border-[#3A3A3C] transition-all px-4 py-4"
+                className="w-full text-left rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border)] transition-all px-4 py-4"
               >
                 <div className="flex items-start gap-3">
                   <div

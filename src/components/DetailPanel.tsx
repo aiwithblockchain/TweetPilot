@@ -101,8 +101,8 @@ export function DetailPanel({ view, item }: DetailPanelProps) {
     return (
       <div className="p-6 space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-[#CCCCCC]">{fallbackItem.label}</h2>
-          <p className="text-sm text-[#858585] mt-1">{fallbackItem.description}</p>
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">{fallbackItem.label}</h2>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-1">{fallbackItem.description}</p>
         </div>
       </div>
     )
@@ -111,13 +111,13 @@ export function DetailPanel({ view, item }: DetailPanelProps) {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-[#CCCCCC]">{detail.title}</h2>
-        <p className="text-sm text-[#858585] mt-1 leading-6">{detail.description}</p>
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">{detail.title}</h2>
+        <p className="text-sm text-[var(--color-text-secondary)] mt-1 leading-6">{detail.description}</p>
       </div>
 
-      <div className="rounded border border-[#2A2A2A] bg-[#252526] p-4">
-        <div className="text-sm font-semibold text-[#CCCCCC] mb-3">详情说明</div>
-        <ul className="space-y-2 text-xs text-[#858585] leading-5">
+      <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div className="text-sm font-semibold text-[var(--color-text)] mb-3">详情说明</div>
+        <ul className="space-y-2 text-xs text-[var(--color-text-secondary)] leading-5">
           {detail.bullets.map((bullet) => (
             <li key={bullet}>• {bullet}</li>
           ))}

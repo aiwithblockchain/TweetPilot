@@ -1,244 +1,490 @@
-# AI 集成开发文档
+# TweetPilot AI 集成方案
 
-## 1. 概述
-
-TweetPilot 的最右侧界面为 AI 对话区域，用户通过 AI 生成 Python 脚本到当前工作目录。
-
----
-
-## 2. AI 功能定位
-
-### 2.1 核心能力
-
-- 与用户对话，理解需求
-- 生成 Python 脚本到工作目录
-- 参考 ClawBot 示例脚本
-- 解释脚本功能和用法
-
-### 2.2 参考资料
-
-**必读 Skill**：
-- AI 必须首先参考 `~/.tweetpilot/clawbot/` 目录下的内容
-- 特别是 `examples/` 目录中的示例脚本
-- 理解 ClawBot 的 API 和使用方式
+**文档版本**: 2.0  
+**创建日期**: 2026-04-21  
+**参考项目**: microcompany (Claurst 集成实现)
 
 ---
 
-## 3. 界面布局
+## 一、项目背景
+
+TweetPilot 需要集成 AI 对话功能,帮助用户:
+1. 理解和使用当前工作目录下的 Python 脚本
+2. 为每个推特账号配置固定的 AI 会话,提供个性化的脚本建议
+
+**核心原则**: 简单实用,第一阶段只实现基础会话功能和模型配置。
+
+---
+
+## 二、集成目标
+
+### 2.1 第一阶段目标 (MVP)
+
+- ✅ **单一会话模式** - 用户可以与 AI 讨论当前目录下的脚本
+- ✅ **工作目录上下文** - AI 能感知当前工作目录的文件和脚本
+- ✅ **模型配置** - 用户可以配置 API Key、模型、Base URL
+- ✅ **基础工具能力** - Read、Edit、Write、Bash、Glob、Grep
+- ✅ **流式响应** - 实时显示 AI 回复
+- ✅ **会话持久化** - 保存对话历史
+
+### 2.2 第二阶段目标 (未来)
+
+- ⏳ **账号级会话** - 每个推特账号有独立的 AI 会话
+- ⏳ **脚本生成** - AI 生成 Python 脚本到工作目录
+- ⏳ **脚本解释** - AI 解释脚本功能和用法
+
+---
+
+## 三、技术架构
+
+### 3.1 整体架构 (参考 microcompany)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  左侧：任务列表  │  中间：任务详情  │  右侧：AI 对话    │
-│                 │                 │                    │
-│  - 任务 1       │  任务名称        │  用户: 帮我写...  │
-│  - 任务 2       │  脚本路径        │  AI: 好的，我...  │
-│  - 任务 3       │  执行历史        │  [生成的代码]     │
-│                 │                 │  [保存按钮]       │
+│                  TweetPilot (Tauri)                     │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │         React Frontend (TypeScript)              │  │
+│  │  ┌────────────────────────────────────────────┐  │  │
+│  │  │  ChatInterface (复用 microcompany)        │  │  │
+│  │  │  - 消息显示(流式)                          │  │  │
+│  │  │  - 工具调用指示器                          │  │  │
+│  │  │  - 输入框                                  │  │  │
+│  │  └────────────────────────────────────────────┘  │  │
+│  └──────────────┬───────────────────────────────────┘  │
+│                 │ Tauri Commands + Events               │
+│                 │                                       │
+│  ┌──────────────▼───────────────────────────────────┐  │
+│  │         Rust Backend (Tauri)                     │  │
+│  │                                                  │  │
+│  │  ┌────────────────────────────────────────────┐ │  │
+│  │  │  ClaurstSession (封装层)                   │ │  │
+│  │  │  - 会话管理                                 │ │  │
+│  │  │  - 消息处理                                 │ │  │
+│  │  │  - 流式响应转发                             │ │  │
+│  │  │  - 工具调用协调                             │ │  │
+│  │  └──────────┬─────────────────────────────────┘ │  │
+│  │             │                                    │  │
+│  │  ┌──────────▼─────────────────────────────────┐ │  │
+│  │  │  Claurst Crates (作为 submodule)          │ │  │
+│  │  │  - claurst-core                            │ │  │
+│  │  │  - claurst-api                             │ │  │
+│  │  │  - claurst-query                           │ │  │
+│  │  │  - claurst-tools                           │ │  │
+│  │  └────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
----
+### 3.2 数据流
 
-## 4. AI 工作流程
-
-### 4.1 用户请求脚本
+#### 消息发送流程
 
 ```
-1. 用户描述需求
-   "帮我写一个每天转推 Elon Musk 最新推文的脚本"
-
-2. AI 理解需求
-   - 解析用户意图
-   - 确定需要的功能
-
-3. AI 参考 ClawBot 示例
-   - 查看 examples/retweet.py
-   - 查看 examples/search.py
-   - 理解 API 用法
-
-4. AI 生成脚本
-   - 生成完整的 Python 代码
-   - 包含必要的参数解析
-   - 包含错误处理
-
-5. AI 展示代码
-   - 在对话界面显示代码
-   - 解释代码功能
-   - 提供保存选项
-
-6. 用户确认保存
-   - 选择保存路径
-   - 保存到工作目录
-```
-
-### 4.2 脚本生成规范
-
-**必须包含**：
-- 参数解析（argparse）
-- `--account` 参数
-- 错误处理
-- 退出码（0 成功，非 0 失败）
-
-**推荐包含**：
-- 使用 ClawBot 库
-- 清晰的注释
-- 输出有用的日志信息
-
----
-
-## 5. 技术实现（大纲）
-
-### 5.1 AI 对话组件
-
-- [ ] 对话界面 UI
-- [ ] 消息历史管理
-- [ ] 代码高亮显示
-- [ ] 保存脚本功能
-
-### 5.2 AI 后端集成
-
-- [ ] 调用 Claude API
-- [ ] 上下文管理
-- [ ] ClawBot 示例加载
-- [ ] 脚本生成逻辑
-
-### 5.3 文件操作
-
-- [ ] 脚本保存到工作目录
-- [ ] 文件路径选择
-- [ ] 文件冲突处理
-- [ ] 权限检查
-
-### 5.4 与任务模块集成
-
-- [ ] 生成脚本后自动创建任务
-- [ ] 脚本路径自动填充
-- [ ] 参数自动识别
-
----
-
-## 6. 用户体验流程
-
-### 6.1 典型场景
-
-```
-用户: "帮我写一个脚本，每天早上 9 点转推 Elon Musk 的最新推文"
-
-AI: "好的，我会创建一个脚本来实现这个功能。这个脚本会：
-1. 搜索 Elon Musk 的最新推文
-2. 转推第一条推文
-
-[显示生成的代码]
-
-这个脚本使用了 ClawBot 库，需要确保你的账号已经登录。
-是否保存到 scripts/retweet_elon.py？"
-
-用户: "保存"
-
-AI: "脚本已保存到 scripts/retweet_elon.py
-是否创建一个定时任务，每天早上 9 点执行？"
-
-用户: "是"
-
-AI: "任务已创建：
-- 名称：转推 Elon 最新推文
-- 脚本：scripts/retweet_elon.py
-- 调度：0 9 * * *（每天 9:00）
-- 账号：@your_account"
+用户输入消息
+    ↓
+前端调用 invoke('send_message', { message })
+    ↓
+Rust: send_message() 命令
+    ↓
+ClaurstSession::send_message()
+    ├─ 添加用户消息到历史
+    ├─ 调用 run_query_loop()
+    └─ 处理流式响应
+        ├─ TextDelta → window.emit('message-chunk')
+        ├─ ToolUse → 执行工具 → window.emit('tool-call-start/end')
+        └─ MessageStop → window.emit('ai-request-end')
+    ↓
+前端监听事件,更新 UI
 ```
 
 ---
 
-## 7. ClawBot 示例参考
+## 四、实施步骤
 
-### 7.1 示例脚本列表
+### 4.1 准备工作
 
-```
-~/.tweetpilot/clawbot/examples/
-├── publish_tweet.py              # 发推
-├── reply_with_media.py           # 带媒体回复
-├── read_timeline.py              # 读取时间线
-├── ai_reply_pinned_tweet.py      # AI 自动回复
-├── workflow_example.py           # 工作流示例
-└── ...
+#### 1. 添加 Claurst 作为 submodule
+
+```bash
+cd /Users/hyperorchid/aiwithblockchain/TweetPilot
+git submodule add https://github.com/ribencong/claurst.git claurst
+git submodule update --init --recursive
 ```
 
-### 7.2 AI 如何使用示例
+#### 2. 更新 Cargo.toml
 
-- 读取示例脚本内容
-- 理解 ClawBot API 用法
-- 参考代码结构和模式
-- 生成类似的脚本
+在 `src-tauri/Cargo.toml` 中添加依赖:
+
+```toml
+[dependencies]
+# 现有依赖保持不变...
+
+# Claurst 依赖
+claurst-core = { path = "../claurst/src-rust/crates/core" }
+claurst-api = { path = "../claurst/src-rust/crates/api" }
+claurst-query = { path = "../claurst/src-rust/crates/query" }
+claurst-tools = { path = "../claurst/src-rust/crates/tools" }
+claurst-plugins = { path = "../claurst/src-rust/crates/plugins" }
+claurst-mcp = { path = "../claurst/src-rust/crates/mcp" }
+
+# Claurst 需要的额外依赖
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "1"
+parking_lot = "0.12"
+tokio-util = "0.7"
+```
+
+### 4.2 后端实现
+
+#### 1. 创建 ClaurstSession 封装层
+
+**文件**: `src-tauri/src/claurst/mod.rs`
+
+参考 microcompany 的实现,创建封装层:
+- 初始化 Claurst 会话
+- 注册工具 (Read, Edit, Write, Bash, Glob, Grep)
+- 处理流式响应
+- 发送事件到前端
+
+**关键点**:
+- 使用 `PermissionMode::BypassPermissions` 自动允许所有工具
+- 通过 `window.emit()` 发送流式事件到前端
+- 保存消息历史到文件存储
+
+#### 2. 创建 Tauri Commands
+
+**文件**: `src-tauri/src/commands/ai_session.rs`
+
+```rust
+#[tauri::command]
+pub async fn init_ai_session(
+    working_dir: String,
+    state: State<'_, AppState>,
+) -> Result<String, String>
+
+#[tauri::command]
+pub async fn send_ai_message(
+    message: String,
+    state: State<'_, AppState>,
+    window: Window,
+) -> Result<String, String>
+
+#[tauri::command]
+pub async fn cancel_ai_message(
+    state: State<'_, AppState>,
+) -> Result<(), String>
+
+#[tauri::command]
+pub async fn clear_ai_session(
+    state: State<'_, AppState>,
+) -> Result<(), String>
+```
+
+#### 3. 创建配置管理
+
+**文件**: `src-tauri/src/config/ai_config.rs`
+
+```rust
+pub struct AiConfig {
+    pub api_key: String,
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+impl AiConfig {
+    pub fn load() -> Result<Self, String>
+    pub fn save(&self) -> Result<(), String>
+}
+```
+
+配置文件位置: `~/.tweetpilot/ai_config.json`
+
+#### 4. 创建会话存储
+
+**文件**: `src-tauri/src/storage/conversation.rs`
+
+```rust
+pub struct ConversationStorage {
+    storage_dir: PathBuf,
+}
+
+impl ConversationStorage {
+    pub fn new() -> Result<Self, String>
+    pub fn save_message(&self, session_id: &str, message: StoredMessage) -> Result<(), String>
+    pub fn load_messages(&self, session_id: &str) -> Result<Vec<StoredMessage>, String>
+    pub fn clear_messages(&self, session_id: &str) -> Result<(), String>
+}
+```
+
+存储位置: `~/.tweetpilot/conversations/<session_id>.jsonl`
+
+### 4.3 前端实现
+
+#### 1. 复用 microcompany 的 ChatInterface
+
+从 microcompany 复制以下组件:
+- `ChatInterface.tsx` - 主对话界面
+- `MessageList.tsx` - 消息列表
+- `InputBox.tsx` - 输入框
+- `ToolIndicator.tsx` - 工具调用指示器
+
+**调整点**:
+- 移除 Sidebar (TweetPilot 不需要会话列表)
+- 移除 InspectorPanel (简化界面)
+- 移除 TerminalPanel (简化界面)
+- 保留核心的消息显示和流式响应功能
+
+#### 2. 创建 AI 设置界面
+
+**文件**: `src/components/AiSettings.tsx`
+
+```tsx
+interface AiSettings {
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+}
+
+function AiSettingsDialog() {
+  // 配置 API Key、模型、Base URL
+  // 保存到后端配置
+}
+```
+
+#### 3. 集成到主界面
+
+在 TweetPilot 的右侧面板添加 AI 对话界面:
+
+```tsx
+// src/App.tsx
+<div className="right-panel">
+  <ChatInterface
+    workingDirectory={currentWorkspace}
+    onSendMessage={handleSendMessage}
+    messages={messages}
+    onMessagesChange={setMessages}
+  />
+</div>
+```
+
+### 4.4 事件监听
+
+前端需要监听以下事件:
+
+```typescript
+// 消息片段 (流式响应)
+listen<{ request_id: string; chunk: string }>('message-chunk', (event) => {
+  // 追加到当前消息
+});
+
+// 工具调用开始
+listen<{ request_id: string; tool: string; action: string }>('tool-call-start', (event) => {
+  // 显示工具调用指示器
+});
+
+// 工具调用结束
+listen<{ request_id: string; tool: string; success: boolean; result: string }>('tool-call-end', (event) => {
+  // 更新工具调用状态
+});
+
+// AI 状态更新
+listen<{ request_id: string; phase: string; text: string }>('ai-status', (event) => {
+  // 显示 AI 当前状态 (thinking, tool_running, generating, finalizing)
+});
+
+// 请求结束
+listen<{ request_id: string; result: string; final_text?: string }>('ai-request-end', (event) => {
+  // 标记消息为完成状态
+});
+```
 
 ---
 
-## 8. 错误处理
+## 五、配置文件
 
-### 8.1 常见错误
+### 5.1 AI 配置
 
-- Python 不存在 → 提示用户安装
-- ClawBot 未安装 → 提示安装命令
-- 脚本语法错误 → 显示错误信息
-- 账号未登录 → 提示登录
+**位置**: `~/.tweetpilot/ai_config.json`
 
-### 8.2 错误提示
+```json
+{
+  "api_key": "sk-ant-...",
+  "model": "claude-sonnet-4-6",
+  "base_url": "https://api.anthropic.com"
+}
+```
 
-- 清晰的错误信息
-- 提供解决方案
-- 相关文档链接
+### 5.2 会话存储
 
----
+**位置**: `~/.tweetpilot/conversations/<session_id>.jsonl`
 
-## 9. 未来扩展
-
-### 9.1 高级功能（待定）
-
-- [ ] 脚本调试功能
-- [ ] 脚本版本管理
-- [ ] 脚本分享社区
-- [ ] AI 优化现有脚本
-
-### 9.2 AI 能力增强（待定）
-
-- [ ] 多轮对话优化
-- [ ] 上下文记忆
-- [ ] 个性化建议
-- [ ] 错误自动修复
+每行一条消息:
+```jsonl
+{"role":"user","content":"帮我看看这个脚本","timestamp":1713686400}
+{"role":"assistant","content":"好的,让我读取一下...","timestamp":1713686401}
+```
 
 ---
 
-## 10. 开发优先级
+## 六、用户体验流程
 
-### P0（必须）
-- AI 对话界面
-- 脚本生成功能
-- ClawBot 示例参考
-- 保存到工作目录
+### 6.1 首次使用
 
-### P1（重要）
-- 自动创建任务
-- 错误处理
-- 代码高亮
+```
+1. 用户打开 TweetPilot
+2. 点击右侧 AI 对话区域
+3. 提示配置 API Key
+4. 用户输入 API Key、选择模型
+5. 保存配置
+6. AI 会话初始化完成
+```
 
-### P2（可选）
-- 脚本调试
-- 版本管理
-- 社区分享
+### 6.2 日常使用
+
+```
+用户: "帮我看看当前目录下有哪些脚本?"
+
+AI: [调用 Glob 工具]
+"当前目录下有以下脚本:
+- retweet_elon.py - 转推 Elon 的最新推文
+- auto_reply.py - 自动回复提到你的推文
+- schedule_tweet.py - 定时发推"
+
+用户: "retweet_elon.py 是怎么工作的?"
+
+AI: [调用 Read 工具读取文件]
+"这个脚本的工作流程是:
+1. 使用 ClawBot 搜索 Elon Musk 的最新推文
+2. 获取第一条推文的 ID
+3. 调用转推 API
+4. 输出执行结果
+
+需要传入 --account 参数指定使用哪个账号。"
+```
 
 ---
 
-## 11. 技术栈
+## 七、技术细节
 
-- **前端**：React + TypeScript
-- **AI**：Claude API
-- **代码高亮**：Monaco Editor 或 Prism.js
-- **文件操作**：Tauri File System API
+### 7.1 工具权限
+
+使用 `PermissionMode::BypassPermissions` 自动允许所有工具调用,简化用户体验。
+
+### 7.2 流式响应
+
+- 后端通过 `window.emit('message-chunk')` 发送文本片段
+- 前端累积片段并实时显示
+- 使用 `isStreaming` 标记区分流式和完成状态
+
+### 7.3 工具调用可视化
+
+- 显示当前执行的工具名称
+- 显示工具执行状态 (running, success, error)
+- 3 秒后自动隐藏工具指示器
+
+### 7.4 错误处理
+
+- API 错误 → 显示友好的错误提示
+- 工具执行失败 → 显示工具错误信息
+- 取消请求 → 清理状态并停止流式响应
 
 ---
 
-## 12. 注意事项
+## 八、时间估算
 
-- AI 生成的脚本需要用户确认后才保存
-- 不要覆盖用户现有的脚本文件
-- 保持 AI 对话界面简洁易用
-- 优先参考 ClawBot 示例，保证代码质量
+| 任务 | 预计时间 | 依赖 |
+|------|----------|------|
+| 添加 Claurst submodule | 0.5 天 | - |
+| 后端封装层实现 | 2 天 | 8.1 |
+| Tauri Commands 实现 | 1 天 | 8.2 |
+| 配置管理实现 | 0.5 天 | 8.2 |
+| 前端组件复用和调整 | 1.5 天 | 8.3 |
+| 事件监听和状态管理 | 1 天 | 8.4 |
+| 测试和调试 | 1.5 天 | 8.5 |
+| **总计** | **8 天** | |
+
+---
+
+## 九、验收标准
+
+### 9.1 功能验收
+
+- ✅ 用户可以配置 API Key 和模型
+- ✅ AI 可以感知当前工作目录
+- ✅ AI 可以读取文件内容
+- ✅ AI 可以执行 shell 命令
+- ✅ AI 可以搜索文件和内容
+- ✅ 流式响应正常工作
+- ✅ 工具调用可视化正常
+- ✅ 对话历史持久化
+- ✅ 可以清空会话历史
+
+### 9.2 用户体验验收
+
+- ✅ 界面简洁易用
+- ✅ 响应速度快 (首字节 < 1s)
+- ✅ 错误提示清晰
+- ✅ 工具执行过程可见
+
+---
+
+## 十、未来扩展
+
+### 10.1 第二阶段 (账号级会话)
+
+- 每个推特账号有独立的 AI 会话
+- 会话 ID 格式: `account-<account_id>-session`
+- 在账号详情页显示 AI 对话入口
+
+### 10.2 第三阶段 (脚本生成)
+
+- AI 生成 Python 脚本到工作目录
+- 脚本模板参考 ClawBot examples
+- 自动创建任务并关联脚本
+
+---
+
+## 十一、参考资料
+
+### 11.1 microcompany 实现
+
+- `microcompany/src-tauri/src/claurst/mod.rs` - ClaurstSession 封装层
+- `microcompany/src-tauri/src/commands/session.rs` - 会话管理命令
+- `microcompany/src-tauri/src/commands/message.rs` - 消息处理命令
+- `microcompany/src/components/ChatInterface.tsx` - 前端对话界面
+
+### 11.2 Claurst 文档
+
+- `microcompany/docs/Claurst架构分析.md` - Claurst 架构详解
+- `microcompany/docs/Claurst集成方案.md` - 集成方案详解
+
+---
+
+## 十二、注意事项
+
+### 12.1 简化原则
+
+- 第一阶段只实现单一会话,不实现账号级会话
+- 不实现会话列表和切换功能
+- 不实现脚本生成功能 (留到第二阶段)
+- 界面尽量简洁,只保留核心功能
+
+### 12.2 代码复用
+
+- 尽量复用 microcompany 的实现
+- 前端组件可以直接复制并调整
+- 后端封装层参考 microcompany 的结构
+
+### 12.3 配置兼容
+
+- 配置文件独立于 TweetPilot 的主配置
+- 使用 `~/.tweetpilot/` 目录存储 AI 相关配置
+- 支持自定义 Base URL (兼容代理和自建服务)
+
+---
+
+**文档状态**: ✅ 已完成  
+**下一步**: 添加 Claurst submodule 并验证编译

@@ -188,11 +188,11 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="rounded-2xl border border-[#2A2A2A] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.22)] bg-[linear-gradient(135deg,#6D5BF622_0%,#252526_50%,#171718_100%)]">
+      <div className="rounded-2xl border border-[var(--color-border)] overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.22)] bg-[linear-gradient(135deg,#6D5BF622_0%,#252526_50%,#171718_100%)]">
         <div className="p-6 md:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-[#CCCCCC]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-[var(--color-text)]">
                 <Sparkles className="w-3.5 h-3.5" />
                 新建任务
               </div>
@@ -215,9 +215,9 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.75fr] gap-5">
-        <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] space-y-4">
-          <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-4">
-            <div className="text-sm font-semibold text-[#CCCCCC]">执行方式</div>
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.16)] space-y-4">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-4">
+            <div className="text-sm font-semibold text-[var(--color-text)]">执行方式</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
               <ModeCard
                 active={taskType === 'immediate'}
@@ -245,7 +245,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               value={accountScreenName}
               onChange={(e) => setAccountScreenName(e.target.value)}
               disabled={accountsLoading || accounts.length === 0}
-              className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
+              className="w-full h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
             >
               <option value="">不指定账号</option>
               {accounts.map((account) => (
@@ -254,7 +254,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                 </option>
               ))}
             </select>
-            <div className="mt-2 text-xs text-[#858585]">
+            <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
               如果脚本需要 Twitter 账号信息，会通过环境变量 TWITTER_ACCOUNT 传递
             </div>
           </Field>
@@ -265,7 +265,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="输入任务名称"
-              className="w-full h-10 rounded border border-[#2A2A2A] bg-[#171718] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+              className="w-full h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
             />
           </Field>
 
@@ -275,7 +275,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="说明这个脚本的用途或执行目标"
               rows={2}
-              className="w-full rounded border border-[#2A2A2A] bg-[#171718] px-3 py-2 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6] resize-none"
+              className="w-full rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] resize-none"
             />
           </Field>
 
@@ -284,7 +284,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           </Field>
 
           {taskType === 'scheduled' && (
-            <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-4 space-y-4">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-4 space-y-4">
               <Field label="定时方式">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <button
@@ -292,22 +292,22 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                     onClick={() => setScheduleType('interval')}
                     className={[
                       'rounded-xl border p-4 text-left transition-colors',
-                      scheduleType === 'interval' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[#2A2A2A] bg-[#171718] hover:border-[#6D5BF6]/50',
+                      scheduleType === 'interval' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
                     ].join(' ')}
                   >
-                    <div className="text-sm font-medium text-[#CCCCCC] mb-2">简单间隔</div>
-                    <div className="text-xs text-[#858585] leading-5">从现在开始，每隔固定时间执行一次</div>
+                    <div className="text-sm font-medium text-[var(--color-text)] mb-2">简单间隔</div>
+                    <div className="text-xs text-[var(--color-text-secondary)] leading-5">从现在开始，每隔固定时间执行一次</div>
                   </button>
                   <button
                     type="button"
                     onClick={() => setScheduleType('cron')}
                     className={[
                       'rounded-xl border p-4 text-left transition-colors',
-                      scheduleType === 'cron' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[#2A2A2A] bg-[#171718] hover:border-[#6D5BF6]/50',
+                      scheduleType === 'cron' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
                     ].join(' ')}
                   >
-                    <div className="text-sm font-medium text-[#CCCCCC] mb-2">固定时间 (Cron)</div>
-                    <div className="text-xs text-[#858585] leading-5">在特定时间点执行（如每天早上9点）</div>
+                    <div className="text-sm font-medium text-[var(--color-text)] mb-2">固定时间 (Cron)</div>
+                    <div className="text-xs text-[var(--color-text-secondary)] leading-5">在特定时间点执行（如每天早上9点）</div>
                   </button>
                 </div>
               </Field>
@@ -315,26 +315,26 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               {scheduleType === 'interval' && (
                 <Field label="执行间隔">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-[#858585]">每隔</span>
+                    <span className="text-sm text-[var(--color-text-secondary)]">每隔</span>
                     <input
                       type="number"
                       value={intervalValue}
                       onChange={(e) => setIntervalValue(Number(e.target.value))}
                       min="1"
-                      className="w-24 h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+                      className="w-24 h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
                     />
                     <select
                       value={intervalUnit}
                       onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
-                      className="h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] outline-none focus:border-[#6D5BF6]"
+                      className="h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
                     >
                       <option value="minutes">分钟</option>
                       <option value="hours">小时</option>
                       <option value="days">天</option>
                     </select>
-                    <span className="text-sm text-[#858585]">执行一次</span>
+                    <span className="text-sm text-[var(--color-text-secondary)]">执行一次</span>
                   </div>
-                  <div className="mt-2 text-xs text-[#858585]">
+                  <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
                     每次执行后，下次执行时间 = 当前时间 + {intervalValue} {intervalUnit === 'minutes' ? '分钟' : intervalUnit === 'hours' ? '小时' : '天'}
                   </div>
                 </Field>
@@ -359,13 +359,13 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                       }
                     }}
                     placeholder="0 0 9 * * * (每天早上9点)"
-                    className="w-full h-10 rounded border border-[#2A2A2A] bg-[#111112] px-3 text-sm text-[#CCCCCC] font-mono outline-none focus:border-[#6D5BF6]"
+                    className="w-full h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] font-mono outline-none focus:border-[#6D5BF6]"
                   />
-                  <div className="mt-2 p-3 rounded-lg bg-[#1E1E1E] border border-[#2A2A2A]">
-                    <div className="text-xs text-[#858585] mb-1">预览：</div>
+                  <div className="mt-2 p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)]">
+                    <div className="text-xs text-[var(--color-text-secondary)] mb-1">预览：</div>
                     <div className="text-sm text-[#4EC9B0] font-medium">{cronDescription}</div>
                   </div>
-                  <div className="mt-2 text-xs text-[#858585] space-y-1">
+                  <div className="mt-2 text-xs text-[var(--color-text-secondary)] space-y-1">
                     <div>格式：秒 分 时 日 月 周（使用空格分隔）</div>
                     <div>示例：</div>
                     <div className="font-mono">0 0 9 * * * - 每天早上9点</div>
@@ -386,7 +386,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               type="button"
               onClick={() => onCreated?.()}
               disabled={creating}
-              className="h-10 px-5 rounded border border-[#3A3A3A] bg-[#1E1E1E] text-[#CCCCCC] text-sm hover:border-[#4A4A4A] hover:bg-[#2A2A2A] transition-colors disabled:opacity-50"
+              className="h-10 px-5 rounded border border-[#3A3A3A] bg-[var(--color-bg)] text-[var(--color-text)] text-sm hover:border-[#4A4A4A] hover:bg-[var(--color-border)] transition-colors disabled:opacity-50"
             >
               取消创建
             </button>
@@ -409,7 +409,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           </SidePanel>
 
           <SidePanel title="使用说明">
-            <div className="space-y-2 text-sm text-[#CCCCCC] leading-7">
+            <div className="space-y-2 text-sm text-[var(--color-text)] leading-7">
               <p>选择一个 Python 脚本文件，系统会自动执行并捕获输出。</p>
               <p>脚本可以通过环境变量获取账号信息：TWITTER_ACCOUNT、TWEET_ID、TWEET_TEXT。</p>
               <p>即时任务适合手动触发，定时任务适合周期性自动执行。</p>
@@ -430,21 +430,21 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ModeCard({ active, title, description, icon, onClick }: { active: boolean; title: string; description: string; icon: JSX.Element; onClick: () => void }) {
+function ModeCard({ active, title, description, icon, onClick }: { active: boolean; title: string; description: string; icon: React.ReactElement; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={[
         'rounded-xl border p-4 text-left transition-colors',
-        active ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[#2A2A2A] bg-[#171718] hover:border-[#6D5BF6]/50',
+        active ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
       ].join(' ')}
     >
-      <div className="flex items-center gap-2 text-[#CCCCCC]">
+      <div className="flex items-center gap-2 text-[var(--color-text)]">
         {icon}
         <span className="text-sm font-medium">{title}</span>
       </div>
-      <div className="text-xs text-[#858585] mt-2 leading-5">{description}</div>
+      <div className="text-xs text-[var(--color-text-secondary)] mt-2 leading-5">{description}</div>
     </button>
   )
 }
@@ -452,7 +452,7 @@ function ModeCard({ active, title, description, icon, onClick }: { active: boole
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-sm font-medium text-[#CCCCCC] mb-2">{label}</div>
+      <div className="text-sm font-medium text-[var(--color-text)] mb-2">{label}</div>
       {children}
     </label>
   )
@@ -464,7 +464,7 @@ function Message({ tone, children }: { tone: 'error' | 'success'; children: Reac
       className={[
         'rounded-lg border px-4 py-3 text-sm',
         tone === 'error'
-          ? 'border-[#5A1D1D] bg-[#3A1F1F] text-[#F48771]'
+          ? 'border-red-800/50 bg-red-950/30 text-[#F48771]'
           : 'border-[#20432C] bg-[#1C2D23] text-[#4EC9B0]',
       ].join(' ')}
     >
@@ -475,8 +475,8 @@ function Message({ tone, children }: { tone: 'error' | 'success'; children: Reac
 
 function SidePanel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
-      <div className="text-sm font-semibold text-[#CCCCCC] mb-3">{title}</div>
+    <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+      <div className="text-sm font-semibold text-[var(--color-text)] mb-3">{title}</div>
       {children}
     </section>
   )
@@ -484,9 +484,9 @@ function SidePanel({ title, children }: { title: string; children: React.ReactNo
 
 function InfoLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#2A2A2A] bg-[#171718] p-3 mb-3 last:mb-0">
-      <div className="text-[11px] text-[#858585]">{label}</div>
-      <div className="text-sm text-[#CCCCCC] mt-1 leading-6">{value}</div>
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-3 mb-3 last:mb-0">
+      <div className="text-[11px] text-[var(--color-text-secondary)]">{label}</div>
+      <div className="text-sm text-[var(--color-text)] mt-1 leading-6">{value}</div>
     </div>
   )
 }

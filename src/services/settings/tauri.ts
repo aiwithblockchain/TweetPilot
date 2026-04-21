@@ -4,7 +4,7 @@ import type { AppSettings, LocalBridgeConfig, SettingsService } from './types'
 interface TauriPreferences {
   language: string
   theme: 'light' | 'dark' | 'system'
-  startup?: string
+  startup: string
 }
 
 interface TauriLocalBridgeConfig {
@@ -20,10 +20,11 @@ function mapPreferencesToAppSettings(preferences: TauriPreferences): AppSettings
   }
 }
 
-function mapAppSettingsToPreferences(settings: AppSettings): TauriPreferences {
+function mapAppSettingsToPreferences(settings: AppSettings, currentStartup: string = 'last-workspace'): TauriPreferences {
   return {
     language: settings.language,
     theme: settings.theme,
+    startup: currentStartup,
   }
 }
 
@@ -42,8 +43,10 @@ export const settingsTauriService: SettingsService = {
   },
 
   async updateSettings(settings) {
+    // Get current preferences to preserve startup field
+    const currentPrefs = await tauriInvoke<TauriPreferences>('get_preferences')
     await tauriInvoke<void>('save_preferences', {
-      preferences: mapAppSettingsToPreferences(settings),
+      preferences: mapAppSettingsToPreferences(settings, currentPrefs.startup),
     })
   },
 
@@ -54,9 +57,11 @@ export const settingsTauriService: SettingsService = {
 
   async updateLocalBridgeConfig(config) {
     await tauriInvoke<void>('update_local_bridge_config', {
-      endpoint: config.endpoint,
-      timeout_ms: config.timeoutMs,
-      sync_interval_ms: config.syncIntervalMs,
+      config: {
+        endpoint: config.endpoint,
+        timeout_ms: config.timeoutMs,
+        sync_interval_ms: config.syncIntervalMs,
+      },
     })
   },
 

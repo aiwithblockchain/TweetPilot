@@ -6,18 +6,18 @@ interface UnsupportedFilePaneProps {
 
 export function UnsupportedFilePane({ content }: UnsupportedFilePaneProps) {
   return (
-    <div className="h-full flex flex-col bg-[#1E1E1E]">
-      <div className="px-6 py-4 border-b border-[#2A2A2A]">
+    <div className="h-full flex flex-col bg-[var(--color-bg)]">
+      <div className="px-6 py-4 border-b border-[var(--color-border)]">
         <h2 className="text-lg font-semibold text-white">{content.name}</h2>
-        <div className="flex items-center gap-4 mt-2 text-xs text-[#858585]">
+        <div className="flex items-center gap-4 mt-2 text-xs text-[var(--color-text-secondary)]">
           <span>{content.path}</span>
-          {content.size !== null && <span>{formatFileSize(content.size)}</span>}
+          {content.size !== null && content.size !== undefined && <span>{formatFileSize(content.size)}</span>}
         </div>
       </div>
 
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-center">
-          <div className="text-sm text-[#858585] mb-2">暂不支持预览此文件类型</div>
+          <div className="text-sm text-[var(--color-text-secondary)] mb-2">暂不支持预览此文件类型</div>
           {content.extension && (
             <div className="text-xs text-[#6A6A6A]">文件扩展名: {content.extension}</div>
           )}

@@ -36,7 +36,7 @@ export function EditorTabsBar({
   mobileSidebarTrigger,
 }: EditorTabsBarProps) {
   return (
-    <div className="h-9 border-b border-[#2A2A2A] bg-[#252526] flex items-center justify-between px-2 gap-2">
+    <div className="h-9 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between px-2 gap-2">
       <div className="flex items-center gap-2 min-w-0">
         {isCompactLayout && mobileSidebarTrigger && <MobileSidebarDrawer {...mobileSidebarTrigger} />}
 
@@ -51,8 +51,8 @@ export function EditorTabsBar({
                 key={tab.id}
                 onClick={() => onActivateTab(tab.id)}
                 className={[
-                  'group h-9 min-w-[140px] max-w-[220px] px-3 flex items-center gap-2 border-r border-[#2A2A2A] transition-all duration-150 text-xs',
-                  isActive ? 'bg-[#1E1E1E] text-[#CCCCCC]' : 'bg-[#2D2D2D] text-[#858585] hover:text-[#CCCCCC]',
+                  'group h-9 min-w-[140px] max-w-[220px] px-3 flex items-center gap-2 border-r border-[var(--color-border)] transition-all duration-150 text-xs',
+                  isActive ? 'bg-[var(--color-bg)] text-[var(--color-text)]' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)]',
                 ].join(' ')}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
@@ -63,7 +63,7 @@ export function EditorTabsBar({
                       event.stopPropagation()
                       onCloseTab(tab.id)
                     }}
-                    className="w-4 h-4 flex items-center justify-center rounded hover:bg-[#3C3C3C]"
+                    className="w-4 h-4 flex items-center justify-center rounded hover:bg-[var(--vscode-hover-bg)]"
                     role="button"
                     aria-label={`关闭 ${tab.title}`}
                   >
@@ -78,7 +78,7 @@ export function EditorTabsBar({
 
       <button
         onClick={onToggleRightPanel}
-        className="h-7 px-2 text-xs text-[#CCCCCC] hover:bg-[#2A2A2A] rounded flex items-center gap-1 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="h-7 px-2 text-xs text-[var(--color-text)] hover:bg-[var(--color-border)] rounded flex items-center gap-1 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
         aria-label={rightPanelVisible ? '隐藏 Claude 面板' : '显示 Claude 面板'}
         disabled={isCompactLayout}
       >

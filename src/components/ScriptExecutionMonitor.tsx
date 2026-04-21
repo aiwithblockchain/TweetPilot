@@ -8,18 +8,18 @@ interface ScriptExecutionMonitorProps {
 
 export function ScriptExecutionMonitor({ output, error, status }: ScriptExecutionMonitorProps) {
   return (
-    <div className="rounded-xl border border-[#2A2A2A] bg-[#252526] p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-[#CCCCCC]">脚本执行输出</div>
+        <div className="text-sm font-semibold text-[var(--color-text)]">脚本执行输出</div>
         <StatusBadge status={status} />
       </div>
 
-      <div className="rounded border border-[#2A2A2A] bg-black/40 p-3 font-mono text-xs text-[#CCCCCC] max-h-96 overflow-y-auto">
+      <div className="rounded border border-[var(--color-border)] bg-black/40 p-3 font-mono text-xs text-[var(--color-text)] max-h-96 overflow-y-auto">
         {!output && status === 'idle' && (
-          <div className="text-[#858585]">等待脚本执行...</div>
+          <div className="text-[var(--color-text-secondary)]">等待脚本执行...</div>
         )}
         {!output && status === 'running' && (
-          <div className="text-[#858585]">脚本正在运行...</div>
+          <div className="text-[var(--color-text-secondary)]">脚本正在运行...</div>
         )}
         {output && (
           <pre className="whitespace-pre-wrap leading-6">{output}</pre>
@@ -27,7 +27,7 @@ export function ScriptExecutionMonitor({ output, error, status }: ScriptExecutio
       </div>
 
       {error && (
-        <div className="mt-3 rounded border border-[#5A1D1D] bg-[#3A1F1F] p-3 text-sm text-[#F48771]">
+        <div className="mt-3 rounded border border-red-800/50 bg-red-950/30 p-3 text-sm text-[#F48771]">
           <div className="font-semibold mb-1">错误信息:</div>
           <pre className="whitespace-pre-wrap text-xs">{error}</pre>
         </div>
@@ -41,7 +41,7 @@ function StatusBadge({ status }: { status: ScriptExecutionMonitorProps['status']
     idle: {
       icon: null,
       label: '空闲',
-      className: 'border-[#858585]/30 bg-[#858585]/12 text-[#858585]',
+      className: 'border-[#858585]/30 bg-[#858585]/12 text-[var(--color-text-secondary)]',
     },
     running: {
       icon: <Loader2 className="w-3 h-3 animate-spin" />,

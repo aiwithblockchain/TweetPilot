@@ -37,7 +37,7 @@ export function ExplorerTreeNode({
       <div
         className={[
           'flex items-center gap-1 px-2 py-1 cursor-pointer text-sm transition-colors',
-          isSelected ? 'bg-[#37373D]' : 'hover:bg-[#2A2D2E]',
+          isSelected ? 'bg-[var(--vscode-hover-bg)]' : 'hover:bg-[var(--vscode-hover-bg)]',
         ].join(' ')}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
         onClick={handleClick}
@@ -46,11 +46,11 @@ export function ExplorerTreeNode({
           <button
             type="button"
             onClick={handleArrowClick}
-            className="flex items-center justify-center w-4 h-4 hover:bg-[#3E3E42] rounded transition-colors"
+            className="flex items-center justify-center w-4 h-4 hover:bg-[var(--vscode-hover-bg)] rounded transition-colors"
           >
             <ChevronRight
               className={[
-                'w-3 h-3 text-[#CCCCCC] transition-transform',
+                'w-3 h-3 text-[var(--color-text)] transition-transform',
                 isExpanded ? 'rotate-90' : '',
               ].join(' ')}
             />
@@ -66,10 +66,10 @@ export function ExplorerTreeNode({
             <Folder className="w-4 h-4 text-[#DCAA5F] flex-shrink-0" />
           )
         ) : (
-          <File className="w-4 h-4 text-[#CCCCCC] flex-shrink-0" />
+          <File className="w-4 h-4 text-[var(--color-text)] flex-shrink-0" />
         )}
 
-        <span className="text-[#CCCCCC] truncate">{node.name}</span>
+        <span className="text-[var(--color-text)] truncate">{node.name}</span>
       </div>
 
       {node.kind === 'directory' && isExpanded && node.children && (
