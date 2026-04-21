@@ -19,7 +19,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
       {/* Thinking Block */}
       {hasThinking && (
         <ThinkingBlock
-          thinking={message.thinking}
+          thinking={message.thinking || ''}
           isActive={isStreaming && !hasContent}
           isComplete={message.thinkingComplete || false}
         />
@@ -28,7 +28,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
       {/* Process Steps */}
       {hasToolCalls && (
         <ProcessSteps
-          toolCalls={message.toolCalls}
+          toolCalls={message.toolCalls || []}
           isActive={isStreaming}
         />
       )}
@@ -49,13 +49,13 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
                 code: ({ className, children, ...props }: any) => {
                   const inline = !className?.includes('language-')
                   return !inline ? (
-                    <pre className="rounded p-3 overflow-x-auto my-2" style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+                    <pre className="rounded p-3 overflow-x-auto my-2" style={{ backgroundColor: 'var(--color-code-bg)', border: '1px solid var(--color-border)' }}>
                       <code className={className} style={{ color: 'var(--color-text)' }} {...props}>
                         {children}
                       </code>
                     </pre>
                   ) : (
-                    <code className="px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--color-bg)', color: '#CE9178' }} {...props}>
+                    <code className="px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--color-code-bg)', color: '#CE9178' }} {...props}>
                       {children}
                     </code>
                   )

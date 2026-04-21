@@ -98,6 +98,33 @@ impl TimerExecutor for PythonScriptExecutor {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let success = output.status.success();
 
+        // Save execution result to database
+        if context.timer_id.starts_with("task-") {
+            let task_id = context.timer_id.strip_prefix("task-").unwrap();
+
+            let db_guard = self.db.lock().unwrap();
+            if let Some(ref db) = *db_guard {
+                let db_result = crate::task_database::ExecutionResult {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    task_id: task_id.to_string(),
+                    status: if success { "success".to_string() } else { "failed".to_string() },
+                    stdout: stdout.clone(),
+                    stderr: stderr.clone(),
+                    start_time: start_time.to_rfc3339(),
+                    end_time: end_time.to_rfc3339(),
+                    duration,
+                    exit_code: output.status.code().unwrap_or(if success { 0 } else { 1 }),
+                    metadata: None,
+                };
+
+                if let Err(e) = db.save_execution(&db_result) {
+                    log::error!("[PythonScriptExecutor] Failed to save execution result: {}", e);
+                } else {
+                    log::info!("[PythonScriptExecutor] Saved execution result for task {}", task_id);
+                }
+            }
+        }
+
         if success {
             Ok(ExecutionResult {
                 timer_id: context.timer_id,

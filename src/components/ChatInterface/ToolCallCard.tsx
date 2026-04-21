@@ -66,8 +66,11 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         <div>
           <button
             onClick={() => setOutputExpanded(!outputExpanded)}
-            className="w-full px-3 py-1.5 text-left text-xs hover:opacity-80 transition-opacity flex items-center gap-1"
-            style={{ color: 'var(--color-text-secondary)' }}
+            className="w-full px-3 py-1.5 text-left text-xs transition-colors flex items-center gap-1"
+            style={{
+              color: 'var(--color-text-secondary)',
+              backgroundColor: outputExpanded ? 'var(--color-hover-bg)' : 'transparent'
+            }}
           >
             <span className="transform transition-transform" style={{ transform: outputExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
             <span>Output</span>
@@ -78,7 +81,7 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
             )}
           </button>
           {outputExpanded && (
-            <pre className="px-3 py-2 text-xs overflow-x-auto max-h-64 overflow-y-auto" style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-bg)' }}>
+            <pre className="px-3 py-2 text-xs overflow-x-auto max-h-64 overflow-y-auto" style={{ color: 'var(--color-text)', backgroundColor: 'var(--color-code-bg)' }}>
               <code>{toolCall.output}</code>
             </pre>
           )}

@@ -25,7 +25,8 @@ export function ProcessSteps({ toolCalls, isActive }: ProcessStepsProps) {
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 text-left flex items-center justify-between hover:opacity-80 transition-opacity"
+        className="w-full px-3 py-2 text-left flex items-center justify-between transition-colors"
+        style={{ backgroundColor: expanded ? 'var(--color-hover-bg)' : 'transparent' }}
       >
         <div className="flex items-center gap-2">
           <span className="text-xs">⚙️</span>
