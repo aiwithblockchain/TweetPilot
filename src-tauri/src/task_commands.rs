@@ -392,3 +392,11 @@ pub async fn get_execution_history(
     let db = state.get_db()?;
     db.as_ref().unwrap().get_execution_history(&task_id, limit).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn get_timer_system_status(
+    state: State<'_, TaskState>,
+) -> Result<serde_json::Value, String> {
+    let status = state.timer_manager.get_status().await;
+    serde_json::to_value(status).map_err(|e| e.to_string())
+}

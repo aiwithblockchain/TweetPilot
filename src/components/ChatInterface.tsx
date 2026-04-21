@@ -1,26 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { useToast } from '@/contexts/ToastContext'
 import { aiService } from '@/services/ai/tauri'
 import { workspaceService } from '@/services'
+import { AssistantMessage } from './ChatInterface/AssistantMessage'
+import type { ChatMessage, ToolCall } from './ChatInterface/types'
 
 interface ChatInterfaceProps {
   onOpenSettings?: () => void
-}
-
-interface ChatMessage {
-  id: string
-  role: 'assistant' | 'user'
-  content: string
-  isStreaming?: boolean
-  status?: string
-  thinking?: string
-  toolCalls?: Array<{
-    tool: string
-    action: string
-    success?: boolean
-  }>
 }
 
 export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
@@ -129,11 +115,18 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
           const lastMessage = prev[prev.length - 1]
           if (lastMessage && lastMessage.role === 'assistant') {
             const toolCalls = lastMessage.toolCalls || []
+            const newToolCall: ToolCall = {
+              id: `${data.tool}-${Date.now()}`,
+              tool: data.tool,
+              action: data.action,
+              status: 'running',
+              startTime: Date.now(),
+            }
             return [
               ...prev.slice(0, -1),
               {
                 ...lastMessage,
-                toolCalls: [...toolCalls, { tool: data.tool, action: data.action }],
+                toolCalls: [...toolCalls, newToolCall],
               },
             ]
           }
@@ -148,9 +141,20 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1]
           if (lastMessage && lastMessage.role === 'assistant' && lastMessage.toolCalls) {
-            const toolCalls = lastMessage.toolCalls.map((tc) =>
-              tc.tool === data.tool ? { ...tc, success: data.success } : tc
-            )
+            const toolCalls = lastMessage.toolCalls.map((tc) => {
+              if (tc.tool === data.tool && tc.status === 'running') {
+                const endTime = Date.now()
+                const duration = (endTime - tc.startTime) / 1000
+                return {
+                  ...tc,
+                  status: data.success ? 'success' : 'error',
+                  output: data.result || '',
+                  duration,
+                  endTime,
+                }
+              }
+              return tc
+            })
             return [...prev.slice(0, -1), { ...lastMessage, toolCalls }]
           }
           return prev
@@ -322,105 +326,18 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         )}
 
         {messages.map((message) => {
-          const isAssistant = message.role === 'assistant'
-
           return (
             <div key={message.id} className="space-y-2">
               {/* User message */}
-              {!isAssistant && (
+              {message.role === 'user' && (
                 <div className="rounded-md px-3 py-2 text-xs leading-5 bg-[#007ACC] text-white ml-auto inline-block max-w-[85%]">
                   {message.content}
                 </div>
               )}
 
               {/* Assistant message */}
-              {isAssistant && (
-                <div className="space-y-2">
-                  {/* Show thinking status when streaming but no content yet */}
-                  {message.isStreaming && !message.content && !message.thinking && !message.toolCalls?.length && (
-                    <div className="flex items-center gap-2 text-[var(--color-text-secondary)] text-xs">
-                      <div className="flex gap-1">
-                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                      </div>
-                      <span className="italic">{message.status || 'AI 正在思考...'}</span>
-                    </div>
-                  )}
-
-                  {/* Show content when available */}
-                  {message.content && (
-                    <div className="text-xs leading-5 text-[var(--color-text)] whitespace-pre-wrap">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          code: ({ className, children, ...props }: any) => {
-                            const inline = !className?.includes('language-')
-                            return !inline ? (
-                              <pre className="bg-[#1E1E1E] border border-[var(--color-border)] rounded p-2 overflow-x-auto my-2">
-                                <code className={`${className} text-[#D4D4D4]`} {...props}>
-                                  {children}
-                                </code>
-                              </pre>
-                            ) : (
-                              <code className="bg-[#2D2D2D] text-[#CE9178] px-1 py-0.5 rounded" {...props}>
-                                {children}
-                              </code>
-                            )
-                          },
-                          p: ({ children }) => <p className="mb-2 last:mb-0 text-[var(--color-text)]">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 text-[var(--color-text)]">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1 text-[var(--color-text)]">{children}</ol>,
-                          li: ({ children }) => <li className="text-[var(--color-text)]">{children}</li>,
-                          a: ({ href, children }) => (
-                            <a href={href} className="text-[#4FC3F7] hover:underline" target="_blank" rel="noopener noreferrer">
-                              {children}
-                            </a>
-                          ),
-                          h1: ({ children }) => <h1 className="text-base font-semibold mb-2 mt-3 text-[var(--color-text)]">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-sm font-semibold mb-2 mt-3 text-[var(--color-text)]">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-xs font-semibold mb-1 mt-2 text-[var(--color-text)]">{children}</h3>,
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-
-                  {/* Tool call indicators */}
-                  {message.toolCalls && message.toolCalls.length > 0 && (
-                    <div className="space-y-1.5">
-                      {message.toolCalls.map((tc, idx) => (
-                        <div
-                          key={idx}
-                          className={[
-                            'flex items-center gap-2 px-3 py-2 rounded-md text-xs border',
-                            tc.success === undefined
-                              ? 'bg-[var(--color-surface)] border-[#007ACC] text-[var(--color-text)]'
-                              : tc.success
-                              ? 'bg-[var(--color-surface)] border-[#4EC9B0] text-[var(--color-text)]'
-                              : 'bg-[var(--color-surface)] border-[#F48771] text-[var(--color-text)]',
-                          ].join(' ')}
-                        >
-                          <span className="flex-shrink-0">
-                            {tc.success === undefined ? (
-                              <div className="flex gap-0.5">
-                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                              </div>
-                            ) : tc.success ? (
-                              <span className="text-[#4EC9B0]">✓</span>
-                            ) : (
-                              <span className="text-[#F48771]">✗</span>
-                            )}
-                          </span>
-                          <span className="flex-1">{tc.action}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              {message.role === 'assistant' && (
+                <AssistantMessage message={message} />
               )}
             </div>
           )

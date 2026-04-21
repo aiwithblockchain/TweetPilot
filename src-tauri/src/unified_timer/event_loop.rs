@@ -3,13 +3,14 @@ use crate::unified_timer::executor::{TimerExecutor, DummyExecutor};
 use crate::unified_timer::types::{ExecutionContext, Timer};
 use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, Notify};
 use tokio::time::{sleep, Duration};
 
 pub struct EventLoop {
     registry: Arc<Mutex<TimerRegistry>>,
     running: Arc<RwLock<bool>>,
     executors: Arc<RwLock<HashMap<String, Arc<dyn TimerExecutor>>>>,
+    wakeup: Arc<Notify>,
 }
 
 impl EventLoop {
@@ -21,7 +22,13 @@ impl EventLoop {
             registry,
             running: Arc::new(RwLock::new(false)),
             executors: Arc::new(RwLock::new(executors)),
+            wakeup: Arc::new(Notify::new()),
         }
+    }
+
+    pub fn notify_new_timer(&self) {
+        log::debug!("[EventLoop] Notifying event loop of new timer registration");
+        self.wakeup.notify_one();
     }
 
     pub async fn register_executor(&self, name: String, executor: Arc<dyn TimerExecutor>) {
@@ -29,6 +36,10 @@ impl EventLoop {
         let mut executors = self.executors.write().await;
         executors.insert(name.clone(), executor);
         log::info!("[EventLoop] Executor '{}' registered successfully", name);
+    }
+
+    pub async fn is_running(&self) -> bool {
+        *self.running.read().await
     }
 
     pub async fn start(&self) {
@@ -45,9 +56,10 @@ impl EventLoop {
         let registry = self.registry.clone();
         let running = self.running.clone();
         let executors = self.executors.clone();
+        let wakeup = self.wakeup.clone();
 
         tokio::spawn(async move {
-            log::info!("[EventLoop] Event loop task spawned");
+            log::info!("[EventLoop] ========== Event loop task spawned and running ==========");
 
             loop {
                 let is_running = *running.read().await;
@@ -71,7 +83,8 @@ impl EventLoop {
                             log::debug!("[EventLoop] Timer {} next execution in {} seconds", timer.id, time_diff);
 
                             if next_time <= now {
-                                log::info!("[EventLoop] Executing timer {} immediately", timer.id);
+                                log::info!("[EventLoop] ⏰ Timer {} is ready for execution (scheduled: {}, now: {})",
+                                    timer.id, next_time.to_rfc3339(), now.to_rfc3339());
                                 Self::execute_timer(
                                     timer,
                                     registry.clone(),
@@ -85,8 +98,16 @@ impl EventLoop {
                                 }
                                 let duration = (next_time - now).to_std().unwrap_or(Duration::from_secs(1));
                                 let sleep_duration = duration.min(Duration::from_secs(60));
-                                log::debug!("[EventLoop] Sleeping for {} seconds", sleep_duration.as_secs());
-                                sleep(sleep_duration).await;
+                                log::debug!("[EventLoop] Sleeping for {} seconds until next timer", sleep_duration.as_secs());
+
+                                tokio::select! {
+                                    _ = sleep(sleep_duration) => {
+                                        log::debug!("[EventLoop] Wake from scheduled timeout");
+                                    }
+                                    _ = wakeup.notified() => {
+                                        log::debug!("[EventLoop] Wake from new timer notification");
+                                    }
+                                }
                             }
                         } else {
                             log::warn!("[EventLoop] Timer {} has no next_execution, discarding", timer.id);
@@ -94,8 +115,16 @@ impl EventLoop {
                         }
                     }
                     None => {
-                        log::debug!("[EventLoop] No timers in queue, sleeping for 60 seconds");
-                        sleep(Duration::from_secs(60)).await;
+                        log::info!("[EventLoop] No timers in queue, sleeping for up to 60 seconds (will wake on new timer registration)");
+
+                        tokio::select! {
+                            _ = sleep(Duration::from_secs(60)) => {
+                                log::debug!("[EventLoop] Wake from timeout");
+                            }
+                            _ = wakeup.notified() => {
+                                log::debug!("[EventLoop] Wake from notification");
+                            }
+                        }
                     }
                 }
             }

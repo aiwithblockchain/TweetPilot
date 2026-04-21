@@ -28,6 +28,13 @@ impl TimerRegistry {
             log::debug!("[Registry] Calculated next_execution for timer {}: {:?}", timer.id, timer.next_execution);
         }
 
+        if let Some(next_exec) = timer.next_execution {
+            log::info!("[Registry] Timer {} next execution: {} (in {} seconds)",
+                timer.id,
+                next_exec.to_rfc3339(),
+                (next_exec - chrono::Utc::now()).num_seconds());
+        }
+
         self.timers.insert(timer.id.clone(), timer.clone());
         self.queue.push(timer.clone());
 

@@ -270,6 +270,7 @@ fn main() {
             task_module::resume_task,
             task_module::execute_task,
             task_module::get_execution_history,
+            task_module::get_timer_system_status,
             // Data blocks commands
             data_blocks::get_layout,
             data_blocks::save_layout,

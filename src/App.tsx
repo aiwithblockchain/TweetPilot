@@ -175,14 +175,17 @@ function AppContent() {
         console.log('[App] Existing workspace:', existingWorkspace)
 
         if (existingWorkspace) {
-          console.log('[App] Found existing workspace, setting as current')
+          console.log('[App] Found existing workspace, initializing backend')
+          const { invoke } = await import('@tauri-apps/api/core')
+          await invoke('set_current_workspace', { path: existingWorkspace })
+          console.log('[App] Backend initialized successfully')
           setCurrentWorkspace(existingWorkspace)
           setWorkspaceReady(true)
         } else {
           console.log('[App] No existing workspace found, showing selector')
         }
       } catch (error) {
-        console.error('[App] Failed to check existing workspace:', error)
+        console.error('[App] Failed to check/initialize workspace:', error)
       } finally {
         setIsCheckingWorkspace(false)
       }
