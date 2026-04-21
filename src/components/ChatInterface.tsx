@@ -426,7 +426,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {messages.length === 0 && (
           <div className="text-xs text-[var(--color-text-secondary)] text-center py-8">
-            你好，我是 Claude。我可以帮助你理解和使用当前目录下的 Python 脚本。
+            你好，我是 TweetPilot。我可以帮助你理解和使用当前目录下的 Python 脚本。
           </div>
         )}
 
