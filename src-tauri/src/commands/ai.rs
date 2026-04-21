@@ -128,3 +128,100 @@ pub async fn get_ai_config() -> Result<AiSettings, String> {
 pub async fn save_ai_config(config: AiSettings) -> Result<(), String> {
     ai_config::save_config(&config)
 }
+
+#[tauri::command]
+pub async fn list_ai_sessions() -> Result<Vec<crate::services::conversation_storage::SessionMetadata>, String> {
+    let storage = crate::services::conversation_storage::ConversationStorage::new()?;
+    storage.list_sessions()
+}
+
+#[tauri::command]
+pub async fn get_session_metadata(session_id: String) -> Result<crate::services::conversation_storage::SessionMetadata, String> {
+    let storage = crate::services::conversation_storage::ConversationStorage::new()?;
+    storage.get_session_metadata(&session_id)
+}
+
+#[tauri::command]
+pub async fn load_ai_session(
+    session_id: String,
+    state: State<'_, AiState>,
+) -> Result<Vec<crate::services::conversation_storage::StoredMessage>, String> {
+    let storage = crate::services::conversation_storage::ConversationStorage::new()?;
+    let messages = storage.load_messages(&session_id)?;
+
+    // Get current working directory from existing session or use default
+    let working_dir = if let Some(session) = state.session.lock().await.as_ref() {
+        session.get_working_dir().to_path_buf()
+    } else {
+        return Err("No active session to get working directory".to_string());
+    };
+
+    // Load AI settings to recreate session
+    let settings = ai_config::load_config()
+        .map_err(|e| format!("Failed to load AI settings: {}", e))?;
+
+    let active_provider = settings.get_active_provider()
+        .ok_or("No active provider configured".to_string())?;
+
+    if active_provider.api_key.is_empty() {
+        return Err(format!("API key not configured for provider '{}'", active_provider.name));
+    }
+
+    // Recreate ClaurstSession with the loaded session_id
+    let session = ClaurstSession::new(
+        session_id.clone(),
+        working_dir,
+        active_provider.api_key.clone(),
+        active_provider.model.clone(),
+        active_provider.base_url.clone(),
+    ).map_err(|e| format!("Failed to recreate AI session: {}", e))?;
+
+    // Update the session state
+    *state.session.lock().await = Some(session);
+    *state.cancel_token.lock().await = None;
+    *state.active_request_id.lock().await = None;
+
+    Ok(messages)
+}
+
+#[tauri::command]
+pub async fn delete_ai_session(session_id: String) -> Result<(), String> {
+    let storage = crate::services::conversation_storage::ConversationStorage::new()?;
+    storage.delete_session(&session_id)
+}
+
+#[tauri::command]
+pub async fn create_new_session(
+    working_dir: String,
+    state: State<'_, AiState>,
+) -> Result<String, String> {
+    if !std::path::Path::new(&working_dir).exists() {
+        return Err(format!("Directory does not exist: {}", working_dir));
+    }
+
+    let settings = ai_config::load_config()
+        .map_err(|e| format!("Failed to load AI settings: {}", e))?;
+
+    let active_provider = settings.get_active_provider()
+        .ok_or("No active provider configured".to_string())?;
+
+    if active_provider.api_key.is_empty() {
+        return Err(format!("API key not configured for provider '{}'", active_provider.name));
+    }
+
+    let session_id = format!("session-{}", uuid::Uuid::new_v4());
+
+    let session = ClaurstSession::new(
+        session_id.clone(),
+        std::path::PathBuf::from(&working_dir),
+        active_provider.api_key.clone(),
+        active_provider.model.clone(),
+        active_provider.base_url.clone(),
+    ).map_err(|e| format!("Failed to create AI session: {}", e))?;
+
+    *state.session.lock().await = Some(session);
+    *state.cancel_token.lock().await = None;
+    *state.active_request_id.lock().await = None;
+
+    Ok(session_id)
+}

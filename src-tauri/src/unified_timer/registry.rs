@@ -55,33 +55,28 @@ impl TimerRegistry {
     }
 
     pub fn pop_next(&mut self) -> Option<Timer> {
+        log::info!("[Registry] pop_next called. HashMap has {} timers, Queue has {} timers",
+            self.timers.len(), self.queue.len());
+
         let timer = self.queue.pop();
         if let Some(ref t) = timer {
-            log::debug!("[Registry] Popped timer from queue: {} ({}). Remaining: {}",
+            log::info!("[Registry] Popped timer from queue: {} ({}). Remaining in queue: {}",
                 t.id, t.name, self.queue.len());
         } else {
-            log::debug!("[Registry] Queue is empty");
+            log::info!("[Registry] Queue is empty, returning None");
         }
         timer
     }
 
     pub fn update_timer(&mut self, timer: Timer) {
-        log::debug!("[Registry] Updating timer: {} ({})", timer.id, timer.name);
-
-        let should_rebuild = if let Some(old_timer) = self.timers.get(&timer.id) {
-            old_timer.next_execution != timer.next_execution ||
-            old_timer.enabled != timer.enabled
-        } else {
-            true
-        };
+        log::info!("[Registry] Updating timer: {} ({})", timer.id, timer.name);
 
         self.timers.insert(timer.id.clone(), timer.clone());
 
-        if should_rebuild {
-            log::debug!("[Registry] Rebuilding queue for timer {}", timer.id);
-            self.rebuild_queue();
-            log::debug!("[Registry] Queue rebuilt. New size: {}", self.queue.len());
-        }
+        // Always rebuild queue to ensure timer is added back
+        log::info!("[Registry] Rebuilding queue for timer {}", timer.id);
+        self.rebuild_queue();
+        log::info!("[Registry] Queue rebuilt. New size: {}", self.queue.len());
     }
 
     pub fn list_all(&self) -> Vec<Timer> {

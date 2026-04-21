@@ -89,7 +89,11 @@ impl Timer {
 
 impl std::cmp::PartialEq for Timer {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        // Must be consistent with Ord: two timers are equal only if they have
+        // the same next_execution, priority, AND id
+        self.next_execution == other.next_execution
+            && self.priority == other.priority
+            && self.id == other.id
     }
 }
 
@@ -105,12 +109,15 @@ impl std::cmp::Ord for Timer {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self.next_execution, other.next_execution) {
             (Some(_), Some(_)) => {
+                // Earlier execution time = higher priority (Less in max-heap = higher priority)
                 other.next_execution.cmp(&self.next_execution)
                     .then_with(|| self.priority.cmp(&other.priority))
+                    .then_with(|| self.id.cmp(&other.id))  // Add id for stable ordering
             }
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => self.priority.cmp(&other.priority),
+            (None, None) => self.priority.cmp(&other.priority)
+                .then_with(|| self.id.cmp(&other.id)),  // Add id for stable ordering
         }
     }
 }

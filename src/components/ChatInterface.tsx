@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/contexts/ToastContext'
-import { aiService } from '@/services/ai/tauri'
+import { aiService, type SessionMetadata } from '@/services/ai/tauri'
 import { workspaceService } from '@/services'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
+import { SessionPanel } from './ChatInterface/SessionPanel'
+import { Clock, Plus } from 'lucide-react'
 import type { ChatMessage, ToolCall } from './ChatInterface/types'
 
 interface ChatInterfaceProps {
@@ -16,6 +18,10 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [isLoading, setIsLoading] = useState(false)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionMetadata[]>([])
+  const [showSessionPanel, setShowSessionPanel] = useState(false)
+  const [isLoadingSession, setIsLoadingSession] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
 
@@ -55,7 +61,8 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
           return
         }
         console.log('[ChatInterface] Initializing AI session with workingDir:', workingDir)
-        await aiService.initSession(workingDir)
+        const sessionId = await aiService.initSession(workingDir)
+        setCurrentSessionId(sessionId)
         console.log('[ChatInterface] AI session initialized successfully')
       } catch (error) {
         console.error('[ChatInterface] Failed to initialize AI session:', error)
@@ -65,6 +72,21 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     }
     initSession()
   }, [isConfigured, toast])
+
+  // Load sessions list
+  const loadSessions = async () => {
+    if (!isConfigured) return
+    try {
+      const sessionList = await aiService.listSessions()
+      setSessions(sessionList)
+    } catch (error) {
+      console.error('Failed to load sessions:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadSessions()
+  }, [isConfigured])
 
   // Set up event listeners
   useEffect(() => {
@@ -147,7 +169,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
                 const duration = (endTime - tc.startTime) / 1000
                 return {
                   ...tc,
-                  status: data.success ? 'success' : 'error',
+                  status: (data.success ? 'success' : 'error') as 'success' | 'error',
                   output: data.result || '',
                   duration,
                   endTime,
@@ -225,12 +247,14 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       id: `user-${Date.now()}`,
       role: 'user',
       content: value.trim(),
+      timestamp: Date.now(),
     }
 
     const assistantMessage: ChatMessage = {
       id: `assistant-${Date.now()}`,
       role: 'assistant',
       content: '',
+      timestamp: Date.now(),
       isStreaming: true,
     }
 
@@ -265,21 +289,73 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     }
   }
 
-  const handleClear = async () => {
-    try {
-      await aiService.clearSession()
-      setMessages([])
-      toast.success('Conversation cleared')
-    } catch (error) {
-      console.error('Failed to clear session:', error)
-      toast.error('Failed to clear conversation')
-    }
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const handleSelectSession = async (sessionId: string) => {
+    setIsLoadingSession(true)
+    try {
+      const storedMessages = await aiService.loadSession(sessionId)
+      const loadedMessages: ChatMessage[] = storedMessages.map((m, index) => ({
+        id: `${m.role}-${m.timestamp}-${index}`,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        timestamp: m.timestamp,
+      }))
+      setMessages(loadedMessages)
+      setCurrentSessionId(sessionId)
+      setShowSessionPanel(false)
+      await loadSessions()
+      toast.success('会话已加载')
+    } catch (error) {
+      console.error('Failed to load session:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`加载会话失败: ${errorMessage}`)
+    } finally {
+      setIsLoadingSession(false)
+    }
+  }
+
+  const handleNewSession = async () => {
+    try {
+      const workingDir = await workspaceService.getCurrentWorkspace()
+      if (!workingDir) {
+        toast.error('请先选择工作区')
+        return
+      }
+      const sessionId = await aiService.createNewSession(workingDir)
+      setMessages([])
+      setCurrentSessionId(sessionId)
+      setShowSessionPanel(false)
+      await loadSessions()
+      toast.success('新会话已创建')
+    } catch (error) {
+      console.error('Failed to create session:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`创建会话失败: ${errorMessage}`)
+    }
+  }
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm('确定要删除这个会话吗？')) return
+
+    try {
+      await aiService.deleteSession(sessionId)
+      await loadSessions()
+
+      if (sessionId === currentSessionId) {
+        await handleNewSession()
+      }
+
+      toast.success('会话已删除')
+    } catch (error) {
+      console.error('Failed to delete session:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`删除会话失败: ${errorMessage}`)
     }
   }
 
@@ -305,17 +381,46 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-[var(--color-surface)]">
+    <div className="h-full flex flex-col bg-[var(--color-surface)] relative">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
-        <span className="text-xs font-medium text-[var(--color-text)]">Claude Code</span>
-        <button
-          onClick={handleClear}
-          className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-2">
+          {currentSessionId && sessions.length > 0 && (
+            <span className="text-xs font-medium text-[var(--color-text)]">
+              {sessions.find(s => s.id === currentSessionId)?.title || ''}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSessionPanel(!showSessionPanel)}
+            className="p-1.5 hover:bg-[var(--color-bg)] rounded transition-colors"
+            title="会话历史"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            <Clock size={16} />
+          </button>
+          <button
+            onClick={handleNewSession}
+            className="p-1.5 hover:bg-[var(--color-bg)] rounded transition-colors"
+            title="新建会话"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
+
+      {/* Session Panel */}
+      {showSessionPanel && (
+        <SessionPanel
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSelectSession={handleSelectSession}
+          onDeleteSession={handleDeleteSession}
+          onClose={() => setShowSessionPanel(false)}
+        />
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-auto p-3 space-y-3">

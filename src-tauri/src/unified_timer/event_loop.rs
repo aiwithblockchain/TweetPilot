@@ -76,11 +76,11 @@ impl EventLoop {
                 match next_timer {
                     Some(timer) => {
                         let now = chrono::Utc::now();
-                        log::debug!("[EventLoop] Popped timer: {} ({})", timer.id, timer.name);
+                        log::info!("[EventLoop] Popped timer: {} ({})", timer.id, timer.name);
 
                         if let Some(next_time) = timer.next_execution {
                             let time_diff = (next_time - now).num_seconds();
-                            log::debug!("[EventLoop] Timer {} next execution in {} seconds", timer.id, time_diff);
+                            log::info!("[EventLoop] Timer {} next execution in {} seconds", timer.id, time_diff);
 
                             if next_time <= now {
                                 log::info!("[EventLoop] ⏰ Timer {} is ready for execution (scheduled: {}, now: {})",
@@ -91,22 +91,29 @@ impl EventLoop {
                                     executors.clone(),
                                 ).await;
                             } else {
-                                log::debug!("[EventLoop] Timer {} not ready, putting back to queue", timer.id);
+                                // Timer not ready yet - sleep until it's ready, then put it back
+                                log::info!("[EventLoop] Timer {} not ready, will sleep {} seconds", timer.id, time_diff.min(60));
+                                let duration = (next_time - now).to_std().unwrap_or(Duration::from_secs(1));
+                                let sleep_duration = duration.min(Duration::from_secs(60));
+
+                                // Sleep WITHOUT putting timer back first
+                                let wakeup_clone = wakeup.clone();
+                                let sleep_result = tokio::select! {
+                                    _ = sleep(sleep_duration) => {
+                                        log::info!("[EventLoop] Wake from timeout, timer should be ready now");
+                                        "timeout"
+                                    }
+                                    _ = wakeup_clone.notified() => {
+                                        log::info!("[EventLoop] Wake from new timer notification");
+                                        "notified"
+                                    }
+                                };
+
+                                // Now put the timer back to queue
                                 {
                                     let mut reg = registry.lock().await;
                                     reg.update_timer(timer.clone());
-                                }
-                                let duration = (next_time - now).to_std().unwrap_or(Duration::from_secs(1));
-                                let sleep_duration = duration.min(Duration::from_secs(60));
-                                log::debug!("[EventLoop] Sleeping for {} seconds until next timer", sleep_duration.as_secs());
-
-                                tokio::select! {
-                                    _ = sleep(sleep_duration) => {
-                                        log::debug!("[EventLoop] Wake from scheduled timeout");
-                                    }
-                                    _ = wakeup.notified() => {
-                                        log::debug!("[EventLoop] Wake from new timer notification");
-                                    }
+                                    log::info!("[EventLoop] Timer {} put back to queue after {}", timer.id, sleep_result);
                                 }
                             }
                         } else {

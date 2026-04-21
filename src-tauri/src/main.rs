@@ -291,6 +291,11 @@ fn main() {
             ai::clear_ai_session,
             ai::get_ai_config,
             ai::save_ai_config,
+            ai::list_ai_sessions,
+            ai::get_session_metadata,
+            ai::load_ai_session,
+            ai::delete_ai_session,
+            ai::create_new_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

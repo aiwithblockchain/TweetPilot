@@ -10,6 +10,21 @@ export interface Message {
   isStreaming?: boolean
 }
 
+export interface StoredMessage {
+  role: string
+  content: string
+  timestamp: number
+}
+
+export interface SessionMetadata {
+  id: string
+  title: string
+  created_at: number
+  updated_at: number
+  message_count: number
+  workspace: string
+}
+
 export const aiService = {
   async initSession(workingDir: string): Promise<string> {
     return invoke('init_ai_session', { workingDir })
@@ -57,6 +72,26 @@ export const aiService = {
 
   onRequestEnd(callback: (data: { request_id: string; result: string; final_text?: string; error?: string }) => void) {
     return listen('ai-request-end', (event) => callback(event.payload as any))
+  },
+
+  async listSessions(): Promise<SessionMetadata[]> {
+    return invoke('list_ai_sessions')
+  },
+
+  async getSessionMetadata(sessionId: string): Promise<SessionMetadata> {
+    return invoke('get_session_metadata', { sessionId })
+  },
+
+  async loadSession(sessionId: string): Promise<StoredMessage[]> {
+    return invoke('load_ai_session', { sessionId })
+  },
+
+  async deleteSession(sessionId: string): Promise<void> {
+    return invoke('delete_ai_session', { sessionId })
+  },
+
+  async createNewSession(workingDir: string): Promise<string> {
+    return invoke('create_new_session', { workingDir })
   },
 }
 
