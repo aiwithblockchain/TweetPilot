@@ -128,8 +128,7 @@ export function LeftSidebar({
                       style={{ paddingLeft: `${8 + item.depth * 14}px`, paddingTop: '6px', paddingBottom: '6px' }}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <button
-                          type="button"
+                        <span
                           onClick={(event) => {
                             event.stopPropagation()
                             if (item.isBranch) {
@@ -137,14 +136,15 @@ export function LeftSidebar({
                             }
                           }}
                           className={[
-                            'h-4 w-4 flex items-center justify-center rounded',
+                            'h-4 w-4 flex items-center justify-center rounded cursor-pointer',
                             item.isBranch ? 'text-[var(--color-text-secondary)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)]' : 'text-transparent pointer-events-none',
                           ].join(' ')}
+                          role="button"
                           tabIndex={-1}
                           aria-label={item.expanded ? '折叠文件夹' : '展开文件夹'}
                         >
                           <ChevronIcon className="w-3.5 h-3.5" />
-                        </button>
+                        </span>
                         <Icon className={[
                           'w-4 h-4 flex-shrink-0',
                           item.kind === 'directory' ? 'text-[#D7BA7D]' : item.icon === 'image' ? 'text-[#9CDCFE]' : 'text-[#4EC9B0]',

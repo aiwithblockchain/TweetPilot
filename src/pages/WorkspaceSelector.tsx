@@ -154,11 +154,20 @@ export default function WorkspaceSelector({
                 <button
                   key={workspace.path}
                   onClick={async () => {
+                    console.log('[WorkspaceSelector] Clicking recent workspace:', workspace.path)
+                    setLoading(true)
+                    setError(null)
                     try {
+                      console.log('[WorkspaceSelector] Setting current workspace...')
                       await workspaceService.setCurrentWorkspace(workspace.path)
+                      console.log('[WorkspaceSelector] Workspace set successfully, calling onWorkspaceSelected')
                       onWorkspaceSelected(workspace.path)
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : '打开工作目录失败')
+                      console.error('[WorkspaceSelector] Failed to open workspace:', err)
+                      const errorMessage = err instanceof Error ? err.message : '打开工作目录失败'
+                      setError(errorMessage)
+                    } finally {
+                      setLoading(false)
                     }
                   }}
                   className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left"

@@ -1,72 +1,360 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/contexts/ToastContext'
+import { aiService } from '@/services/ai/tauri'
+import { workspaceService } from '@/services'
 
 interface ChatMessage {
   id: string
   role: 'assistant' | 'user'
   content: string
+  isStreaming?: boolean
+  status?: string
+  toolCalls?: Array<{
+    tool: string
+    action: string
+    success?: boolean
+  }>
 }
-
-const MOCK_MESSAGES: ChatMessage[] = [
-  {
-    id: 'm1',
-    role: 'assistant',
-    content: '你好，我是 Claude。右侧面板目前是 UI 占位版本，后续会接入真实助手能力。',
-  },
-  {
-    id: 'm2',
-    role: 'user',
-    content: '帮我看看当前 TweetPilot 的 VSCode 风格布局还差哪些细节。',
-  },
-  {
-    id: 'm3',
-    role: 'assistant',
-    content: '目前已具备标题栏、活动栏、左右面板与 Tab 外壳，下一步建议补真实数据和交互联动。',
-  },
-]
 
 export function ChatInterface() {
   const toast = useToast()
   const [value, setValue] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
+  const [isConfigured, setIsConfigured] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Check if AI is configured
+  useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const settings = await aiService.getConfig()
+        const activeProvider = settings.providers.find(p => p.id === settings.active_provider)
+        setIsConfigured(!!activeProvider && !!activeProvider.api_key)
+      } catch (error) {
+        console.error('Failed to check AI config:', error)
+      }
+    }
+    checkConfig()
+  }, [])
+
+  // Initialize AI session
+  useEffect(() => {
+    const initSession = async () => {
+      if (!isConfigured) return
+
+      try {
+        const workingDir = await workspaceService.getCurrentWorkspace()
+        if (!workingDir) {
+          console.warn('[ChatInterface] No workspace selected, skipping AI session initialization')
+          return
+        }
+        console.log('[ChatInterface] Initializing AI session with workingDir:', workingDir)
+        await aiService.initSession(workingDir)
+        console.log('[ChatInterface] AI session initialized successfully')
+      } catch (error) {
+        console.error('[ChatInterface] Failed to initialize AI session:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        toast.error(`AI 会话初始化失败: ${errorMessage}`, 8000)
+      }
+    }
+    initSession()
+  }, [isConfigured, toast])
+
+  // Set up event listeners
+  useEffect(() => {
+    console.log('[ChatInterface] Setting up event listeners, currentRequestId:', currentRequestId)
+
+    const unlistenChunk = aiService.onMessageChunk((data) => {
+      console.log('[ChatInterface] Received message-chunk:', data)
+      if (data.request_id === currentRequestId) {
+        console.log('[ChatInterface] Request ID matches, updating message')
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+            return [
+              ...prev.slice(0, -1),
+              { ...lastMessage, content: lastMessage.content + data.chunk },
+            ]
+          }
+          return prev
+        })
+      } else {
+        console.log('[ChatInterface] Request ID mismatch:', data.request_id, 'vs', currentRequestId)
+      }
+    })
+
+    const unlistenToolStart = aiService.onToolCallStart((data) => {
+      console.log('[ChatInterface] Received tool-call-start:', data)
+      if (data.request_id === currentRequestId) {
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant') {
+            const toolCalls = lastMessage.toolCalls || []
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...lastMessage,
+                toolCalls: [...toolCalls, { tool: data.tool, action: data.action }],
+              },
+            ]
+          }
+          return prev
+        })
+      }
+    })
+
+    const unlistenToolEnd = aiService.onToolCallEnd((data) => {
+      console.log('[ChatInterface] Received tool-call-end:', data)
+      if (data.request_id === currentRequestId) {
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.toolCalls) {
+            const toolCalls = lastMessage.toolCalls.map((tc) =>
+              tc.tool === data.tool ? { ...tc, success: data.success } : tc
+            )
+            return [...prev.slice(0, -1), { ...lastMessage, toolCalls }]
+          }
+          return prev
+        })
+      }
+    })
+
+    const unlistenAiStatus = aiService.onAiStatus((data) => {
+      console.log('[ChatInterface] Received ai-status:', data)
+      if (data.request_id === currentRequestId) {
+        console.log('[ChatInterface] Updating status to:', data.text)
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+            return [...prev.slice(0, -1), { ...lastMessage, status: data.text }]
+          }
+          return prev
+        })
+      }
+    })
+
+    const unlistenRequestEnd = aiService.onRequestEnd((data) => {
+      console.log('[ChatInterface] Received ai-request-end:', data)
+      if (data.request_id === currentRequestId) {
+        console.log('[ChatInterface] Request completed, cleaning up')
+        setIsLoading(false)
+        setCurrentRequestId(null)
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+            return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined }]
+          }
+          return prev
+        })
+      }
+    })
+
+    return () => {
+      unlistenChunk.then((fn) => fn())
+      unlistenToolStart.then((fn) => fn())
+      unlistenToolEnd.then((fn) => fn())
+      unlistenAiStatus.then((fn) => fn())
+      unlistenRequestEnd.then((fn) => fn())
+    }
+  }, [currentRequestId])
+
+  const handleSend = async () => {
+    if (!value.trim() || isLoading) return
+
+    if (!isConfigured) {
+      toast.error('Please configure AI settings first')
+      return
+    }
+
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: value.trim(),
+    }
+
+    const assistantMessage: ChatMessage = {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+    }
+
+    console.log('[ChatInterface] Sending message:', userMessage.content)
+    setMessages((prev) => [...prev, userMessage, assistantMessage])
+    setValue('')
+    setIsLoading(true)
+
+    try {
+      const requestId = await aiService.sendMessage(userMessage.content)
+      console.log('[ChatInterface] Received request ID:', requestId)
+      setCurrentRequestId(requestId)
+    } catch (error) {
+      console.error('[ChatInterface] Failed to send message:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`发送消息失败: ${errorMessage}`, 8000)
+      setIsLoading(false)
+      setCurrentRequestId(null)
+      setMessages((prev) => prev.slice(0, -1))
+    }
+  }
+
+  const handleCancel = async () => {
+    try {
+      await aiService.cancelMessage()
+      setIsLoading(false)
+      setCurrentRequestId(null)
+    } catch (error) {
+      console.error('Failed to cancel message:', error)
+    }
+  }
+
+  const handleClear = async () => {
+    try {
+      await aiService.clearSession()
+      setMessages([])
+      toast.success('Conversation cleared')
+    } catch (error) {
+      console.error('Failed to clear session:', error)
+      toast.error('Failed to clear conversation')
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  if (!isConfigured) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-[var(--color-surface)] p-6">
+        <div className="text-center max-w-md">
+          <h3 className="text-sm font-medium text-[var(--color-text)] mb-2">
+            AI Not Configured
+          </h3>
+          <p className="text-xs text-[var(--color-text-secondary)] mb-4">
+            Please configure your API key and model in Settings to start using AI features.
+          </p>
+          <button
+            onClick={() => toast.info('Open Settings to configure AI')}
+            className="px-4 py-2 bg-[#007ACC] text-white text-xs rounded hover:bg-[#1485D1] transition-colors"
+          >
+            Configure AI
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-surface)]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+        <span className="text-xs font-medium text-[var(--color-text)]">Claude Code</span>
+        <button
+          onClick={handleClear}
+          className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Messages */}
       <div className="flex-1 overflow-auto p-3 space-y-3">
-        {MOCK_MESSAGES.map((message) => {
+        {messages.length === 0 && (
+          <div className="text-xs text-[var(--color-text-secondary)] text-center py-8">
+            你好，我是 Claude。我可以帮助你理解和使用当前目录下的 Python 脚本。
+          </div>
+        )}
+
+        {messages.map((message) => {
           const isAssistant = message.role === 'assistant'
 
           return (
-            <div
-              key={message.id}
-              className={[
-                'max-w-[85%] rounded-md px-3 py-2 text-xs leading-5',
-                isAssistant
-                  ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
-                  : 'bg-[#007ACC] text-white ml-auto',
-              ].join(' ')}
-            >
-              {message.content}
+            <div key={message.id} className="space-y-2">
+              <div
+                className={[
+                  'max-w-[85%] rounded-md px-3 py-2 text-xs leading-5',
+                  isAssistant
+                    ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
+                    : 'bg-[#007ACC] text-white ml-auto',
+                ].join(' ')}
+              >
+                {message.status && message.isStreaming && !message.content && (
+                  <div className="flex items-center gap-2 text-[var(--color-text-secondary)] italic">
+                    <span className="inline-block animate-pulse">●</span>
+                    <span>{message.status}</span>
+                  </div>
+                )}
+                {message.content || (!message.status && message.isStreaming && '...')}
+              </div>
+
+              {/* Tool call indicators */}
+              {message.toolCalls && message.toolCalls.length > 0 && (
+                <div className="ml-3 space-y-1">
+                  {message.toolCalls.map((tc, idx) => (
+                    <div
+                      key={idx}
+                      className="text-xs text-[var(--color-text-secondary)] flex items-center gap-2"
+                    >
+                      <span>
+                        {tc.success === undefined ? '⏳' : tc.success ? '✓' : '✗'}
+                      </span>
+                      <span>{tc.action}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
+        <div ref={messagesEndRef} />
       </div>
 
+      {/* Input */}
       <div className="border-t border-[var(--color-border)] p-3 space-y-2">
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="输入消息..."
-          className="w-full min-h-[84px] resize-none rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#007ACC]"
+          disabled={isLoading}
+          className="w-full min-h-[84px] resize-none rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#007ACC] disabled:opacity-50"
         />
 
         <div className="flex items-center justify-between">
-          <button className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors">📎 附件</button>
-          <button
-            onClick={() => toast.info('功能开发中')}
-            className="h-7 px-3 rounded bg-[#007ACC] text-white text-xs hover:bg-[#1485D1] transition-colors"
-          >
-            发送
+          <button className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors">
+            📎 附件
           </button>
+          <div className="flex gap-2">
+            {isLoading && (
+              <button
+                onClick={handleCancel}
+                className="h-7 px-3 rounded bg-[var(--color-bg)] text-[var(--color-text)] text-xs hover:bg-[var(--color-border)] transition-colors"
+              >
+                取消
+              </button>
+            )}
+            <button
+              onClick={handleSend}
+              disabled={isLoading || !value.trim()}
+              className="h-7 px-3 rounded bg-[#007ACC] text-white text-xs hover:bg-[#1485D1] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? '发送中...' : '发送'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

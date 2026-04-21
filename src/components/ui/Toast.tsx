@@ -24,7 +24,7 @@ const typeIcons: Record<ToastType, string> = {
   info: 'ℹ',
 }
 
-export default function Toast({ id, type, message, duration = 3000, onClose }: ToastProps) {
+export default function Toast({ id, type, message, duration = 5000, onClose }: ToastProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose(id)
@@ -35,13 +35,13 @@ export default function Toast({ id, type, message, duration = 3000, onClose }: T
 
   return (
     <div
-      className={`flex items-center gap-3 min-w-[300px] max-w-[500px] p-4 rounded-lg border shadow-lg animate-slide-in ${typeStyles[type]}`}
+      className={`flex items-start gap-3 min-w-[350px] max-w-[600px] p-4 rounded-lg border shadow-lg animate-slide-in ${typeStyles[type]}`}
     >
-      <span className="text-lg font-semibold">{typeIcons[type]}</span>
-      <span className="flex-1 text-sm">{message}</span>
+      <span className="text-lg font-semibold flex-shrink-0">{typeIcons[type]}</span>
+      <span className="flex-1 text-sm break-words whitespace-pre-wrap">{message}</span>
       <button
         onClick={() => onClose(id)}
-        className="w-6 h-6 flex items-center justify-center hover:bg-black/10 rounded transition-colors"
+        className="w-6 h-6 flex-shrink-0 flex items-center justify-center hover:bg-black/10 rounded transition-colors"
       >
         ×
       </button>

@@ -9,8 +9,9 @@ mod task_executor;
 mod task_commands;
 mod task_scheduler;
 mod task_module;
+mod claurst_session;
 
-use commands::{workspace, account, data_blocks, preferences};
+use commands::{workspace, account, data_blocks, preferences, ai};
 use task_commands::TaskState;
 use std::sync::Mutex;
 
@@ -132,6 +133,13 @@ fn main() {
         workspace_root: workspace_root.clone(),
     };
 
+    // Initialize AI state
+    let ai_state = ai::AiState {
+        session: Arc::new(tokio::sync::Mutex::new(None)),
+        cancel_token: Arc::new(tokio::sync::Mutex::new(None)),
+        active_request_id: Arc::new(tokio::sync::Mutex::new(None)),
+    };
+
     // Initialize task scheduler
     let scheduler = task_scheduler::TaskScheduler::new(
         db.clone(),
@@ -143,6 +151,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(task_state)
+        .manage(ai_state)
         .setup(move |_app| {
             let scheduler_clone = scheduler.clone();
             tauri::async_runtime::spawn(async move {
@@ -208,6 +217,13 @@ fn main() {
             preferences::get_local_bridge_config,
             preferences::update_local_bridge_config,
             preferences::test_localbridge_connection,
+            // AI commands
+            ai::init_ai_session,
+            ai::send_ai_message,
+            ai::cancel_ai_message,
+            ai::clear_ai_session,
+            ai::get_ai_config,
+            ai::save_ai_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

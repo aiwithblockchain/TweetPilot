@@ -163,9 +163,16 @@ function AppShell() {
 
 function AppContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false)
+  const [currentWorkspace, setCurrentWorkspace] = useState<string | null>(null)
+
+  const handleWorkspaceSelected = (path: string) => {
+    console.log('[App] Workspace selected:', path)
+    setCurrentWorkspace(path)
+    setWorkspaceReady(true)
+  }
 
   if (!workspaceReady) {
-    return <WorkspaceSelector currentWorkspace={null} onWorkspaceSelected={() => setWorkspaceReady(true)} />
+    return <WorkspaceSelector currentWorkspace={currentWorkspace} onWorkspaceSelected={handleWorkspaceSelected} />
   }
 
   return <AppShell />

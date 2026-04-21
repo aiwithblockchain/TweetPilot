@@ -839,5 +839,307 @@ git submodule update --init --recursive
 
 ---
 
-**文档状态**: ✅ 已完成  
+---
+
+## 七、会话历史数据库持久化（待实施）
+
+### 7.1 背景
+
+当前实现使用 JSONL 文件存储会话历史（`~/.tweetpilot/conversations/[session_id].jsonl`），需要改为使用 SQLite 数据库存储，以便：
+- 统一存储方案（与任务数据在同一数据库）
+- 更好的查询和管理能力
+- 更可靠的并发控制
+
+### 7.2 数据库表设计
+
+在现有的 `task_database.rs` 中添加会话历史表：
+
+```sql
+CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp);
+```
+
+### 7.3 实施步骤
+
+#### 步骤 1：修改 `src-tauri/src/task_database.rs`
+
+在 `TaskDatabase` 结构体中添加会话历史相关方法：
+
+```rust
+impl TaskDatabase {
+    // 初始化时创建会话历史表
+    pub fn new(workspace_root: &str) -> Result<Self, String> {
+        // ... 现有代码 ...
+        
+        // 创建会话历史表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        ).map_err(|e| format!("Failed to create conversations table: {}", e))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id)",
+            [],
+        ).map_err(|e| format!("Failed to create session_id index: {}", e))?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)",
+            [],
+        ).map_err(|e| format!("Failed to create timestamp index: {}", e))?;
+
+        // ... 现有代码 ...
+    }
+
+    // 保存消息
+    pub fn save_conversation_message(
+        &self,
+        session_id: &str,
+        role: &str,
+        content: &str,
+        timestamp: i64,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO conversations (session_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![session_id, role, content, timestamp],
+            )
+            .map_err(|e| format!("Failed to save conversation message: {}", e))?;
+        Ok(())
+    }
+
+    // 加载会话消息
+    pub fn load_conversation_messages(&self, session_id: &str) -> Result<Vec<(String, String, i64)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT role, content, timestamp FROM conversations WHERE session_id = ?1 ORDER BY timestamp ASC")
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let messages = stmt
+            .query_map([session_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| format!("Failed to query messages: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to collect messages: {}", e))?;
+
+        Ok(messages)
+    }
+
+    // 清空会话消息
+    pub fn clear_conversation_messages(&self, session_id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM conversations WHERE session_id = ?1",
+                [session_id],
+            )
+            .map_err(|e| format!("Failed to clear conversation messages: {}", e))?;
+        Ok(())
+    }
+
+    // 删除旧会话（可选，用于清理）
+    pub fn delete_old_conversations(&self, days: i64) -> Result<usize, String> {
+        let cutoff_timestamp = chrono::Utc::now().timestamp() - (days * 86400);
+        let deleted = self.conn
+            .execute(
+                "DELETE FROM conversations WHERE timestamp < ?1",
+                [cutoff_timestamp],
+            )
+            .map_err(|e| format!("Failed to delete old conversations: {}", e))?;
+        Ok(deleted)
+    }
+}
+```
+
+#### 步骤 2：修改 `src-tauri/src/services/conversation_storage.rs`
+
+将 JSONL 文件存储改为数据库存储：
+
+```rust
+use crate::task_database::TaskDatabase;
+use std::sync::Arc;
+use parking_lot::Mutex;
+
+pub struct ConversationStorage {
+    db: Arc<Mutex<Option<TaskDatabase>>>,
+}
+
+impl ConversationStorage {
+    pub fn new() -> Result<Self, String> {
+        Ok(Self {
+            db: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    pub fn set_database(&self, db: Arc<Mutex<Option<TaskDatabase>>>) {
+        *self.db.lock() = db.lock().clone();
+    }
+
+    pub fn save_message(&self, session_id: &str, message: StoredMessage) -> Result<(), String> {
+        let db_guard = self.db.lock();
+        let db = db_guard.as_ref().ok_or("Database not initialized")?;
+        
+        db.save_conversation_message(
+            session_id,
+            &message.role,
+            &message.content,
+            message.timestamp,
+        )
+    }
+
+    pub fn load_messages(&self, session_id: &str) -> Result<Vec<StoredMessage>, String> {
+        let db_guard = self.db.lock();
+        let db = db_guard.as_ref().ok_or("Database not initialized")?;
+        
+        let messages = db.load_conversation_messages(session_id)?;
+        
+        Ok(messages
+            .into_iter()
+            .map(|(role, content, timestamp)| StoredMessage {
+                role,
+                content,
+                timestamp,
+            })
+            .collect())
+    }
+
+    pub fn clear_messages(&self, session_id: &str) -> Result<(), String> {
+        let db_guard = self.db.lock();
+        let db = db_guard.as_ref().ok_or("Database not initialized")?;
+        
+        db.clear_conversation_messages(session_id)
+    }
+}
+```
+
+#### 步骤 3：修改 `src-tauri/src/claurst_session.rs`
+
+更新 `ClaurstSession::new()` 以接收数据库引用：
+
+```rust
+pub fn new(
+    session_id: String,
+    working_dir: PathBuf,
+    api_key: String,
+    model: String,
+    base_url: Option<String>,
+    db: Arc<Mutex<Option<TaskDatabase>>>,
+) -> anyhow::Result<Self> {
+    // ... 现有代码 ...
+
+    let mut storage = ConversationStorage::new()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    storage.set_database(db);
+
+    // ... 现有代码 ...
+}
+```
+
+#### 步骤 4：修改 `src-tauri/src/commands/ai.rs`
+
+更新 `init_ai_session` 命令以传递数据库引用：
+
+```rust
+#[tauri::command]
+pub async fn init_ai_session(
+    working_dir: String,
+    state: State<'_, AiState>,
+    task_state: State<'_, TaskState>,  // 添加 TaskState 依赖
+) -> Result<String, String> {
+    // ... 现有代码 ...
+
+    let session = ClaurstSession::new(
+        session_id.clone(),
+        std::path::PathBuf::from(&working_dir),
+        ai_config.api_key,
+        ai_config.model,
+        ai_config.base_url,
+        task_state.db.clone(),  // 传递数据库引用
+    ).map_err(|e| format!("Failed to create session: {}", e))?;
+
+    // ... 现有代码 ...
+}
+```
+
+### 7.4 迁移现有数据（可选）
+
+如果需要迁移现有的 JSONL 文件到数据库：
+
+```rust
+pub fn migrate_jsonl_to_db(
+    jsonl_dir: &Path,
+    db: &TaskDatabase,
+) -> Result<usize, String> {
+    let mut migrated_count = 0;
+
+    for entry in std::fs::read_dir(jsonl_dir)
+        .map_err(|e| format!("Failed to read directory: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+            let session_id = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or("Invalid filename")?;
+
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+
+            for line in content.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+
+                let message: StoredMessage = serde_json::from_str(line)
+                    .map_err(|e| format!("Failed to parse message: {}", e))?;
+
+                db.save_conversation_message(
+                    session_id,
+                    &message.role,
+                    &message.content,
+                    message.timestamp,
+                )?;
+
+                migrated_count += 1;
+            }
+        }
+    }
+
+    Ok(migrated_count)
+}
+```
+
+### 7.5 测试验证
+
+- [ ] 数据库表创建成功
+- [ ] 消息保存到数据库
+- [ ] 消息从数据库加载
+- [ ] 清空会话历史
+- [ ] 多会话并发访问
+- [ ] 数据库文件位置正确（workspace/.tweetpilot/tasks.db）
+
+---
+
+**文档状态**: ✅ 已完成（第七节待实施）  
 **配套文档**: [需求和架构设计](ai-integration-plan.md)
