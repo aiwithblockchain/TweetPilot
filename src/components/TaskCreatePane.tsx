@@ -132,7 +132,11 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   }
 
   const getCronFromTemplate = (): string => {
-    return `${cronFields.second} ${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
+    // Convert local time to UTC for cron expression
+    // Backend interprets cron in UTC, so we need to convert
+    const localHour = parseInt(cronFields.hour)
+    const utcHour = (localHour - 8 + 24) % 24 // CST is UTC+8
+    return `${cronFields.second} ${cronFields.minute} ${utcHour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
   }
 
   const handleSubmit = async () => {

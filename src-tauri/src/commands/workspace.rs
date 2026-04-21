@@ -152,8 +152,9 @@ fn contains_children(path: &Path) -> bool {
         .is_some()
 }
 
-fn is_hidden_name(name: &str) -> bool {
-    name.starts_with('.') && name != ".gitignore"
+fn is_hidden_name(_name: &str) -> bool {
+    // 显示所有文件,包括隐藏文件
+    false
 }
 
 fn is_supported_image_extension(extension: Option<&str>) -> bool {
@@ -170,6 +171,57 @@ fn is_supported_text_extension(extension: Option<&str>, file_name: &str) -> bool
     extension
         .map(|value| SUPPORTED_TEXT_EXTENSIONS.contains(&value))
         .unwrap_or(false)
+}
+
+fn is_likely_text_file(path: &Path) -> bool {
+    let sample_size = 8192;
+
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            let check_bytes = if bytes.len() > sample_size {
+                &bytes[..sample_size]
+            } else {
+                &bytes[..]
+            };
+
+            if check_bytes.is_empty() {
+                return true;
+            }
+
+            let mut null_count = 0;
+            let mut control_count = 0;
+            let mut printable_count = 0;
+
+            for &byte in check_bytes {
+                match byte {
+                    0 => null_count += 1,
+                    1..=8 | 11..=12 | 14..=31 => control_count += 1,
+                    9 | 10 | 13 | 32..=126 => printable_count += 1,
+                    128..=255 => {
+                        if is_valid_utf8_continuation(check_bytes, byte) {
+                            printable_count += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if null_count > 0 {
+                return false;
+            }
+
+            let total = check_bytes.len();
+            let printable_ratio = printable_count as f64 / total as f64;
+            let control_ratio = control_count as f64 / total as f64;
+
+            printable_ratio > 0.85 && control_ratio < 0.10
+        }
+        Err(_) => false,
+    }
+}
+
+fn is_valid_utf8_continuation(bytes: &[u8], _byte: u8) -> bool {
+    std::str::from_utf8(bytes).is_ok()
 }
 
 fn map_workspace_entry(path: &Path, metadata: &std::fs::Metadata) -> Result<WorkspaceEntry, String> {
@@ -459,6 +511,8 @@ pub async fn read_workspace_file(path: String) -> Result<WorkspaceFileContent, S
     let content_type = if is_supported_image_extension(extension.as_deref()) {
         "image"
     } else if is_supported_text_extension(extension.as_deref(), &name) {
+        "text"
+    } else if is_likely_text_file(&file_path) {
         "text"
     } else {
         "unsupported"

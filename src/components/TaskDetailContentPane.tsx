@@ -96,7 +96,10 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                   <div>间隔: {formatInterval(task.intervalSeconds)}</div>
                 )}
                 {task.scheduleType === 'cron' && task.schedule && (
-                  <div className="font-mono text-xs">表达式: {task.schedule}</div>
+                  <div className="font-mono text-xs">
+                    表达式: {convertCronToLocalTime(task.schedule)}
+                    <div className="text-[10px] text-[#858585] mt-1">(本地时间)</div>
+                  </div>
                 )}
               </div>
             </div>
@@ -333,4 +336,19 @@ function formatInterval(seconds: number): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时`
   return `${Math.floor(seconds / 86400)} 天`
+}
+
+function convertCronToLocalTime(cronExpr: string): string {
+  // Backend stores cron in UTC, convert to local time for display
+  const parts = cronExpr.split(' ')
+  if (parts.length !== 6) return cronExpr
+
+  const utcHour = parseInt(parts[2])
+  if (isNaN(utcHour)) return cronExpr
+
+  // Convert UTC to CST (UTC+8)
+  const localHour = (utcHour + 8) % 24
+  parts[2] = localHour.toString()
+
+  return parts.join(' ')
 }
