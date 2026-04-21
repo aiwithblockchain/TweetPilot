@@ -35,8 +35,6 @@ pub struct Timer {
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {
     pub timer_id: String,
-    pub timer_name: String,
-    pub execution_time: DateTime<Utc>,
     pub config: serde_json::Value,
 }
 
@@ -49,20 +47,6 @@ pub struct ExecutionResult {
     pub success: bool,
     pub output: String,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum RetryPolicy {
-    None,
-    Fixed {
-        max_attempts: u32,
-        delay_seconds: u64,
-    },
-    Exponential {
-        max_attempts: u32,
-        initial_delay_seconds: u64,
-        max_delay_seconds: u64,
-    },
 }
 
 impl Timer {

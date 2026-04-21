@@ -31,6 +31,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
   const [isConfigured, setIsConfigured] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const assistantMessageIdRef = useRef<string | null>(null)
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -177,6 +178,15 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         console.log('[ChatInterface] Request completed, cleaning up')
         setIsLoading(false)
         setCurrentRequestId(null)
+
+        if (data.result === 'error' || data.result === 'cancelled') {
+          if (data.error) {
+            toast.error(data.error, 8000)
+          }
+          setMessages((prev) => prev.filter((message) => message.id !== assistantMessageIdRef.current))
+          return
+        }
+
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1]
           if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
@@ -219,6 +229,8 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       content: '',
       isStreaming: true,
     }
+
+    assistantMessageIdRef.current = assistantMessage.id
 
     console.log('[ChatInterface] Sending message:', userMessage.content)
     setMessages((prev) => [...prev, userMessage, assistantMessage])

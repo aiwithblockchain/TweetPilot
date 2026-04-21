@@ -321,12 +321,12 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                       value={intervalValue}
                       onChange={(e) => setIntervalValue(Number(e.target.value))}
                       min="1"
-                      className="w-24 h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
+                      className="w-24 h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
                     />
                     <select
                       value={intervalUnit}
                       onChange={(e) => setIntervalUnit(e.target.value as 'minutes' | 'hours' | 'days')}
-                      className="h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
+                      className="h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
                     >
                       <option value="minutes">分钟</option>
                       <option value="hours">小时</option>

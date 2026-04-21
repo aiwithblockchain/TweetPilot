@@ -47,14 +47,6 @@ impl TimerRegistry {
         Ok(())
     }
 
-    pub fn get(&self, timer_id: &str) -> Option<&Timer> {
-        self.timers.get(timer_id)
-    }
-
-    pub fn peek_next(&self) -> Option<Timer> {
-        self.queue.peek().cloned()
-    }
-
     pub fn pop_next(&mut self) -> Option<Timer> {
         let timer = self.queue.pop();
         if let Some(ref t) = timer {

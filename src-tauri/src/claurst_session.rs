@@ -241,12 +241,28 @@ impl ClaurstSession {
                 collect_final_text_from_message(&partial_message)
             }
             QueryOutcome::Cancelled => {
+                let _ = window.emit("ai-request-end", serde_json::json!({
+                    "request_id": request_id,
+                    "result": "cancelled",
+                    "error": "Request cancelled",
+                }));
                 return Err(anyhow::anyhow!("Request cancelled"));
             }
             QueryOutcome::Error(e) => {
-                return Err(anyhow::anyhow!("Query error: {}", e));
+                let error_message = format!("Query error: {}", e);
+                let _ = window.emit("ai-request-end", serde_json::json!({
+                    "request_id": request_id,
+                    "result": "error",
+                    "error": error_message,
+                }));
+                return Err(anyhow::anyhow!(error_message));
             }
             QueryOutcome::BudgetExceeded { .. } => {
+                let _ = window.emit("ai-request-end", serde_json::json!({
+                    "request_id": request_id,
+                    "result": "error",
+                    "error": "Budget exceeded",
+                }));
                 return Err(anyhow::anyhow!("Budget exceeded"));
             }
         };

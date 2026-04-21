@@ -394,6 +394,8 @@ pub async fn set_current_workspace(
     path: String,
     task_state: tauri::State<'_, crate::task_commands::TaskState>,
 ) -> Result<(), String> {
+    log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
+
     if path.trim().is_empty() {
         return Err("工作目录不能为空".to_string());
     }
@@ -401,19 +403,24 @@ pub async fn set_current_workspace(
     let workspace_path = Path::new(&path);
     let marker_file = workspace_path.join(".tweetpilot.json");
 
-    // Auto-initialize if marker doesn't exist
     if !marker_file.exists() {
+        log::info!("[set_current_workspace] Marker file not found, initializing workspace");
         initialize_workspace(path.clone()).await?;
     }
 
-    // Update TaskState workspace_root and initialize database
-    let mut workspace_root = task_state.workspace_root.lock().map_err(|e| e.to_string())?;
-    *workspace_root = path.clone();
-    drop(workspace_root);
+    {
+        let mut workspace_root = task_state.workspace_root.lock().map_err(|e| e.to_string())?;
+        *workspace_root = path.clone();
+        log::info!("[set_current_workspace] Workspace root updated");
+    }
 
-    // Initialize database for this workspace
+    log::info!("[set_current_workspace] Initializing database");
     task_state.init_database(&path)?;
 
+    log::info!("[set_current_workspace] Reloading unified timers");
+    task_state.reload_unified_timers().await?;
+
+    log::info!("[set_current_workspace] Persisting workspace config");
     persist_current_workspace(path)
 }
 
@@ -703,11 +710,12 @@ pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
         )
         .title("TweetPilot")
         .inner_size(1280.0, 800.0)
+        .decorations(false)
         .build()
         .map_err(|e| format!("Failed to create window: {}", e))?;
 
-        // Wait a bit for window to be ready, then emit workspace path
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Wait for window to be ready, then emit workspace path
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         window.emit("set-initial-workspace", path_str)
             .map_err(|e| format!("Failed to emit set-initial-workspace event: {}", e))?;

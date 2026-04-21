@@ -55,7 +55,7 @@ export const aiService = {
     return listen('ai-status', (event) => callback(event.payload as any))
   },
 
-  onRequestEnd(callback: (data: { request_id: string; result: string; final_text?: string }) => void) {
+  onRequestEnd(callback: (data: { request_id: string; result: string; final_text?: string; error?: string }) => void) {
     return listen('ai-request-end', (event) => callback(event.payload as any))
   },
 }

@@ -165,6 +165,31 @@ function AppShell() {
 function AppContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<string | null>(null)
+  const [isCheckingWorkspace, setIsCheckingWorkspace] = useState(true)
+
+  useEffect(() => {
+    const checkExistingWorkspace = async () => {
+      console.log('[App] Checking for existing workspace on startup')
+      try {
+        const existingWorkspace = await workspaceService.getCurrentWorkspace()
+        console.log('[App] Existing workspace:', existingWorkspace)
+
+        if (existingWorkspace) {
+          console.log('[App] Found existing workspace, setting as current')
+          setCurrentWorkspace(existingWorkspace)
+          setWorkspaceReady(true)
+        } else {
+          console.log('[App] No existing workspace found, showing selector')
+        }
+      } catch (error) {
+        console.error('[App] Failed to check existing workspace:', error)
+      } finally {
+        setIsCheckingWorkspace(false)
+      }
+    }
+
+    void checkExistingWorkspace()
+  }, [])
 
   useEffect(() => {
     const setupEventListeners = async () => {
@@ -173,13 +198,16 @@ function AppContent() {
       const unlistenWorkspaceChanged = await listen<string>('workspace-changed', (event) => {
         console.log('[App] Workspace changed via menu:', event.payload)
         setCurrentWorkspace(event.payload)
-        window.location.reload()
+        setWorkspaceReady(true)
+        // Force re-render by reloading the page to refresh all workspace-dependent state
+        setTimeout(() => window.location.reload(), 100)
       })
 
       const unlistenSetInitialWorkspace = await listen<string>('set-initial-workspace', (event) => {
         console.log('[App] Set initial workspace for new window:', event.payload)
         setCurrentWorkspace(event.payload)
         setWorkspaceReady(true)
+        setIsCheckingWorkspace(false)
       })
 
       return () => {
@@ -198,6 +226,10 @@ function AppContent() {
     console.log('[App] Workspace selected:', path)
     setCurrentWorkspace(path)
     setWorkspaceReady(true)
+  }
+
+  if (isCheckingWorkspace) {
+    return null
   }
 
   if (!workspaceReady) {

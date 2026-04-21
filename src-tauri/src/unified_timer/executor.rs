@@ -10,10 +10,6 @@ pub trait TimerExecutor: Send + Sync {
         Some(Duration::from_secs(300))
     }
 
-    fn retry_policy(&self) -> crate::unified_timer::types::RetryPolicy {
-        crate::unified_timer::types::RetryPolicy::None
-    }
-
     async fn post_execution(&self, _timer: &Timer) -> Result<(), String> {
         Ok(())
     }

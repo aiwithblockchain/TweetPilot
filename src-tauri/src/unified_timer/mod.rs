@@ -4,10 +4,11 @@ mod registry;
 mod event_loop;
 pub mod executors;
 
-pub use types::{Timer, ExecutionResult, TimerType};
+pub use types::{Timer, TimerType};
 pub use executor::TimerExecutor;
 pub use registry::TimerRegistry;
 pub use event_loop::EventLoop;
+pub use executors::{AccountSyncExecutor, PythonScriptExecutor};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -40,19 +41,30 @@ impl UnifiedTimerManager {
         result
     }
 
-    pub async fn unregister_timer(&self, timer_id: &str) -> Result<(), String> {
+    pub async fn clear_task_timers(&self) {
+        log::info!("[UnifiedTimerManager] Clearing task timers");
         let mut registry = self.registry.lock().await;
-        registry.unregister(timer_id)
+        let task_timer_ids: Vec<String> = registry
+            .list_all()
+            .into_iter()
+            .filter(|timer| timer.id.starts_with("task-"))
+            .map(|timer| timer.id)
+            .collect();
+
+        log::info!("[UnifiedTimerManager] Found {} task timers to clear", task_timer_ids.len());
+        for timer_id in task_timer_ids {
+            log::debug!("[UnifiedTimerManager] Unregistering timer: {}", timer_id);
+            if let Err(e) = registry.unregister(&timer_id) {
+                log::warn!("[UnifiedTimerManager] Failed to unregister timer {}: {}", timer_id, e);
+            }
+        }
+        log::info!("[UnifiedTimerManager] Task timers cleared");
     }
 
     pub async fn start(&self) {
         log::info!("[UnifiedTimerManager] Starting unified timer system");
         self.event_loop.start().await;
         log::info!("[UnifiedTimerManager] Unified timer system started");
-    }
-
-    pub async fn stop(&self) {
-        self.event_loop.stop().await;
     }
 
     pub async fn register_executor(&self, name: String, executor: Arc<dyn TimerExecutor>) {

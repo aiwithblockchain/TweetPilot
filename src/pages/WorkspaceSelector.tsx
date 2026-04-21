@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { workspaceService } from '@/services'
 import { listen } from '@tauri-apps/api/event'
+import { TitleBar } from '@/components/TitleBar'
 
 interface WorkspaceSelectorProps {
   currentWorkspace: string | null
@@ -115,14 +116,21 @@ export default function WorkspaceSelector({
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-[var(--color-bg)]">
-      <div className="max-w-2xl w-full px-8">
-        <div className="text-center mb-12">
-          <h1 className="text-2xl font-semibold mb-3 text-white">TweetPilot</h1>
-          <p className="text-base text-[var(--color-text)]">
-            选择一个工作目录开始使用
-          </p>
-        </div>
+    <div className="h-screen flex flex-col bg-[var(--color-bg)]">
+      <TitleBar
+        leftSidebarVisible={false}
+        rightPanelVisible={false}
+        onToggleLeftSidebar={() => {}}
+        onToggleRightPanel={() => {}}
+      />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="max-w-2xl w-full px-8">
+          <div className="text-center mb-12">
+            <h1 className="text-2xl font-semibold mb-3 text-white">TweetPilot</h1>
+            <p className="text-base text-[var(--color-text)]">
+              选择一个工作目录开始使用
+            </p>
+          </div>
 
         <div className="grid gap-4">
           <button
@@ -199,6 +207,7 @@ export default function WorkspaceSelector({
             正在选择目录...
           </div>
         )}
+        </div>
       </div>
 
       {showCloneDialog && (

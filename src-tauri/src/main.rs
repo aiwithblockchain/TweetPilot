@@ -7,7 +7,6 @@ mod services;
 mod task_database;
 mod task_executor;
 mod task_commands;
-mod task_scheduler;
 mod task_module;
 mod claurst_session;
 mod unified_timer;
@@ -83,46 +82,9 @@ async fn test_localbridge_connection() {
     println!("=== 测试结束 ===\n");
 }
 
-async fn start_account_sync_task() {
-    use tokio::time::{interval, Duration};
-
-    let mut tick_interval = interval(Duration::from_secs(60));
-
-    loop {
-        tick_interval.tick().await;
-
-        match account::refresh_all_accounts_status().await {
-            Ok(_) => {
-                // Get and display current accounts status
-                match account::get_mapped_accounts().await {
-                    Ok(accounts) => {
-                        println!("=== 账号状态刷新成功 ===");
-                        println!("当前映射账号数量: {}", accounts.len());
-                        for account in accounts {
-                            println!("  - {} (@{}) | 状态: {:?} | 最后验证: {}",
-                                account.display_name,
-                                account.screen_name.trim_start_matches('@'),
-                                account.status,
-                                account.last_verified
-                            );
-                        }
-                        println!("========================\n");
-                    }
-                    Err(e) => {
-                        eprintln!("获取账号列表失败: {}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("账号状态刷新失败: {}", e);
-            }
-        }
-    }
-}
-
 fn main() {
     use std::sync::Arc;
-    use unified_timer::{UnifiedTimerManager, Timer, TimerType, executors::{AccountSyncExecutor, PythonScriptExecutor}};
+    use unified_timer::{UnifiedTimerManager, Timer, TimerType, AccountSyncExecutor};
 
     // Initialize logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -136,10 +98,14 @@ fn main() {
     let db = Arc::new(Mutex::new(None));
     let workspace_root = Arc::new(Mutex::new(String::new()));
 
+    // Initialize unified timer manager
+    let timer_manager = Arc::new(UnifiedTimerManager::new());
+
     let task_state = TaskState {
         db: db.clone(),
         executor: Arc::new(task_executor),
         workspace_root: workspace_root.clone(),
+        timer_manager: timer_manager.clone(),
     };
 
     // Initialize AI state
@@ -148,9 +114,6 @@ fn main() {
         cancel_token: Arc::new(tokio::sync::Mutex::new(None)),
         active_request_id: Arc::new(tokio::sync::Mutex::new(None)),
     };
-
-    // Initialize unified timer manager
-    let timer_manager = Arc::new(UnifiedTimerManager::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -238,19 +201,15 @@ fn main() {
                 });
             }
             let timer_manager_clone = timer_manager.clone();
-            let db_clone = db.clone();
-            let workspace_root_clone = workspace_root.clone();
 
             tauri::async_runtime::spawn(async move {
                 test_localbridge_connection().await;
 
-                // Register account sync executor
                 timer_manager_clone.register_executor(
                     "account_sync".to_string(),
                     Arc::new(AccountSyncExecutor)
                 ).await;
 
-                // Register account sync timer (every 60 seconds)
                 let account_sync_timer = Timer {
                     id: "system-account-sync".to_string(),
                     name: "账号状态同步".to_string(),
@@ -267,77 +226,6 @@ fn main() {
                     eprintln!("Failed to register account sync timer: {}", e);
                 }
 
-                // Load and register user tasks from database
-                let workspace = workspace_root_clone.lock().unwrap().clone();
-                if !workspace.is_empty() {
-                    let tasks = {
-                        let db_guard = db_clone.lock().unwrap();
-                        if let Some(ref db_ref) = *db_guard {
-                            db_ref.get_all_tasks().ok()
-                        } else {
-                            None
-                        }
-                    };
-
-                    if let Some(tasks) = tasks {
-                        // Register Python script executor
-                        timer_manager_clone.register_executor(
-                            "python_script".to_string(),
-                            Arc::new(PythonScriptExecutor::new(workspace.clone(), db_clone.clone()))
-                        ).await;
-
-                        for task in tasks {
-                            if task.task_type == "scheduled" && task.enabled {
-                                let timer_type = match task.schedule_type.as_str() {
-                                    "interval" => {
-                                        if let Some(interval_secs) = task.interval_seconds {
-                                            TimerType::Interval { seconds: interval_secs as u64 }
-                                        } else {
-                                            continue;
-                                        }
-                                    }
-                                    "cron" => {
-                                        if let Some(ref schedule) = task.schedule {
-                                            TimerType::Cron { expression: schedule.clone() }
-                                        } else {
-                                            continue;
-                                        }
-                                    }
-                                    _ => continue,
-                                };
-
-                                let timer = Timer {
-                                    id: format!("task-{}", task.id),
-                                    name: task.name.clone(),
-                                    timer_type,
-                                    enabled: true,
-                                    priority: 50,
-                                    next_execution: task.next_execution_time.as_ref()
-                                        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                                        .map(|t| t.with_timezone(&chrono::Utc)),
-                                    last_execution: task.last_execution_time.as_ref()
-                                        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                                        .map(|t| t.with_timezone(&chrono::Utc)),
-                                    executor: "python_script".to_string(),
-                                    executor_config: serde_json::json!({
-                                        "script_path": task.script_path,
-                                        "account_id": task.account_id,
-                                        "parameters": serde_json::from_str::<serde_json::Value>(&task.parameters).unwrap_or(serde_json::json!({})),
-                                        "timeout": task.timeout.unwrap_or(300),
-                                    }),
-                                };
-
-                                if let Err(e) = timer_manager_clone.register_timer(timer).await {
-                                    eprintln!("Failed to register task {}: {}", task.id, e);
-                                } else {
-                                    eprintln!("✅ Registered task: {}", task.name);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Start unified timer manager
                 timer_manager_clone.start().await;
             });
             Ok(())

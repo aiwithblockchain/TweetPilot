@@ -104,11 +104,6 @@ impl EventLoop {
         });
     }
 
-    pub async fn stop(&self) {
-        let mut running = self.running.write().await;
-        *running = false;
-    }
-
     async fn execute_timer(
         timer: Timer,
         registry: Arc<Mutex<TimerRegistry>>,
@@ -126,8 +121,6 @@ impl EventLoop {
 
             let context = ExecutionContext {
                 timer_id: timer.id.clone(),
-                timer_name: timer.name.clone(),
-                execution_time: chrono::Utc::now(),
                 config: timer.executor_config.clone(),
             };
 

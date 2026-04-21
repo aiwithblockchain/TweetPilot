@@ -255,18 +255,40 @@ impl TaskDatabase {
     }
 
     pub fn update_task(&self, task_id: &str, input: TaskConfigInput) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = chrono::Utc::now();
+        let now_str = now.to_rfc3339();
         let parameters = serde_json::to_string(&input.parameters.unwrap_or(serde_json::json!({})))
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
         let schedule_type = input.schedule_type.as_deref().unwrap_or("cron");
 
+        let next_execution_time = if input.task_type == "scheduled" {
+            match schedule_type {
+                "interval" => {
+                    if let Some(interval_secs) = input.interval_seconds {
+                        let next = now + chrono::Duration::seconds(interval_secs);
+                        Some(next.to_rfc3339())
+                    } else {
+                        None
+                    }
+                }
+                "cron" => {
+                    input.schedule.as_ref().and_then(|schedule_str| {
+                        Self::calculate_next_execution(schedule_str, now).ok()
+                    })
+                }
+                _ => None
+            }
+        } else {
+            None
+        };
+
         self.conn.execute(
             "UPDATE tasks SET
                 name = ?1, description = ?2, script_path = ?3, schedule = ?4, schedule_type = ?5, interval_seconds = ?6,
                 timeout = ?7, retry_count = ?8, retry_delay = ?9, parameters = ?10,
-                tags = ?11, updated_at = ?12
-            WHERE id = ?13",
+                tags = ?11, next_execution_time = ?12, updated_at = ?13
+            WHERE id = ?14",
             params![
                 input.name,
                 input.description,
@@ -279,7 +301,8 @@ impl TaskDatabase {
                 input.retry_delay,
                 parameters,
                 tags,
-                now,
+                next_execution_time,
+                now_str,
                 task_id,
             ],
         )?;

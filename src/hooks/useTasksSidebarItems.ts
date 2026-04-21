@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { taskService } from '@/services'
+import { taskService, workspaceService } from '@/services'
 import type { Task } from '@/services/task'
 
 function getTaskBadge(task: Task): { badge?: string; badgeTone?: 'default' | 'success' | 'warning' | 'danger' } {
@@ -25,15 +25,40 @@ export function useTasksSidebarItems() {
 
   const loadTasks = async () => {
     try {
+      console.log('[useTasksSidebarItems] Starting loadTasks')
       setLoading(true)
       setError(null)
+
+      console.log('[useTasksSidebarItems] Checking current workspace')
+      const currentWorkspace = await workspaceService.getCurrentWorkspace()
+      console.log('[useTasksSidebarItems] Current workspace:', currentWorkspace)
+
+      if (!currentWorkspace) {
+        console.log('[useTasksSidebarItems] No workspace selected, setting empty tasks')
+        setTasks([])
+        setLoading(false)
+        return
+      }
+
+      console.log('[useTasksSidebarItems] Fetching tasks from backend')
       const result = await taskService.getTasks()
+      console.log('[useTasksSidebarItems] Tasks fetched:', result.length)
       setTasks(result)
     } catch (err) {
-      console.error('Failed to load tasks for sidebar:', err)
-      setError(err instanceof Error ? err.message : '读取任务失败')
+      const errorMessage = err instanceof Error ? err.message : '读取任务失败'
+      console.error('[useTasksSidebarItems] Error loading tasks:', errorMessage)
+
+      if (errorMessage.includes('数据库未初始化')) {
+        console.log('[useTasksSidebarItems] Database not initialized, silently setting empty tasks')
+        setTasks([])
+        setError(null)
+      } else {
+        console.error('[useTasksSidebarItems] Unexpected error:', err)
+        setError(errorMessage)
+      }
     } finally {
       setLoading(false)
+      console.log('[useTasksSidebarItems] loadTasks completed')
     }
   }
 
