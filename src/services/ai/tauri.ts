@@ -39,6 +39,10 @@ export const aiService = {
     return listen('message-chunk', (event) => callback(event.payload as any))
   },
 
+  onThinkingChunk(callback: (data: { request_id: string; chunk: string }) => void) {
+    return listen('thinking-chunk', (event) => callback(event.payload as any))
+  },
+
   onToolCallStart(callback: (data: { request_id: string; tool: string; action: string }) => void) {
     return listen('tool-call-start', (event) => callback(event.payload as any))
   },

@@ -4,9 +4,10 @@ import SettingsPage from '@/pages/Settings'
 interface SettingsDialogProps {
   open: boolean
   onClose: () => void
+  initialSection?: 'account' | 'preferences' | 'ai-providers'
 }
 
-export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ open, onClose, initialSection }: SettingsDialogProps) {
   if (!open) return null
 
   return (
@@ -31,7 +32,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         </div>
 
         <div className="flex-1 min-h-0 overflow-hidden">
-          <SettingsPage />
+          <SettingsPage initialSection={initialSection} />
         </div>
       </div>
     </div>

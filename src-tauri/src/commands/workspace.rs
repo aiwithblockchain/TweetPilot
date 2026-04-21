@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const WORKSPACE_CONFIG_FILE: &str = "config.json";
 const RECENT_WORKSPACES_FILE: &str = "recent-workspaces.json";
@@ -650,6 +650,68 @@ pub async fn open_workspace_in_new_window(app: AppHandle) -> Result<(), String> 
     .inner_size(1280.0, 800.0)
     .build()
     .map_err(|e| format!("Failed to create window: {}", e))?;
+
+    Ok(())
+}
+
+/// Open folder dialog and switch workspace in current window
+pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Open Folder")
+        .blocking_pick_folder();
+
+    if let Some(folder_path) = path {
+        let path_str = folder_path.to_string();
+
+        // Get TaskState from app state
+        let task_state = app.state::<crate::task_commands::TaskState>();
+
+        // Use set_current_workspace to properly update all state
+        set_current_workspace(path_str.clone(), task_state).await?;
+
+        // Emit event to frontend to reload workspace
+        app.emit("workspace-changed", path_str)
+            .map_err(|e| format!("Failed to emit workspace-changed event: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Open folder dialog and open in new window
+pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+    use tauri::WebviewWindowBuilder;
+
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Open Folder in New Window")
+        .blocking_pick_folder();
+
+    if let Some(folder_path) = path {
+        let path_str = folder_path.to_string();
+
+        // Create new window
+        let window = WebviewWindowBuilder::new(
+            &app,
+            format!("workspace-{}", chrono::Utc::now().timestamp()),
+            tauri::WebviewUrl::App("/".into()),
+        )
+        .title("TweetPilot")
+        .inner_size(1280.0, 800.0)
+        .build()
+        .map_err(|e| format!("Failed to create window: {}", e))?;
+
+        // Wait a bit for window to be ready, then emit workspace path
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        window.emit("set-initial-workspace", path_str)
+            .map_err(|e| format!("Failed to emit set-initial-workspace event: {}", e))?;
+    }
 
     Ok(())
 }

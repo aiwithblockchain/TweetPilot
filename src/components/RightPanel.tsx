@@ -3,9 +3,10 @@ import { ChatInterface } from './ChatInterface'
 interface RightPanelProps {
   width: number
   onToggle: () => void
+  onOpenSettings?: (section?: 'account' | 'preferences' | 'ai-providers') => void
 }
 
-export function RightPanel({ width, onToggle }: RightPanelProps) {
+export function RightPanel({ width, onToggle, onOpenSettings }: RightPanelProps) {
   return (
     <aside
       className="bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col flex-shrink-0 min-w-0"
@@ -23,7 +24,7 @@ export function RightPanel({ width, onToggle }: RightPanelProps) {
       </div>
 
       <div className="flex-1 min-h-0">
-        <ChatInterface />
+        <ChatInterface onOpenSettings={() => onOpenSettings?.('ai-providers')} />
       </div>
     </aside>
   )

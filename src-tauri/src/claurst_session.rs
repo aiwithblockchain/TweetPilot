@@ -36,6 +36,7 @@ fn collect_final_text_from_message(msg: &Message) -> String {
 
 pub struct ClaurstSession {
     session_id: String,
+    #[allow(dead_code)]
     working_dir: PathBuf,
     client: AnthropicClient,
     config: QueryConfig,
@@ -72,8 +73,11 @@ impl ClaurstSession {
         config.permission_mode = PermissionMode::BypassPermissions;
         config.model = Some(model.clone());
 
+        const DEFAULT_THINKING_BUDGET: u32 = 10000;
+
         let mut query_config = QueryConfig::from_config(&config);
         query_config.model = model;
+        query_config.thinking_budget = Some(DEFAULT_THINKING_BUDGET);
 
         let tools: Vec<Box<dyn Tool>> = vec![
             Box::new(FileReadTool),
@@ -167,11 +171,20 @@ impl ClaurstSession {
                     QueryEvent::Stream(stream_event) => {
                         use claurst_api::streaming::ContentDelta;
                         if let AnthropicStreamEvent::ContentBlockDelta { delta, .. } = stream_event {
-                            if let ContentDelta::TextDelta { text } = delta {
-                                let _ = event_window.emit("message-chunk", serde_json::json!({
-                                    "request_id": request_id_owned.clone(),
-                                    "chunk": text,
-                                }));
+                            match delta {
+                                ContentDelta::TextDelta { text } => {
+                                    let _ = event_window.emit("message-chunk", serde_json::json!({
+                                        "request_id": request_id_owned.clone(),
+                                        "chunk": text,
+                                    }));
+                                }
+                                ContentDelta::ThinkingDelta { thinking } => {
+                                    let _ = event_window.emit("thinking-chunk", serde_json::json!({
+                                        "request_id": request_id_owned.clone(),
+                                        "chunk": thinking,
+                                    }));
+                                }
+                                _ => {}
                             }
                         }
                     }

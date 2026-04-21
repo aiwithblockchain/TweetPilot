@@ -34,8 +34,12 @@ const MOCK_USER: MockUser = {
   tokenLimit: 10000,
 }
 
-export default function Settings() {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('account')
+interface SettingsProps {
+  initialSection?: SettingsSection
+}
+
+export default function Settings({ initialSection = 'account' }: SettingsProps) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-bg)] text-[var(--color-text)]">

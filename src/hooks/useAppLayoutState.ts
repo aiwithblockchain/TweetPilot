@@ -89,6 +89,7 @@ export function useAppLayoutState() {
   const [isCompactLayout, setIsCompactLayout] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [settingsInitialSection, setSettingsInitialSection] = useState<'account' | 'preferences' | 'ai-providers'>('account')
   const [dataBlockMenuOpen, setDataBlockMenuOpen] = useState(false)
   const [instances, setInstances] = useState<AppInstance[]>(INSTANCE_MOCKS)
   const [instancesError, setInstancesError] = useState<string | null>(null)
@@ -725,12 +726,14 @@ export function useAppLayoutState() {
     setCenterMode('empty')
   }
 
-  const openSettingsDialog = () => {
+  const openSettingsDialog = (section?: 'account' | 'preferences' | 'ai-providers') => {
+    setSettingsInitialSection(section || 'account')
     setSettingsDialogOpen(true)
   }
 
   const closeSettingsDialog = () => {
     setSettingsDialogOpen(false)
+    setSettingsInitialSection('account')
   }
 
   const toggleLeftSidebarVisible = () => {
@@ -773,6 +776,7 @@ export function useAppLayoutState() {
     selectedSidebarItemId,
     setMobileSidebarOpen,
     settingsDialogOpen,
+    settingsInitialSection,
     closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,

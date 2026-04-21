@@ -301,6 +301,15 @@ impl TaskDatabase {
         Ok(())
     }
 
+    pub fn update_task_execution_times(&self, task_id: &str, next_execution: Option<String>, last_execution: Option<String>) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE tasks SET next_execution_time = ?1, last_execution_time = ?2, updated_at = ?3 WHERE id = ?4",
+            params![next_execution, last_execution, now, task_id],
+        )?;
+        Ok(())
+    }
+
     pub fn save_execution(&self, result: &ExecutionResult) -> Result<()> {
         self.conn.execute(
             "INSERT INTO executions (

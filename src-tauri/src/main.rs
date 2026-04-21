@@ -10,6 +10,7 @@ mod task_commands;
 mod task_scheduler;
 mod task_module;
 mod claurst_session;
+mod unified_timer;
 
 use commands::{workspace, account, data_blocks, preferences, ai};
 use task_commands::TaskState;
@@ -121,6 +122,14 @@ async fn start_account_sync_task() {
 
 fn main() {
     use std::sync::Arc;
+    use unified_timer::{UnifiedTimerManager, Timer, TimerType, executors::{AccountSyncExecutor, PythonScriptExecutor}};
+
+    // Initialize logger
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    log::info!("TweetPilot starting...");
 
     // Initialize task state (database will be initialized when workspace is selected)
     let task_executor = task_module::TaskExecutor::new();
@@ -140,27 +149,196 @@ fn main() {
         active_request_id: Arc::new(tokio::sync::Mutex::new(None)),
     };
 
-    // Initialize task scheduler
-    let scheduler = task_scheduler::TaskScheduler::new(
-        db.clone(),
-        task_state.executor.clone(),
-        workspace_root.clone(),
-    );
+    // Initialize unified timer manager
+    let timer_manager = Arc::new(UnifiedTimerManager::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(task_state)
         .manage(ai_state)
-        .setup(move |_app| {
-            let scheduler_clone = scheduler.clone();
+        .setup(move |app| {
+            // Create native menu
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+
+                // File menu with custom items
+                let open_item = MenuItemBuilder::with_id("open", "Open...")
+                    .accelerator("CmdOrCtrl+O")
+                    .build(app)?;
+
+                let open_new_window_item = MenuItemBuilder::with_id("open_new_window", "Open in New Window...")
+                    .accelerator("CmdOrCtrl+Shift+O")
+                    .build(app)?;
+
+                let file_menu = SubmenuBuilder::new(app, "File")
+                    .item(&open_item)
+                    .item(&open_new_window_item)
+                    .separator()
+                    .close_window()
+                    .build()?;
+
+                // Edit menu with standard items
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+
+                // View menu
+                let view_menu = SubmenuBuilder::new(app, "View")
+                    .build()?;
+
+                // Window menu
+                let window_menu = SubmenuBuilder::new(app, "Window")
+                    .minimize()
+                    .maximize()
+                    .build()?;
+
+                // Help menu
+                let help_menu = SubmenuBuilder::new(app, "Help")
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&file_menu)
+                    .item(&edit_menu)
+                    .item(&view_menu)
+                    .item(&window_menu)
+                    .item(&help_menu)
+                    .build()?;
+
+                app.set_menu(menu)?;
+
+                // Handle menu events
+                app.on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "open" => {
+                            let app_handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = workspace::open_folder_dialog(app_handle).await {
+                                    eprintln!("Failed to open folder: {}", e);
+                                }
+                            });
+                        }
+                        "open_new_window" => {
+                            let app_handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = workspace::open_folder_in_new_window(app_handle).await {
+                                    eprintln!("Failed to open folder in new window: {}", e);
+                                }
+                            });
+                        }
+                        _ => {}
+                    }
+                });
+            }
+            let timer_manager_clone = timer_manager.clone();
+            let db_clone = db.clone();
+            let workspace_root_clone = workspace_root.clone();
+
             tauri::async_runtime::spawn(async move {
                 test_localbridge_connection().await;
 
-                // Start task scheduler
-                scheduler_clone.start().await;
+                // Register account sync executor
+                timer_manager_clone.register_executor(
+                    "account_sync".to_string(),
+                    Arc::new(AccountSyncExecutor)
+                ).await;
 
-                start_account_sync_task().await;
+                // Register account sync timer (every 60 seconds)
+                let account_sync_timer = Timer {
+                    id: "system-account-sync".to_string(),
+                    name: "账号状态同步".to_string(),
+                    timer_type: TimerType::Interval { seconds: 60 },
+                    enabled: true,
+                    priority: 10,
+                    next_execution: None,
+                    last_execution: None,
+                    executor: "account_sync".to_string(),
+                    executor_config: serde_json::json!({}),
+                };
+
+                if let Err(e) = timer_manager_clone.register_timer(account_sync_timer).await {
+                    eprintln!("Failed to register account sync timer: {}", e);
+                }
+
+                // Load and register user tasks from database
+                let workspace = workspace_root_clone.lock().unwrap().clone();
+                if !workspace.is_empty() {
+                    let tasks = {
+                        let db_guard = db_clone.lock().unwrap();
+                        if let Some(ref db_ref) = *db_guard {
+                            db_ref.get_all_tasks().ok()
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some(tasks) = tasks {
+                        // Register Python script executor
+                        timer_manager_clone.register_executor(
+                            "python_script".to_string(),
+                            Arc::new(PythonScriptExecutor::new(workspace.clone(), db_clone.clone()))
+                        ).await;
+
+                        for task in tasks {
+                            if task.task_type == "scheduled" && task.enabled {
+                                let timer_type = match task.schedule_type.as_str() {
+                                    "interval" => {
+                                        if let Some(interval_secs) = task.interval_seconds {
+                                            TimerType::Interval { seconds: interval_secs as u64 }
+                                        } else {
+                                            continue;
+                                        }
+                                    }
+                                    "cron" => {
+                                        if let Some(ref schedule) = task.schedule {
+                                            TimerType::Cron { expression: schedule.clone() }
+                                        } else {
+                                            continue;
+                                        }
+                                    }
+                                    _ => continue,
+                                };
+
+                                let timer = Timer {
+                                    id: format!("task-{}", task.id),
+                                    name: task.name.clone(),
+                                    timer_type,
+                                    enabled: true,
+                                    priority: 50,
+                                    next_execution: task.next_execution_time.as_ref()
+                                        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                                        .map(|t| t.with_timezone(&chrono::Utc)),
+                                    last_execution: task.last_execution_time.as_ref()
+                                        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                                        .map(|t| t.with_timezone(&chrono::Utc)),
+                                    executor: "python_script".to_string(),
+                                    executor_config: serde_json::json!({
+                                        "script_path": task.script_path,
+                                        "account_id": task.account_id,
+                                        "parameters": serde_json::from_str::<serde_json::Value>(&task.parameters).unwrap_or(serde_json::json!({})),
+                                        "timeout": task.timeout.unwrap_or(300),
+                                    }),
+                                };
+
+                                if let Err(e) = timer_manager_clone.register_timer(timer).await {
+                                    eprintln!("Failed to register task {}: {}", task.id, e);
+                                } else {
+                                    eprintln!("✅ Registered task: {}", task.name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Start unified timer manager
+                timer_manager_clone.start().await;
             });
             Ok(())
         })

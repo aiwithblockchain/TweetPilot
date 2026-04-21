@@ -69,6 +69,7 @@ function AppShell() {
     selectedSidebarItemId,
     setMobileSidebarOpen,
     settingsDialogOpen,
+    settingsInitialSection,
     closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,
@@ -150,12 +151,12 @@ function AppShell() {
         {rightPanelVisible && !isCompactLayout && (
           <>
             <ResizableDivider side="right" onResize={persistRightWidth} isVisible={rightPanelVisible} />
-            <RightPanel width={rightWidth} onToggle={() => persistRightPanelVisible(false)} />
+            <RightPanel width={rightWidth} onToggle={() => persistRightPanelVisible(false)} onOpenSettings={openSettingsDialog} />
           </>
         )}
       </div>
 
-      <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} />
+      <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} initialSection={settingsInitialSection} />
       <AddDataBlockMenu open={dataBlockMenuOpen} onClose={closeDataBlockMenu} onSelect={handleAddDataBlock} />
     </div>
   )

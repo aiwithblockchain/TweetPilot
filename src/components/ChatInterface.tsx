@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useToast } from '@/contexts/ToastContext'
 import { aiService } from '@/services/ai/tauri'
 import { workspaceService } from '@/services'
+
+interface ChatInterfaceProps {
+  onOpenSettings?: () => void
+}
 
 interface ChatMessage {
   id: string
@@ -9,6 +15,7 @@ interface ChatMessage {
   content: string
   isStreaming?: boolean
   status?: string
+  thinking?: string
   toolCalls?: Array<{
     tool: string
     action: string
@@ -16,7 +23,7 @@ interface ChatMessage {
   }>
 }
 
-export function ChatInterface() {
+export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const toast = useToast()
   const [value, setValue] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -43,10 +50,11 @@ export function ChatInterface() {
         setIsConfigured(!!activeProvider && !!activeProvider.api_key)
       } catch (error) {
         console.error('Failed to check AI config:', error)
+        toast.error('Failed to load AI configuration')
       }
     }
     checkConfig()
-  }, [])
+  }, [toast])
 
   // Initialize AI session
   useEffect(() => {
@@ -91,6 +99,25 @@ export function ChatInterface() {
         })
       } else {
         console.log('[ChatInterface] Request ID mismatch:', data.request_id, 'vs', currentRequestId)
+      }
+    })
+
+    const unlistenThinkingChunk = aiService.onThinkingChunk((data) => {
+      console.log('[ChatInterface] Received thinking-chunk:', data)
+      if (data.request_id === currentRequestId) {
+        console.log('[ChatInterface] Appending thinking chunk, current length:', (messages[messages.length - 1]?.thinking || '').length)
+        setMessages((prev) => {
+          const lastMessage = prev[prev.length - 1]
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+            const newThinking = (lastMessage.thinking || '') + data.chunk
+            console.log('[ChatInterface] New thinking length:', newThinking.length)
+            return [
+              ...prev.slice(0, -1),
+              { ...lastMessage, thinking: newThinking },
+            ]
+          }
+          return prev
+        })
       }
     })
 
@@ -161,11 +188,14 @@ export function ChatInterface() {
     })
 
     return () => {
-      unlistenChunk.then((fn) => fn())
-      unlistenToolStart.then((fn) => fn())
-      unlistenToolEnd.then((fn) => fn())
-      unlistenAiStatus.then((fn) => fn())
-      unlistenRequestEnd.then((fn) => fn())
+      Promise.all([
+        unlistenChunk,
+        unlistenThinkingChunk,
+        unlistenToolStart,
+        unlistenToolEnd,
+        unlistenAiStatus,
+        unlistenRequestEnd,
+      ]).then(fns => fns.forEach(fn => fn()))
     }
   }, [currentRequestId])
 
@@ -248,7 +278,7 @@ export function ChatInterface() {
             Please configure your API key and model in Settings to start using AI features.
           </p>
           <button
-            onClick={() => toast.info('Open Settings to configure AI')}
+            onClick={() => onOpenSettings?.()}
             className="px-4 py-2 bg-[#007ACC] text-white text-xs rounded hover:bg-[#1485D1] transition-colors"
           >
             Configure AI
@@ -284,37 +314,100 @@ export function ChatInterface() {
 
           return (
             <div key={message.id} className="space-y-2">
-              <div
-                className={[
-                  'max-w-[85%] rounded-md px-3 py-2 text-xs leading-5',
-                  isAssistant
-                    ? 'bg-[var(--color-bg)] text-[var(--color-text)]'
-                    : 'bg-[#007ACC] text-white ml-auto',
-                ].join(' ')}
-              >
-                {message.status && message.isStreaming && !message.content && (
-                  <div className="flex items-center gap-2 text-[var(--color-text-secondary)] italic">
-                    <span className="inline-block animate-pulse">●</span>
-                    <span>{message.status}</span>
-                  </div>
-                )}
-                {message.content || (!message.status && message.isStreaming && '...')}
-              </div>
+              {/* User message */}
+              {!isAssistant && (
+                <div className="rounded-md px-3 py-2 text-xs leading-5 bg-[#007ACC] text-white ml-auto inline-block max-w-[85%]">
+                  {message.content}
+                </div>
+              )}
 
-              {/* Tool call indicators */}
-              {message.toolCalls && message.toolCalls.length > 0 && (
-                <div className="ml-3 space-y-1">
-                  {message.toolCalls.map((tc, idx) => (
-                    <div
-                      key={idx}
-                      className="text-xs text-[var(--color-text-secondary)] flex items-center gap-2"
-                    >
-                      <span>
-                        {tc.success === undefined ? '⏳' : tc.success ? '✓' : '✗'}
-                      </span>
-                      <span>{tc.action}</span>
+              {/* Assistant message */}
+              {isAssistant && (
+                <div className="space-y-2">
+                  {/* Show thinking status when streaming but no content yet */}
+                  {message.isStreaming && !message.content && !message.thinking && !message.toolCalls?.length && (
+                    <div className="flex items-center gap-2 text-[var(--color-text-secondary)] text-xs">
+                      <div className="flex gap-1">
+                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                        <span className="inline-block w-1.5 h-1.5 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                      </div>
+                      <span className="italic">{message.status || 'AI 正在思考...'}</span>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Show content when available */}
+                  {message.content && (
+                    <div className="text-xs leading-5 text-[var(--color-text)] whitespace-pre-wrap">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code: ({ className, children, ...props }: any) => {
+                            const inline = !className?.includes('language-')
+                            return !inline ? (
+                              <pre className="bg-[#1E1E1E] border border-[var(--color-border)] rounded p-2 overflow-x-auto my-2">
+                                <code className={`${className} text-[#D4D4D4]`} {...props}>
+                                  {children}
+                                </code>
+                              </pre>
+                            ) : (
+                              <code className="bg-[#2D2D2D] text-[#CE9178] px-1 py-0.5 rounded" {...props}>
+                                {children}
+                              </code>
+                            )
+                          },
+                          p: ({ children }) => <p className="mb-2 last:mb-0 text-[var(--color-text)]">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 text-[var(--color-text)]">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1 text-[var(--color-text)]">{children}</ol>,
+                          li: ({ children }) => <li className="text-[var(--color-text)]">{children}</li>,
+                          a: ({ href, children }) => (
+                            <a href={href} className="text-[#4FC3F7] hover:underline" target="_blank" rel="noopener noreferrer">
+                              {children}
+                            </a>
+                          ),
+                          h1: ({ children }) => <h1 className="text-base font-semibold mb-2 mt-3 text-[var(--color-text)]">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-sm font-semibold mb-2 mt-3 text-[var(--color-text)]">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-xs font-semibold mb-1 mt-2 text-[var(--color-text)]">{children}</h3>,
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Tool call indicators */}
+                  {message.toolCalls && message.toolCalls.length > 0 && (
+                    <div className="space-y-1.5">
+                      {message.toolCalls.map((tc, idx) => (
+                        <div
+                          key={idx}
+                          className={[
+                            'flex items-center gap-2 px-3 py-2 rounded-md text-xs border',
+                            tc.success === undefined
+                              ? 'bg-[var(--color-surface)] border-[#007ACC] text-[var(--color-text)]'
+                              : tc.success
+                              ? 'bg-[var(--color-surface)] border-[#4EC9B0] text-[var(--color-text)]'
+                              : 'bg-[var(--color-surface)] border-[#F48771] text-[var(--color-text)]',
+                          ].join(' ')}
+                        >
+                          <span className="flex-shrink-0">
+                            {tc.success === undefined ? (
+                              <div className="flex gap-0.5">
+                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="inline-block w-1 h-1 bg-[#007ACC] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                              </div>
+                            ) : tc.success ? (
+                              <span className="text-[#4EC9B0]">✓</span>
+                            ) : (
+                              <span className="text-[#F48771]">✗</span>
+                            )}
+                          </span>
+                          <span className="flex-1">{tc.action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
