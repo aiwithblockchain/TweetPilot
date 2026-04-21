@@ -166,6 +166,34 @@ function AppContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<string | null>(null)
 
+  useEffect(() => {
+    const setupEventListeners = async () => {
+      const { listen } = await import('@tauri-apps/api/event')
+
+      const unlistenWorkspaceChanged = await listen<string>('workspace-changed', (event) => {
+        console.log('[App] Workspace changed via menu:', event.payload)
+        setCurrentWorkspace(event.payload)
+        window.location.reload()
+      })
+
+      const unlistenSetInitialWorkspace = await listen<string>('set-initial-workspace', (event) => {
+        console.log('[App] Set initial workspace for new window:', event.payload)
+        setCurrentWorkspace(event.payload)
+        setWorkspaceReady(true)
+      })
+
+      return () => {
+        unlistenWorkspaceChanged()
+        unlistenSetInitialWorkspace()
+      }
+    }
+
+    const cleanup = setupEventListeners()
+    return () => {
+      cleanup.then(fn => fn())
+    }
+  }, [])
+
   const handleWorkspaceSelected = (path: string) => {
     console.log('[App] Workspace selected:', path)
     setCurrentWorkspace(path)
