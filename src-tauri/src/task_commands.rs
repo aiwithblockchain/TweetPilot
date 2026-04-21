@@ -21,6 +21,14 @@ impl TaskState {
         }
 
         let task_db = TaskDatabase::new(db_path).map_err(|e| e.to_string())?;
+
+        // Recalculate missed executions after database initialization
+        eprintln!("🔄 Recalculating next execution times after database initialization...");
+        task_db.recalculate_missed_executions().map_err(|e| {
+            eprintln!("❌ Failed to recalculate missed executions: {}", e);
+            e.to_string()
+        })?;
+
         let mut db = self.db.lock().map_err(|e| e.to_string())?;
         *db = Some(task_db);
         Ok(())
