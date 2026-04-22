@@ -366,7 +366,16 @@ pub struct AvailableAccount {
 
 ## 七、实现步骤
 
-### Phase 0: 清理旧代码 (必须先完成)
+### Phase 0: 清理旧代码 ✅ (已完成)
+所有旧的内存存储代码已清理：
+- [x] 删除 `MAPPED_ACCOUNTS` 全局变量
+- [x] 删除 `TwitterAccount` 结构体
+- [x] 删除 `AccountStatus` 枚举
+- [x] 删除所有使用内存存储的旧函数
+- [x] 保留并重构 `refresh_all_accounts_status()`
+- [x] 保留 `get_instances()`
+
+当前 [account.rs](src-tauri/src/commands/account.rs) 只包含新的数据库驱动的账号管理命令 (257 行)
 
 #### 0.1 分析现有代码
 
@@ -465,35 +474,38 @@ pub struct AvailableAccount {
 
 ---
 
-### Phase 1: 数据库基础 (已完成)
+### Phase 1: 数据库基础 ✅ (已完成)
 - [x] 创建 `managed_twitter_accounts` 表
 - [x] 统一数据库文件为 `tweetpilot.db`
 
-### Phase 2: 数据库表结构调整
-- [ ] 修改 `002_create_accounts_table.sql`, 添加 `is_managed` 字段
-- [ ] 添加 `is_managed` 索引
-- [ ] 实现数据库操作接口 (增删改查)
+### Phase 2: 数据库表结构调整 ✅ (已完成)
+- [x] 修改 `002_create_accounts_table.sql`, 添加 `is_managed` 字段
+- [x] 添加 `is_managed` 索引
+- [x] 实现数据库操作接口 (增删改查) - 见 [task_database.rs:577-744](src-tauri/src/task_database.rs#L577-L744)
 
-### Phase 3: Channel + 后台协程
-- [ ] 定义 `AccountSyncMessage` 结构
-- [ ] 创建 Channel (mpsc::channel)
-- [ ] 实现 `account_sync_worker()` 后台协程
-- [ ] 修改 `refresh_all_accounts_status()` 只负责读取和发送
+### Phase 3: Channel + 后台协程 ✅ (已完成)
+- [x] 定义 `AccountSyncMessage` 结构 (见 [task_commands.rs:10-20](src-tauri/src/task_commands.rs#L10-L20))
+- [x] 创建 Channel (mpsc::channel) (见 TaskState 结构)
+- [x] 实现 `account_sync_worker()` 后台协程 (见 [task_commands.rs:330-430](src-tauri/src/task_commands.rs#L330-L430))
+- [x] 修改 `refresh_all_accounts_status()` 只负责读取和发送 (见 [account.rs:22-86](src-tauri/src/commands/account.rs#L22-L86))
 
-### Phase 4: 前端接口
-- [ ] 实现 `get_managed_accounts()` (带实时在线状态)
-- [ ] 实现 `get_available_accounts()`
-- [ ] 实现 `add_account_to_management()`
-- [ ] 实现 `remove_account_from_management()`
-- [ ] 实现 `delete_account_completely()`
+### Phase 4: 前端接口 ✅ (已完成)
+- [x] 实现 `get_managed_accounts()` (带实时在线状态) - 见 [account.rs:98-143](src-tauri/src/commands/account.rs#L98-L143)
+- [x] 实现 `get_available_accounts()` - 见 [account.rs:146-211](src-tauri/src/commands/account.rs#L146-L211)
+- [x] 实现 `add_account_to_management()` - 见 [account.rs:213-226](src-tauri/src/commands/account.rs#L213-L226)
+- [x] 实现 `remove_account_from_management()` - 见 [account.rs:228-240](src-tauri/src/commands/account.rs#L228-L240)
+- [x] 实现 `delete_account_completely()` - 见 [account.rs:243-257](src-tauri/src/commands/account.rs#L243-L257)
 
-### Phase 5: UI 实现
-- [ ] 实现折叠式分层列表
-- [ ] 实现在线/离线状态指示器
-- [ ] 实现右键菜单 (解除管理/彻底删除)
-- [ ] 实现添加按钮交互
+### Phase 5: UI 实现 ✅ (已完成)
+- [x] 实现折叠式分层列表 - 见 [AccountManagement.tsx:131-276](src/components/AccountManagement.tsx#L131-L276)
+- [x] 实现在线/离线状态指示器 - 绿色/灰色标签显示
+- [x] 实现右键菜单 (解除管理/彻底删除) - 见 [AccountManagement.tsx:198-222](src/components/AccountManagement.tsx#L198-L222)
+- [x] 实现添加按钮交互 - 见 [AccountManagement.tsx:265-270](src/components/AccountManagement.tsx#L265-L270)
+- [x] 实现折叠状态持久化 - 使用 localStorage
+- [x] 更新前端服务层 - 见 [account/tauri.ts](src/services/account/tauri.ts)
+- [x] 更新类型定义 - 见 [account/types.ts](src/services/account/types.ts)
 
-### Phase 6: 测试和优化
+### Phase 6: 测试和优化 ❌ (待实现)
 - [ ] 测试定时任务 + Channel + 后台协程
 - [ ] 测试账号添加/解除/删除
 - [ ] 测试在线/离线状态实时更新
@@ -564,4 +576,27 @@ let (tx, rx) = mpsc::channel::<AccountSyncMessage>(100);
 
 ---
 
-**文档状态**: 设计完成,待实现
+## 十一、实现进度总结
+
+### ✅ 已完成
+- Phase 0: 清理旧代码 (100%)
+- Phase 1: 数据库基础 (100%)
+- Phase 2: 数据库表结构调整 (100%)
+- Phase 3: Channel + 后台协程 (100%)
+- Phase 4: 前端接口 (100%)
+- Phase 5: UI 实现 (100%)
+
+### ❌ 待实现
+- Phase 6: 测试和优化 (0%)
+
+### 🎯 下一步
+1. ~~**Phase 0-5**: 完整实现~~ ✅ 全部完成
+2. **Phase 6**: 测试和优化 - **当前任务**
+   - 测试定时任务 + Channel + 后台协程
+   - 测试账号添加/解除/删除
+   - 测试在线/离线状态实时更新
+   - 性能优化 (批量处理)
+
+---
+
+**文档状态**: ✅ Phase 0-5 已全部完成，待测试和优化 (Phase 6)

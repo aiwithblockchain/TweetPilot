@@ -14,73 +14,8 @@ mod unified_timer;
 use commands::{workspace, account, data_blocks, preferences, ai};
 use task_commands::TaskState;
 use std::sync::Mutex;
-
-async fn test_localbridge_connection() {
-    use crate::services::storage;
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct LocalBridgeConfig {
-        endpoint: String,
-        #[serde(rename = "timeoutMs")]
-        timeout_ms: u64,
-        #[serde(rename = "syncIntervalMs")]
-        sync_interval_ms: u64,
-    }
-
-    fn default_config() -> LocalBridgeConfig {
-        LocalBridgeConfig {
-            endpoint: "http://127.0.0.1:10088".to_string(),
-            timeout_ms: 30000,
-            sync_interval_ms: 60000,
-        }
-    }
-
-    let config: LocalBridgeConfig = storage::read_json("preferences.json", default_config())
-        .unwrap_or_else(|_| default_config());
-
-    let url = format!("{}/api/v1/x/instances", config.endpoint);
-
-    println!("=== LocalBridge 连接测试 ===");
-    println!("请求 URL: {}", url);
-    println!("超时设置: {}ms", config.timeout_ms);
-
-    match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(config.timeout_ms))
-        .build()
-    {
-        Ok(client) => {
-            match client.get(&url).send().await {
-                Ok(response) => {
-                    println!("响应状态: {}", response.status());
-                    println!("响应头: {:?}", response.headers());
-
-                    match response.text().await {
-                        Ok(body) => {
-                            println!("响应内容长度: {} bytes", body.len());
-                            println!("响应内容: {}", body);
-                        }
-                        Err(e) => {
-                            eprintln!("读取响应内容失败: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("请求失败: {}", e);
-                    if e.is_connect() {
-                        eprintln!("  原因: 无法连接到 LocalBridge");
-                    } else if e.is_timeout() {
-                        eprintln!("  原因: 请求超时");
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("创建 HTTP 客户端失败: {}", e);
-        }
-    }
-    println!("=== 测试结束 ===\n");
-}
+use chrono::Utc;
+use serde_json::json;
 
 fn main() {
     use std::sync::Arc;
@@ -101,19 +36,12 @@ fn main() {
     // Initialize unified timer manager
     let timer_manager = Arc::new(UnifiedTimerManager::new());
 
-    // Initialize account sync channel
-    let (account_sync_tx, account_sync_rx) = tokio::sync::mpsc::channel::<task_commands::AccountSyncMessage>(100);
-
     let task_state = TaskState {
         db: db.clone(),
         executor: Arc::new(task_executor),
         workspace_root: workspace_root.clone(),
         timer_manager: timer_manager.clone(),
-        account_sync_tx: account_sync_tx.clone(),
     };
-
-    // Spawn account sync background worker
-    task_commands::spawn_account_sync_worker(account_sync_rx, db.clone());
 
     // Initialize AI state
     let ai_state = ai::AiState {
@@ -210,11 +138,28 @@ fn main() {
             let timer_manager_clone = timer_manager.clone();
 
             tauri::async_runtime::spawn(async move {
-                test_localbridge_connection().await;
+                timer_manager_clone
+                    .register_executor(
+                        "localbridge_sync".to_string(),
+                        Arc::new(unified_timer::LocalBridgeSyncExecutor::new()),
+                    )
+                    .await;
 
-                // Note: AccountSyncExecutor is deprecated - account sync now uses Channel + background worker
-                // Account sync is triggered manually via refresh_all_accounts_status command
-                // or can be set up as a scheduled task if needed
+                let localbridge_timer = unified_timer::Timer {
+                    id: "system-localbridge-sync".to_string(),
+                    name: "System LocalBridge Sync".to_string(),
+                    timer_type: unified_timer::TimerType::Interval { seconds: 60 },
+                    enabled: true,
+                    priority: 100,
+                    next_execution: Some(Utc::now() + chrono::Duration::seconds(60)),
+                    last_execution: None,
+                    executor: "localbridge_sync".to_string(),
+                    executor_config: json!({}),
+                };
+
+                if let Err(e) = timer_manager_clone.register_timer(localbridge_timer).await {
+                    log::error!("[main] Failed to register LocalBridge sync timer: {}", e);
+                }
 
                 timer_manager_clone.start().await;
             });
@@ -239,12 +184,6 @@ fn main() {
             workspace::create_workspace_folder,
             // Account commands
             account::get_instances,
-            account::refresh_all_accounts_status,
-            account::get_managed_accounts,
-            account::get_available_accounts,
-            account::add_account_to_management,
-            account::remove_account_from_management,
-            account::delete_account_completely,
             // Task commands (new implementation)
             task_module::create_task,
             task_module::get_tasks,

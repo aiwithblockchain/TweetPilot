@@ -168,30 +168,9 @@ function AppContent() {
   const [isCheckingWorkspace, setIsCheckingWorkspace] = useState(true)
 
   useEffect(() => {
-    const checkExistingWorkspace = async () => {
-      console.log('[App] Checking for existing workspace on startup')
-      try {
-        const existingWorkspace = await workspaceService.getCurrentWorkspace()
-        console.log('[App] Existing workspace:', existingWorkspace)
-
-        if (existingWorkspace) {
-          console.log('[App] Found existing workspace, initializing backend')
-          const { invoke } = await import('@tauri-apps/api/core')
-          await invoke('set_current_workspace', { path: existingWorkspace })
-          console.log('[App] Backend initialized successfully')
-          setCurrentWorkspace(existingWorkspace)
-          setWorkspaceReady(true)
-        } else {
-          console.log('[App] No existing workspace found, showing selector')
-        }
-      } catch (error) {
-        console.error('[App] Failed to check/initialize workspace:', error)
-      } finally {
-        setIsCheckingWorkspace(false)
-      }
-    }
-
-    void checkExistingWorkspace()
+    // Don't auto-load workspace - always show selector on startup
+    console.log('[App] Starting app, will show workspace selector')
+    setIsCheckingWorkspace(false)
   }, [])
 
   useEffect(() => {
@@ -225,10 +204,18 @@ function AppContent() {
     }
   }, [])
 
-  const handleWorkspaceSelected = (path: string) => {
+  const handleWorkspaceSelected = async (path: string) => {
     console.log('[App] Workspace selected:', path)
-    setCurrentWorkspace(path)
-    setWorkspaceReady(true)
+    try {
+      // Initialize backend with selected workspace
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('set_current_workspace', { path })
+      console.log('[App] Backend initialized successfully')
+      setCurrentWorkspace(path)
+      setWorkspaceReady(true)
+    } catch (error) {
+      console.error('[App] Failed to initialize workspace:', error)
+    }
   }
 
   if (isCheckingWorkspace) {

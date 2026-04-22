@@ -58,7 +58,7 @@ export default function WorkspaceSelector({
         return
       }
 
-      await workspaceService.setCurrentWorkspace(path)
+      // Don't persist workspace - just use it for this session
       onWorkspaceSelected(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to select directory')
@@ -100,7 +100,7 @@ export default function WorkspaceSelector({
 
     try {
       const path = await workspaceService.cloneFromGithub(repoUrl.trim(), targetDirectory)
-      await workspaceService.setCurrentWorkspace(path)
+      // Don't persist workspace - just use it for this session
       setShowCloneDialog(false)
       setRepoUrl('')
       setTargetDirectory(null)
@@ -165,9 +165,8 @@ export default function WorkspaceSelector({
                     setLoading(true)
                     setError(null)
                     try {
-                      console.log('[WorkspaceSelector] Setting current workspace...')
-                      await workspaceService.setCurrentWorkspace(workspace.path)
-                      console.log('[WorkspaceSelector] Workspace set successfully, calling onWorkspaceSelected')
+                      console.log('[WorkspaceSelector] Opening recent workspace')
+                      // Don't persist workspace - just use it for this session
                       onWorkspaceSelected(workspace.path)
                     } catch (err) {
                       console.error('[WorkspaceSelector] Failed to open workspace:', err)
@@ -300,7 +299,7 @@ export default function WorkspaceSelector({
                   key={workspace.path}
                   onClick={async () => {
                     try {
-                      await workspaceService.setCurrentWorkspace(workspace.path)
+                      // Don't persist workspace - just use it for this session
                       setShowRecentWorkspaces(false)
                       onWorkspaceSelected(workspace.path)
                     } catch (err) {

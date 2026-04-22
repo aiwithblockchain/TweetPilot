@@ -1,7 +1,7 @@
 import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { accountService, taskService } from '@/services'
-import type { ManagedAccount, TaskType } from '@/services'
+import { taskService } from '@/services'
+import type { TaskType } from '@/services'
 import { ScriptSelector } from './ScriptSelector'
 import { ParameterEditor } from './ParameterEditor'
 
@@ -20,37 +20,16 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [cronFields, setCronFields] = useState({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
   const [accountId, setAccountId] = useState('')
-  const [accounts, setAccounts] = useState<ManagedAccount[]>([])
+  const [accounts, setAccounts] = useState<Array<{ twitterId: string; screenName: string; displayName: string; isOnline: boolean }>>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    let mounted = true
-
-    const loadAccounts = async () => {
-      try {
-        const result = await accountService.getManagedAccounts()
-        if (!mounted) return
-        setAccounts(result)
-        setAccountId(result.find((item) => item.isOnline)?.twitterId || result[0]?.twitterId || '')
-      } catch (err) {
-        console.error('Failed to load managed accounts:', err)
-        if (!mounted) return
-        setError('加载账号失败，请先添加账号到管理')
-      } finally {
-        if (mounted) {
-          setAccountsLoading(false)
-        }
-      }
-    }
-
-    void loadAccounts()
-
-    return () => {
-      mounted = false
-    }
+    // Account loading removed - will be reimplemented
+    setAccounts([])
+    setAccountsLoading(false)
   }, [])
 
   const cronExpression = useMemo(() => {

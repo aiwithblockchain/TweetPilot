@@ -1,12 +1,8 @@
 export { workspaceService } from './workspace'
 export type { WorkspaceHistory, WorkspaceService } from './workspace'
 
-export { accountService } from './account'
-export type {
-  AccountService,
-  AvailableAccount,
-  ManagedAccount,
-} from './account'
+export { getInstances } from './account'
+export type { LocalBridgeInstance, TwitterBasicInfo } from './account'
 
 export { taskService } from './task'
 export type {

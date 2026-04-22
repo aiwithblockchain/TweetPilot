@@ -22,7 +22,7 @@ import {
 } from '@/config/layout'
 import type { SidebarTreeItem } from '@/components/LeftSidebar'
 import { useToast } from '@/contexts/ToastContext'
-import { accountService, dataBlocksService, workspaceService } from '@/services'
+import { dataBlocksService, workspaceService } from '@/services'
 import { layoutService } from '@/services/layout'
 import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
@@ -96,7 +96,6 @@ export function useAppLayoutState() {
   const [instancesError, setInstancesError] = useState<string | null>(null)
   const [accountItems, setAccountItems] = useState<SidebarItem[]>([])
   const [accountsLoading, setAccountsLoading] = useState(false)
-  const [accountsError, setAccountsError] = useState<string | null>(null)
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
     {
       id: 'workspace',
@@ -141,12 +140,6 @@ export function useAppLayoutState() {
         description: '正在加载真实任务列表...'
       }
     }
-    if (activeView === 'accounts' && accountsError) {
-      return {
-        ...SIDEBAR_SECTION_CONFIG.accounts,
-        description: `账号列表加载失败：${accountsError}`,
-      }
-    }
     if (activeView === 'accounts' && accountsLoading) {
       return {
         ...SIDEBAR_SECTION_CONFIG.accounts,
@@ -160,7 +153,7 @@ export function useAppLayoutState() {
       }
     }
     return SIDEBAR_SECTION_CONFIG[activeView]
-  }, [activeView, tasksSidebar.error, tasksSidebar.loading, accountsError, accountsLoading, workspaceRootName])
+  }, [activeView, tasksSidebar.error, tasksSidebar.loading, accountsLoading, workspaceRootName])
 
   const selectedSidebarItemId = selectedItemsByView[activeView]
 
@@ -314,39 +307,9 @@ export function useAppLayoutState() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-
-    const loadAccounts = async () => {
-      setAccountsLoading(true)
-      try {
-        const accounts = await accountService.getManagedAccounts()
-        if (cancelled) return
-
-        const items: SidebarItem[] = accounts.map((account) => ({
-          id: account.twitterId,
-          label: account.screenName,
-          description: account.displayName,
-        }))
-
-        setAccountItems(items)
-        setAccountsError(null)
-      } catch (error) {
-        if (cancelled) return
-        setAccountsError(error instanceof Error ? error.message : '账号列表获取失败')
-      } finally {
-        if (!cancelled) {
-          setAccountsLoading(false)
-        }
-      }
-    }
-
-    void loadAccounts()
-    const interval = window.setInterval(loadAccounts, 60000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(interval)
-    }
+    // Account loading removed - will be reimplemented
+    setAccountItems([])
+    setAccountsLoading(false)
   }, [])
 
   useEffect(() => {
@@ -620,25 +583,8 @@ export function useAppLayoutState() {
     }
 
     if (actionId === 'refresh-accounts') {
-      try {
-        setAccountsLoading(true)
-        await accountService.refreshAllAccountsStatus()
-        const accounts = await accountService.getManagedAccounts()
-        const items: SidebarItem[] = accounts.map((account) => ({
-          id: account.twitterId,
-          label: account.screenName,
-          description: account.displayName,
-        }))
-        setAccountItems(items)
-        setAccountsError(null)
-        toast.success('账号列表已刷新')
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '刷新账号失败'
-        setAccountsError(message)
-        toast.error(message)
-      } finally {
-        setAccountsLoading(false)
-      }
+      // Account refresh removed - will be reimplemented
+      toast.info('账号功能正在重构中')
       setCenterMode(selectedItemsByView[activeView] ? 'detail' : 'empty')
       return
     }
