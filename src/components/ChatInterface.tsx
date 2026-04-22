@@ -21,7 +21,6 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionMetadata[]>([])
   const [showSessionPanel, setShowSessionPanel] = useState(false)
-  const [isLoadingSession, setIsLoadingSession] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
 
@@ -297,7 +296,6 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   const handleSelectSession = async (sessionId: string) => {
-    setIsLoadingSession(true)
     try {
       const storedMessages = await aiService.loadSession(sessionId)
       const loadedMessages: ChatMessage[] = storedMessages.map((m, index) => ({
@@ -315,8 +313,6 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       console.error('Failed to load session:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(`加载会话失败: ${errorMessage}`)
-    } finally {
-      setIsLoadingSession(false)
     }
   }
 
@@ -461,10 +457,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
           className="w-full min-h-[84px] resize-none rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#007ACC] disabled:opacity-50"
         />
 
-        <div className="flex items-center justify-between">
-          <button className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors">
-            📎 附件
-          </button>
+        <div className="flex items-center justify-end">
           <div className="flex gap-2">
             {isLoading && (
               <button

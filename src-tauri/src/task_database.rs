@@ -87,6 +87,7 @@ impl TaskDatabase {
 
     fn init_schema(conn: &Connection) -> Result<()> {
         conn.execute_batch(include_str!("../migrations/001_create_tasks_tables.sql"))?;
+        conn.execute_batch(include_str!("../migrations/002_create_accounts_table.sql"))?;
         Ok(())
     }
 

@@ -15,7 +15,7 @@ pub struct TaskState {
 
 impl TaskState {
     pub fn init_database(&self, workspace_path: &str) -> Result<(), String> {
-        let db_path = std::path::Path::new(workspace_path).join(".tweetpilot/tasks.db");
+        let db_path = std::path::Path::new(workspace_path).join(".tweetpilot/tweetpilot.db");
 
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
