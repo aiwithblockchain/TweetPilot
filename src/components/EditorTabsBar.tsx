@@ -79,12 +79,12 @@ export function EditorTabsBar({
       <button
         onClick={onToggleRightPanel}
         className="h-7 px-2 text-xs text-[var(--color-text)] hover:bg-[var(--color-border)] rounded flex items-center gap-1 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label={rightPanelVisible ? '隐藏 Claude 面板' : '显示 Claude 面板'}
+        aria-label={rightPanelVisible ? '隐藏 TweetPilotAI 面板' : '显示 TweetPilotAI 面板'}
         disabled={isCompactLayout}
       >
         {rightPanelVisible ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         <PanelsTopLeft className="w-4 h-4" />
-        Claude
+        TweetPilotAI
       </button>
     </div>
   )

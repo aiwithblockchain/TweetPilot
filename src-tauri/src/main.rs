@@ -138,29 +138,8 @@ fn main() {
             let timer_manager_clone = timer_manager.clone();
 
             tauri::async_runtime::spawn(async move {
-                timer_manager_clone
-                    .register_executor(
-                        "localbridge_sync".to_string(),
-                        Arc::new(unified_timer::LocalBridgeSyncExecutor::new()),
-                    )
-                    .await;
-
-                let localbridge_timer = unified_timer::Timer {
-                    id: "system-localbridge-sync".to_string(),
-                    name: "System LocalBridge Sync".to_string(),
-                    timer_type: unified_timer::TimerType::Interval { seconds: 60 },
-                    enabled: true,
-                    priority: 100,
-                    next_execution: Some(Utc::now() + chrono::Duration::seconds(60)),
-                    last_execution: None,
-                    executor: "localbridge_sync".to_string(),
-                    executor_config: json!({}),
-                };
-
-                if let Err(e) = timer_manager_clone.register_timer(localbridge_timer).await {
-                    log::error!("[main] Failed to register LocalBridge sync timer: {}", e);
-                }
-
+                // Only start the event loop, don't register LocalBridge timer yet
+                // LocalBridge timer will be registered when workspace is initialized
                 timer_manager_clone.start().await;
             });
             Ok(())

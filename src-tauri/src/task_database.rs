@@ -571,4 +571,102 @@ impl TaskDatabase {
 
         results.collect()
     }
+
+    // Account management methods
+    pub fn get_account_last_update(&self, twitter_id: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT updated_at FROM managed_twitter_accounts WHERE twitter_id = ?1"
+        )?;
+
+        let result = stmt.query_row(params![twitter_id], |row| row.get(0));
+
+        match result {
+            Ok(time) => Ok(Some(time)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn insert_account(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "INSERT INTO managed_twitter_accounts (
+                twitter_id, screen_name, display_name, avatar_url, description,
+                is_verified, is_managed, last_online_time, instance_id, extension_name,
+                followers_count, following_count, tweet_count, favourites_count,
+                listed_count, media_count, account_created_at,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            params![
+                account.twitter_id,
+                account.screen_name,
+                account.display_name,
+                account.avatar_url,
+                account.description,
+                account.is_verified,
+                false, // is_managed defaults to false
+                account.last_seen.to_rfc3339(),
+                account.instance_id,
+                account.extension_name,
+                account.followers_count,
+                account.following_count,
+                account.tweet_count,
+                account.favourites_count,
+                account.listed_count,
+                account.media_count,
+                account.created_at,
+                now,
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_account(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "UPDATE managed_twitter_accounts SET
+                screen_name = ?2,
+                display_name = ?3,
+                avatar_url = ?4,
+                description = ?5,
+                is_verified = ?6,
+                last_online_time = ?7,
+                instance_id = ?8,
+                extension_name = ?9,
+                followers_count = ?10,
+                following_count = ?11,
+                tweet_count = ?12,
+                favourites_count = ?13,
+                listed_count = ?14,
+                media_count = ?15,
+                account_created_at = ?16,
+                updated_at = ?17
+            WHERE twitter_id = ?1",
+            params![
+                account.twitter_id,
+                account.screen_name,
+                account.display_name,
+                account.avatar_url,
+                account.description,
+                account.is_verified,
+                account.last_seen.to_rfc3339(),
+                account.instance_id,
+                account.extension_name,
+                account.followers_count,
+                account.following_count,
+                account.tweet_count,
+                account.favourites_count,
+                account.listed_count,
+                account.media_count,
+                account.created_at,
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
 }

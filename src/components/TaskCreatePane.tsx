@@ -339,7 +339,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                       }
                     }}
                     placeholder="0 0 9 * * * (每天早上9点)"
-                    className="w-full h-10 rounded border border-[var(--color-border)] bg-[#111112] px-3 text-sm text-[var(--color-text)] font-mono outline-none focus:border-[#6D5BF6]"
+                    className="w-full h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] font-mono outline-none focus:border-[#6D5BF6]"
                   />
                   <div className="mt-2 p-3 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)]">
                     <div className="text-xs text-[var(--color-text-secondary)] mb-1">预览：</div>

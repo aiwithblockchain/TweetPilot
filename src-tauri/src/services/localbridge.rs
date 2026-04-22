@@ -29,6 +29,11 @@ pub struct XUser {
     pub following_count: Option<i64>,
     pub tweet_count: Option<i64>,
     pub profile_image_url: Option<String>,
+    pub created_at: Option<String>,
+    pub verified: Option<bool>,
+    pub favourites_count: Option<i64>,
+    pub listed_count: Option<i64>,
+    pub media_count: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -229,16 +234,18 @@ impl LocalBridgeClient {
             following_count: legacy.and_then(|l| l.get("friends_count")).and_then(|v| v.as_i64()),
             tweet_count: legacy.and_then(|l| l.get("statuses_count")).and_then(|v| v.as_i64()),
             profile_image_url,
+            created_at: legacy
+                .and_then(|l| l.get("created_at"))
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            verified: user_result
+                .get("verification")
+                .and_then(|v| v.get("verified"))
+                .and_then(|v| v.as_bool()),
+            favourites_count: legacy.and_then(|l| l.get("favourites_count")).and_then(|v| v.as_i64()),
+            listed_count: legacy.and_then(|l| l.get("listed_count")).and_then(|v| v.as_i64()),
+            media_count: legacy.and_then(|l| l.get("media_count")).and_then(|v| v.as_i64()),
         };
-
-        println!("解析结果:");
-        println!("  ID: {:?}", user.id);
-        println!("  Name: {:?}", user.name);
-        println!("  Screen Name: {:?}", user.screen_name);
-        println!("  Followers: {:?}", user.followers_count);
-        println!("  Following: {:?}", user.following_count);
-        println!("  Tweets: {:?}", user.tweet_count);
-        println!("========================\n");
 
         Ok(user)
     }
@@ -628,6 +635,11 @@ impl LocalBridgeClient {
             following_count: legacy.get("friends_count").and_then(|v| v.as_i64()),
             tweet_count: legacy.get("statuses_count").and_then(|v| v.as_i64()),
             profile_image_url: legacy.get("profile_image_url_https").and_then(|v| v.as_str()).map(String::from),
+            created_at: legacy.get("created_at").and_then(|v| v.as_str()).map(String::from),
+            verified: result.get("verification").and_then(|v| v.get("verified")).and_then(|v| v.as_bool()),
+            favourites_count: legacy.get("favourites_count").and_then(|v| v.as_i64()),
+            listed_count: legacy.get("listed_count").and_then(|v| v.as_i64()),
+            media_count: legacy.get("media_count").and_then(|v| v.as_i64()),
         })
     }
 

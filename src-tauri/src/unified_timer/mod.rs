@@ -3,6 +3,7 @@ mod executor;
 mod registry;
 mod event_loop;
 pub mod executors;
+pub mod unmanaged_accounts;
 
 pub use types::{Timer, TimerType};
 pub use executor::TimerExecutor;
@@ -79,6 +80,25 @@ impl UnifiedTimerManager {
             }
         }
         log::info!("[UnifiedTimerManager] Task timers cleared");
+    }
+
+    pub async fn clear_all_timers(&self) {
+        log::info!("[UnifiedTimerManager] Clearing all timers");
+        let mut registry = self.registry.lock().await;
+        let all_timer_ids: Vec<String> = registry
+            .list_all()
+            .into_iter()
+            .map(|timer| timer.id)
+            .collect();
+
+        log::info!("[UnifiedTimerManager] Found {} timers to clear", all_timer_ids.len());
+        for timer_id in all_timer_ids {
+            log::debug!("[UnifiedTimerManager] Unregistering timer: {}", timer_id);
+            if let Err(e) = registry.unregister(&timer_id) {
+                log::warn!("[UnifiedTimerManager] Failed to unregister timer {}: {}", timer_id, e);
+            }
+        }
+        log::info!("[UnifiedTimerManager] All timers cleared");
     }
 
     pub async fn start(&self) {

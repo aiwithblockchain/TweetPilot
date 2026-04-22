@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS managed_twitter_accounts (
     last_online_time TIMESTAMP,
     instance_id TEXT,
     extension_name TEXT,
+    followers_count INTEGER,
+    following_count INTEGER,
+    tweet_count INTEGER,
+    favourites_count INTEGER,
+    listed_count INTEGER,
+    media_count INTEGER,
+    account_created_at TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
