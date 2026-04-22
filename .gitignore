@@ -32,3 +32,4 @@ api_docs.json
 __pycache__/
 .tweetpilot/
 .claude/
+.tweetpilot.json

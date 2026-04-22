@@ -17,6 +17,7 @@ import {
   TAB_META,
   type OpenTab,
   type SidebarItem,
+  type TabId,
   type View,
 } from '@/config/layout'
 import type { SidebarTreeItem } from '@/components/LeftSidebar'
@@ -108,7 +109,7 @@ export function useAppLayoutState() {
   const [workspaceTree, setWorkspaceTree] = useState<Record<string, WorkspaceEntry[]>>({})
   const [expandedWorkspacePaths, setExpandedWorkspacePaths] = useState<Record<string, boolean>>({})
   const [workspaceLoadingPaths, setWorkspaceLoadingPaths] = useState<Record<string, boolean>>({})
-  const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0)
+  const [workspaceRefreshKey] = useState(0)
   const [workspaceFileContent, setWorkspaceFileContent] = useState<WorkspaceFileContent | null>(null)
   const [workspaceFolderSummary, setWorkspaceFolderSummary] = useState<WorkspaceFolderSummary | null>(null)
   const [workspaceDetailLoading, setWorkspaceDetailLoading] = useState(false)
@@ -318,11 +319,11 @@ export function useAppLayoutState() {
     const loadAccounts = async () => {
       setAccountsLoading(true)
       try {
-        const accounts = await accountService.getMappedAccounts()
+        const accounts = await accountService.getManagedAccounts()
         if (cancelled) return
 
         const items: SidebarItem[] = accounts.map((account) => ({
-          id: account.screenName,
+          id: account.twitterId,
           label: account.screenName,
           description: account.displayName,
         }))
@@ -622,9 +623,9 @@ export function useAppLayoutState() {
       try {
         setAccountsLoading(true)
         await accountService.refreshAllAccountsStatus()
-        const accounts = await accountService.getMappedAccounts()
+        const accounts = await accountService.getManagedAccounts()
         const items: SidebarItem[] = accounts.map((account) => ({
-          id: account.screenName,
+          id: account.twitterId,
           label: account.screenName,
           description: account.displayName,
         }))
@@ -666,7 +667,7 @@ export function useAppLayoutState() {
     setDataBlockMenuOpen(false)
   }
 
-  const handleCloseTab = (tabId: View) => {
+  const handleCloseTab = (tabId: TabId) => {
     if (tabId === 'workspace' && openTabs.length === 1) return
 
     setOpenTabs((prev) => {
@@ -674,10 +675,10 @@ export function useAppLayoutState() {
       const fallbackTab = nextTabs[nextTabs.length - 1]?.id ?? 'workspace'
 
       if (activeView === tabId) {
-        setActiveView(fallbackTab)
+        setActiveView(fallbackTab as View)
         const fallbackSelectedId = fallbackTab === 'workspace'
           ? selectedItemsByView.workspace ?? workspaceRoot
-          : selectedItemsByView[fallbackTab] ?? SIDEBAR_ITEMS[fallbackTab][0]?.id ?? null
+          : selectedItemsByView[fallbackTab as View] ?? SIDEBAR_ITEMS[fallbackTab as View]?.[0]?.id ?? null
         setCenterMode(fallbackSelectedId ? 'detail' : 'empty')
       }
 
@@ -685,12 +686,12 @@ export function useAppLayoutState() {
     })
   }
 
-  const handleActivateTab = (tabId: View) => {
-    setActiveView(tabId)
+  const handleActivateTab = (tabId: TabId) => {
+    setActiveView(tabId as View)
     const nextSelectedId = tabId === 'workspace'
       ? selectedItemsByView.workspace ?? workspaceRoot
-      : selectedItemsByView[tabId] ?? SIDEBAR_ITEMS[tabId][0]?.id ?? null
-    if (nextSelectedId && !selectedItemsByView[tabId]) {
+      : (selectedItemsByView[tabId as View] ?? (SIDEBAR_ITEMS[tabId as View] as SidebarItem[])[0]?.id ?? null)
+    if (nextSelectedId && !selectedItemsByView[tabId as View]) {
       setSelectedItemsByView((prev) => ({ ...prev, [tabId]: nextSelectedId }))
     }
     setCenterMode(nextSelectedId ? 'detail' : 'empty')

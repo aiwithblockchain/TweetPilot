@@ -20,8 +20,8 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
       {hasThinking && (
         <ThinkingBlock
           thinking={message.thinking || ''}
-          isActive={isStreaming && !hasContent}
-          isComplete={message.thinkingComplete || false}
+          isActive={(isStreaming && !hasContent) ?? false}
+          isComplete={message.thinkingComplete ?? false}
         />
       )}
 
@@ -29,7 +29,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
       {hasToolCalls && (
         <ProcessSteps
           toolCalls={message.toolCalls || []}
-          isActive={isStreaming}
+          isActive={isStreaming ?? false}
         />
       )}
 

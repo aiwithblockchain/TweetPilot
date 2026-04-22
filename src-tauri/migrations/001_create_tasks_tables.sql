@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 
   parameters TEXT,
 
+  tweet_id TEXT,
+  text TEXT,
+  last_execution_status TEXT CHECK(last_execution_status IN ('success', 'failure')),
+
   last_execution_time TEXT,
   next_execution_time TEXT,
 

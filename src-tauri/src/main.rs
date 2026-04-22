@@ -84,7 +84,7 @@ async fn test_localbridge_connection() {
 
 fn main() {
     use std::sync::Arc;
-    use unified_timer::{UnifiedTimerManager, Timer, TimerType, AccountSyncExecutor};
+    use unified_timer::UnifiedTimerManager;
 
     // Initialize logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -101,12 +101,19 @@ fn main() {
     // Initialize unified timer manager
     let timer_manager = Arc::new(UnifiedTimerManager::new());
 
+    // Initialize account sync channel
+    let (account_sync_tx, account_sync_rx) = tokio::sync::mpsc::channel::<task_commands::AccountSyncMessage>(100);
+
     let task_state = TaskState {
         db: db.clone(),
         executor: Arc::new(task_executor),
         workspace_root: workspace_root.clone(),
         timer_manager: timer_manager.clone(),
+        account_sync_tx: account_sync_tx.clone(),
     };
+
+    // Spawn account sync background worker
+    task_commands::spawn_account_sync_worker(account_sync_rx, db.clone());
 
     // Initialize AI state
     let ai_state = ai::AiState {
@@ -205,26 +212,9 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 test_localbridge_connection().await;
 
-                timer_manager_clone.register_executor(
-                    "account_sync".to_string(),
-                    Arc::new(AccountSyncExecutor)
-                ).await;
-
-                let account_sync_timer = Timer {
-                    id: "system-account-sync".to_string(),
-                    name: "账号状态同步".to_string(),
-                    timer_type: TimerType::Interval { seconds: 60 },
-                    enabled: true,
-                    priority: 10,
-                    next_execution: None,
-                    last_execution: None,
-                    executor: "account_sync".to_string(),
-                    executor_config: serde_json::json!({}),
-                };
-
-                if let Err(e) = timer_manager_clone.register_timer(account_sync_timer).await {
-                    eprintln!("Failed to register account sync timer: {}", e);
-                }
+                // Note: AccountSyncExecutor is deprecated - account sync now uses Channel + background worker
+                // Account sync is triggered manually via refresh_all_accounts_status command
+                // or can be set up as a scheduled task if needed
 
                 timer_manager_clone.start().await;
             });
@@ -248,17 +238,12 @@ fn main() {
             workspace::create_workspace_file,
             workspace::create_workspace_folder,
             // Account commands
-            account::get_available_accounts,
-            account::map_account,
-            account::delete_account_mapping,
-            account::get_mapped_accounts,
             account::get_instances,
-            account::verify_account_status,
             account::refresh_all_accounts_status,
-            account::reconnect_account,
-            account::get_account_settings,
-            account::save_account_personality,
-            account::unlink_account,
+            account::get_managed_accounts,
+            account::get_available_accounts,
+            account::add_account_to_management,
+            account::remove_account_from_management,
             account::delete_account_completely,
             // Task commands (new implementation)
             task_module::create_task,

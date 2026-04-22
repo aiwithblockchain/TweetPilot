@@ -1,10 +1,13 @@
 # TweetPilot AI 集成方案
 
-**文档版本**: 4.0  
+**文档版本**: 5.0  
 **更新日期**: 2026-04-22  
 **文档类型**: 架构设计与实现说明  
 **状态**: ✅ 已完成第一阶段  
 **参考项目**: microcompany (Claurst 集成实现)
+
+**更新说明**：
+- v5.0: 整合账号级 AI Session、人设管理、全局敏感词过滤机制
 
 ---
 
@@ -47,10 +50,148 @@ TweetPilot 需要集成 AI 对话功能，帮助用户：
 
 ### 2.2 未来扩展（第二阶段）
 
-- ⏳ **账号级会话** - 每个推特账号有独立的 AI 会话
+#### 核心功能
+
+- ⏳ **AI 自主工作流任务** - 定时任务触发 AI Session 自主执行复杂工作流
+  - 与 UnifiedTimerManager 集成
+  - **账号级 AI Session**：每个推特账号拥有独立的 AI Session（Session ID: `account-{account_id}`）
+  - **人设管理**：账号人设注入到 System Prompt，保持语气和风格一致性
+  - **全局敏感词过滤**：多层防护机制，确保推文内容安全合规
+  - 用户通过自然语言配置任务（无需定义步骤）
+  - AI 自主调用工具完成整个流程（Bash 执行 Python、Read 读取输出、分析内容、再次执行脚本等）
+  - 支持知识库集成（产品信息 + 账号人设 + 全局内容策略）
+  - 典型场景：定时获取热点 → AI 分析 → 生成符合人设的推文 → 敏感词检查 → 自动发送
+  - **详细设计文档**: [AI 自主工作流任务技术方案](ai-autonomous-workflow-design.md)
+  - **实施周期**: 8-12 天
+  - **核心组件**:
+    - AiAutonomousExecutor (Rust 执行器，支持账号级 Session)
+    - 知识库组织系统 (产品知识库 + 账号人设 + 全局敏感词库)
+    - ContentReviewer (多层敏感词过滤)
+    - 任务配置界面 (React UI，支持账号选择和人设编辑)
+    - 成本控制和安全机制
+
+#### 其他功能
+
 - ⏳ **脚本生成** - AI 生成 Python 脚本到工作目录
 - ⏳ **脚本解释** - AI 解释脚本功能和用法
 - ⏳ **附件上传** - 支持上传文件到 AI 对话
+
+---
+
+## 二.五、第二阶段核心架构设计
+
+### 2.5.1 账号级 AI Session 架构
+
+**设计原则**：
+- 每个推特账号拥有独立的 AI Session（Session ID: `account-{account_id}`）
+- Session 绑定账号人设，保持语气和风格一致性
+- 利用 Claurst 内置的 Compact 机制自动管理上下文
+- Session 复用，避免重复加载知识库和人设
+
+**Session 生命周期**：
+```
+1. 首次执行任务
+   ↓
+2. 创建账号级 Session (account-123)
+   - 加载账号人设
+   - 加载全局敏感词库
+   - 注入到 System Prompt
+   ↓
+3. 执行任务（生成推文）
+   - AI 记住人设和敏感词规则
+   - 生成符合人设的内容
+   - 自动避免敏感词
+   ↓
+4. Session 持久化
+   - 保存对话历史
+   - 记住已发送的推文
+   ↓
+5. 下次执行任务
+   - 复用现有 Session
+   - AI 记得历史推文，避免重复
+   - 上下文达到 90% 时自动 Compact
+```
+
+**System Prompt 结构**：
+```
+优先级 1: 全局内容审核规则（最高优先级）
+优先级 2: 全局敏感词库（绝对禁止）
+优先级 3: 账号人设（在遵守全局规则的前提下）
+```
+
+### 2.5.2 知识库组织架构
+
+```
+knowledge/
+├── global/                          # 全局配置（所有账号共享）
+│   ├── sensitive-words.md           # 敏感词库
+│   └── content-policy.md            # 内容审核策略
+├── personas/                        # 账号人设
+│   ├── account-123.md               # 账号 123 的人设
+│   └── account-456.md               # 账号 456 的人设
+└── products/                        # 产品知识库
+    ├── meshnet-protocol/            # 产品 A
+    └── another-product/             # 产品 B
+```
+
+**加载优先级**：
+1. 全局敏感词库（所有 Session 必须加载）
+2. 全局内容策略（所有 Session 必须加载）
+3. 账号人设（账号级 Session 加载）
+4. 产品知识库（任务执行时按需加载）
+
+### 2.5.3 多层敏感词过滤架构
+
+**第一层：AI 自我审查**
+- 通过 System Prompt 注入敏感词规则
+- AI 在生成推文时自动避免敏感词
+- 成本：0（无额外开销）
+- 准确率：~95%（依赖 AI 理解能力）
+
+**第二层：发送前检查**
+- `ContentReviewer` 组件执行二次验证
+- 完全匹配检查（精确匹配敏感词）
+- 正则表达式检测变体（拼音、谐音、空格分隔）
+- PII 检测（手机号、邮箱等）
+- 成本：极低（本地正则匹配）
+- 准确率：~99%（规则引擎）
+
+**第三层：人工审核模式**（可选）
+- 高风险账号或敏感时期启用
+- AI 生成推文后，发送前需人工批准
+- 成本：人工时间
+- 准确率：100%
+
+**防护效果**：
+- 三层防护确保敏感词不会出现在推文中
+- 即使 AI 误判，发送前检查也会拦截
+- 支持敏感词库动态更新，无需重启服务
+
+### 2.5.4 数据模型扩展
+
+**tasks 表扩展**：
+```sql
+ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'python_script';
+ALTER TABLE tasks ADD COLUMN ai_workflow_config TEXT;
+ALTER TABLE tasks ADD COLUMN account_id INTEGER;  -- 关联推特账号
+```
+
+**accounts 表扩展**：
+```sql
+ALTER TABLE accounts ADD COLUMN persona TEXT;  -- 账号人设描述
+```
+
+**AI 工作流配置格式**：
+```json
+{
+  "account_id": 123,
+  "initial_prompt": "执行 scripts/fetch_trends.py 获取热点...",
+  "working_dir": "/Users/hyperorchid/MeshNetProtocol",
+  "knowledge_base": "knowledge/meshnet-protocol/",
+  "timeout_seconds": 600,
+  "max_retries": 3
+}
+```
 
 ---
 

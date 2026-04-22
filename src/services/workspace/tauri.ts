@@ -136,12 +136,12 @@ export const workspaceTauriService: WorkspaceService = {
   },
 
   async createFile(input: CreateWorkspaceEntryInput) {
-    const response = await tauriInvoke<TauriWorkspaceEntry>('create_workspace_file', input)
+    const response = await tauriInvoke<TauriWorkspaceEntry>('create_workspace_file', input as unknown as Record<string, unknown>)
     return mapWorkspaceEntry(response)
   },
 
   async createFolder(input: CreateWorkspaceEntryInput) {
-    const response = await tauriInvoke<TauriWorkspaceEntry>('create_workspace_folder', input)
+    const response = await tauriInvoke<TauriWorkspaceEntry>('create_workspace_folder', input as unknown as Record<string, unknown>)
     return mapWorkspaceEntry(response)
   },
 }

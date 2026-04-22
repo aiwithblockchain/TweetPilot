@@ -4,7 +4,7 @@ import AddCardDialog from '../components/AddCardDialog'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { accountService, dataBlocksService } from '@/services'
 import { useToast } from '@/contexts/ToastContext'
-import type { MappedAccount } from '@/services/account'
+import type { ManagedAccount } from '@/services/account'
 import type { DataBlockCard } from '@/services/data-blocks'
 import {
   DndContext,
@@ -29,7 +29,7 @@ export default function DataBlocks() {
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
-  const [accounts, setAccounts] = useState<MappedAccount[]>([])
+  const [accounts, setAccounts] = useState<ManagedAccount[]>([])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [deleteCardId, setDeleteCardId] = useState<string | null>(null)
   const toast = useToast()
@@ -47,11 +47,11 @@ export default function DataBlocks() {
 
   const loadData = async () => {
     try {
-      const accountsResult = await accountService.getMappedAccounts()
+      const accountsResult = await accountService.getManagedAccounts()
       setAccounts(accountsResult)
 
       if (accountsResult.length > 0 && !selectedAccount) {
-        setSelectedAccount(accountsResult[0].screenName)
+        setSelectedAccount(accountsResult[0].twitterId)
       }
 
       const layout = await dataBlocksService.getLayout()
@@ -161,7 +161,7 @@ export default function DataBlocks() {
                 className="flex items-center gap-2 h-8 px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded hover:bg-[var(--color-bg)] transition-colors"
               >
                 <img
-                  src={selectedAccountData.avatar}
+                  src={selectedAccountData.avatarUrl}
                   alt={selectedAccountData.displayName}
                   className="w-6 h-6 rounded-full"
                 />
@@ -183,7 +183,7 @@ export default function DataBlocks() {
                       }`}
                     >
                       <img
-                        src={account.avatar}
+                        src={account.avatarUrl}
                         alt={account.displayName}
                         className="w-6 h-6 rounded-full"
                       />

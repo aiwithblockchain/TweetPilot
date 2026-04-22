@@ -53,6 +53,9 @@ export interface Task {
   createdAt: string
   updatedAt: string
   tags?: string[]
+  tweetId?: string
+  text?: string
+  lastExecutionStatus?: 'success' | 'failure'
 }
 
 export interface TaskDetail {
@@ -76,6 +79,12 @@ export interface TaskConfigInput {
   parameters?: Record<string, any>
   tags?: string[]
 }
+
+export type TaskAction = 'start' | 'stop' | 'pause' | 'resume'
+
+export type TaskExecutionRecord = ExecutionResult
+
+export type TaskStats = TaskStatistics
 
 export interface TaskService {
   getTasks(): Promise<Task[]>

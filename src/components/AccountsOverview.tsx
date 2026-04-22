@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { accountService } from '@/services'
-import type { MappedAccount } from '@/services/account'
+import type { ManagedAccount } from '@/services/account'
 import type { SidebarItem } from '@/config/layout'
 
 interface AccountsOverviewProps {
@@ -8,7 +8,7 @@ interface AccountsOverviewProps {
 }
 
 export function AccountsOverview({ item }: AccountsOverviewProps) {
-  const [accounts, setAccounts] = useState<MappedAccount[]>([])
+  const [accounts, setAccounts] = useState<ManagedAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -17,7 +17,7 @@ export function AccountsOverview({ item }: AccountsOverviewProps) {
       try {
         setLoading(true)
         setError(null)
-        const result = await accountService.getMappedAccounts()
+        const result = await accountService.getManagedAccounts()
         setAccounts(result)
       } catch (err) {
         setError(err instanceof Error ? err.message : '读取账号失败')
@@ -59,7 +59,7 @@ export function AccountsOverview({ item }: AccountsOverviewProps) {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {filteredAccounts.map((account) => (
-            <AccountSummaryCard key={account.screenName} account={account} />
+            <AccountSummaryCard key={account.twitterId} account={account} />
           ))}
         </div>
       )}
@@ -67,26 +67,18 @@ export function AccountsOverview({ item }: AccountsOverviewProps) {
   )
 }
 
-function AccountSummaryCard({ account }: { account: MappedAccount }) {
-  const statusStyles: Record<string, string> = {
-    online: 'text-[#4EC9B0] bg-[#4EC9B0]/10 border-[#4EC9B0]/40',
-    offline: 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/40',
-    verifying: 'text-[#D7BA7D] bg-[#D7BA7D]/10 border-[#D7BA7D]/40',
-    unknown: 'text-[var(--color-text-secondary)] bg-[#858585]/10 border-[#858585]/30',
-  }
+function AccountSummaryCard({ account }: { account: ManagedAccount }) {
+  const statusColor = account.isOnline
+    ? 'text-[#4EC9B0] bg-[#4EC9B0]/10 border-[#4EC9B0]/40'
+    : 'text-[#F48771] bg-[#F48771]/10 border-[#F48771]/40'
 
-  const statusText: Record<string, string> = {
-    online: '在线',
-    offline: '离线',
-    verifying: '验证中',
-    unknown: '未知',
-  }
+  const statusText = account.isOnline ? '在线' : '离线'
 
   return (
     <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex items-center gap-3">
         <img
-          src={account.avatar}
+          src={account.avatarUrl || 'https://pbs.twimg.com/profile_images/default_profile_400x400.png'}
           alt={account.displayName}
           className="w-12 h-12 rounded-full object-cover border border-[var(--color-border)]"
         />
@@ -94,16 +86,16 @@ function AccountSummaryCard({ account }: { account: MappedAccount }) {
           <div className="text-sm font-semibold text-[var(--color-text)] truncate">{account.displayName}</div>
           <div className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{account.screenName}</div>
         </div>
-        <span className={['text-[11px] px-2 py-1 rounded border whitespace-nowrap', statusStyles[account.status] ?? statusStyles.unknown].join(' ')}>
-          {statusText[account.status] ?? statusText.unknown}
+        <span className={['text-[11px] px-2 py-1 rounded border whitespace-nowrap', statusColor].join(' ')}>
+          {statusText}
         </span>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <InfoBlock label="最后验证" value={formatRelativeTime(account.lastVerified)} />
+        <InfoBlock label="最后在线" value={account.lastOnlineTime ? formatRelativeTime(account.lastOnlineTime) : '未知'} />
         <InfoBlock label="实例" value={account.extensionName || account.instanceId || '未绑定'} />
         <InfoBlock label="Twitter ID" value={account.twitterId || '未知'} />
-        <InfoBlock label="登录状态" value={account.isLoggedIn ? '已登录' : '未登录'} />
+        <InfoBlock label="认证状态" value={account.isVerified ? '已认证' : '未认证'} />
       </div>
     </div>
   )

@@ -44,7 +44,7 @@ export function WorkspaceHome({ item, instances, instancesError }: WorkspaceHome
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricCard label="实例总数" value={String(instances.length)} hint="来自 LocalBridge / mock 兜底" />
+        <MetricCard label="实例总数" value={String(instances.length)} hint="来自 LocalBridge" />
         <MetricCard label="在线实例" value={String(onlineCount)} hint="用于快速判断当前运行状态" />
         <MetricCard label="当前视图" value={selected.label} hint={selected.description} />
       </div>

@@ -1,11 +1,11 @@
 import { tauriInvoke } from '@/lib/tauri-api'
 import type {
   ExecutionResult,
+  ScheduleType,
   Task,
   TaskConfigInput,
   TaskDetail,
   TaskService,
-  TaskStats,
   TaskStatus,
   TaskType,
 } from './types'
@@ -37,10 +37,13 @@ interface TauriTask {
   intervalSeconds?: number
   nextExecutionTime?: string
   lastExecutionTime?: string
+  accountId?: string
   accountScreenName?: string
   tweetId?: string
-  query?: string
   text?: string
+  enabled?: boolean
+  createdAt?: string
+  updatedAt?: string
   statistics?: {
     totalExecutions: number
     successCount: number
@@ -60,7 +63,6 @@ interface TauriTaskDetail {
     averageDuration: number
   }
   history: ExecutionResult[]
-  failureLog: ExecutionResult[]
 }
 
 interface TauriTaskExecutionRecord {
@@ -81,7 +83,7 @@ function mapTask(task: TauriTask): Task {
     description: task.description,
     type: task.type,
     scriptPath: task.scriptPath,
-    parameters: task.parameters,
+    parameters: task.parameters || {},
     status: task.status,
     lastExecution: task.lastExecution,
     lastExecutionStatus: task.lastExecutionStatus,
@@ -90,11 +92,20 @@ function mapTask(task: TauriTask): Task {
     intervalSeconds: task.intervalSeconds,
     nextExecutionTime: task.nextExecutionTime,
     lastExecutionTime: task.lastExecutionTime,
-    statistics: task.statistics,
+    statistics: task.statistics || {
+      totalExecutions: 0,
+      successCount: 0,
+      failureCount: 0,
+      successRate: 0,
+      averageDuration: 0,
+    },
+    accountId: task.accountId || '',
     accountScreenName: (task as TauriTask & { accountScreenName?: string }).accountScreenName,
     tweetId: (task as TauriTask & { tweetId?: string }).tweetId,
-    query: (task as TauriTask & { query?: string }).query,
     text: (task as TauriTask & { text?: string }).text,
+    enabled: task.enabled ?? true,
+    createdAt: task.createdAt || new Date().toISOString(),
+    updatedAt: task.updatedAt || new Date().toISOString(),
   }
 }
 
@@ -103,11 +114,10 @@ function mapTaskDetail(detail: TauriTaskDetail): TaskDetail {
     task: mapTask(detail.task),
     statistics: detail.statistics,
     history: detail.history,
-    failureLog: detail.failureLog,
   }
 }
 
-function toTauriTaskConfig(config: TaskConfigInput): TauriTaskConfigInput {
+function toTauriTaskConfig(config: Partial<TaskConfigInput>): Partial<TauriTaskConfigInput> {
   return {
     name: config.name,
     description: config.description,
@@ -167,25 +177,15 @@ export const taskTauriService: TaskService = {
       taskId,
       limit,
     })
-    return result.map((item) => ({
+    return result.map((item): ExecutionResult => ({
       id: item.id,
       taskId: item.taskId,
       startTime: item.startTime,
-      endTime: item.endTime,
-      duration: item.duration,
-      status: item.status,
+      endTime: item.endTime || '',
+      duration: item.duration || 0,
+      status: item.status === 'running' ? 'success' : item.status === 'failed' ? 'failure' : 'success',
+      exitCode: item.exitCode || 0,
       output: item.output,
-      exitCode: item.exitCode,
     }))
-  },
-
-  async getTaskStats() {
-    const tasks = await this.getTasks()
-    return {
-      total: tasks.length,
-      running: tasks.filter((item) => item.status === 'running').length,
-      paused: tasks.filter((item) => item.status === 'paused').length,
-      failed: tasks.filter((item) => item.status === 'failed').length,
-    } satisfies TaskStats
   },
 }

@@ -1,137 +1,62 @@
 import { tauriInvoke } from '@/lib/tauri-api'
 import type {
   AccountService,
-  AccountSettings,
-  AccountStatus,
   AvailableAccount,
-  MappedAccount,
+  ManagedAccount,
 } from './types'
 
-interface TauriAvailableAccount {
+interface TauriAccountWithStatus {
+  twitterId: string
   screenName: string
   displayName: string
-  avatar: string
-}
-
-interface TauriMappedAccount {
-  screenName: string
-  displayName: string
-  avatar: string
-  status: AccountStatus
-  lastVerified: string
-  twitterId?: string
+  avatarUrl?: string
   description?: string
+  isVerified: boolean
+  isOnline: boolean
+  lastOnlineTime?: string
   instanceId?: string
   extensionName?: string
-  defaultTabId?: number
-  isLoggedIn?: boolean
-  followersCount?: number
-  followingCount?: number
-  tweetCount?: number
 }
 
-interface TauriAccountSettings {
-  twitterId: string
-  name: string
-  screenName: string
-  avatar: string
-  isLinked: boolean
-  extensionId?: string
-  extensionName?: string
-  personality: string
-}
-
-function mapTauriMappedAccount(account: TauriMappedAccount): MappedAccount {
+function mapTauriAccount(account: TauriAccountWithStatus): ManagedAccount | AvailableAccount {
   return {
+    twitterId: account.twitterId,
     screenName: account.screenName,
     displayName: account.displayName,
-    avatar: account.avatar,
-    status: account.status,
-    lastVerified: account.lastVerified,
-    twitterId: account.twitterId,
+    avatarUrl: account.avatarUrl,
     description: account.description,
+    isVerified: account.isVerified,
+    isOnline: account.isOnline,
+    lastOnlineTime: account.lastOnlineTime,
     instanceId: account.instanceId,
     extensionName: account.extensionName,
-    defaultTabId: account.defaultTabId,
-    isLoggedIn: account.isLoggedIn,
-    followersCount: account.followersCount,
-    followingCount: account.followingCount,
-    tweetCount: account.tweetCount,
-  }
-}
-
-function mapTauriAvailableAccount(account: TauriAvailableAccount): AvailableAccount {
-  return {
-    screenName: account.screenName,
-    displayName: account.displayName,
-    avatar: account.avatar,
-  }
-}
-
-function mapTauriAccountSettings(settings: TauriAccountSettings): AccountSettings {
-  return {
-    twitterId: settings.twitterId,
-    name: settings.name,
-    screenName: settings.screenName,
-    avatar: settings.avatar,
-    isLinked: settings.isLinked,
-    extensionId: settings.extensionId,
-    extensionName: settings.extensionName,
-    personality: settings.personality,
   }
 }
 
 export const accountTauriService: AccountService = {
+  async getManagedAccounts() {
+    const result = await tauriInvoke<TauriAccountWithStatus[]>('get_managed_accounts')
+    return result.map(mapTauriAccount)
+  },
+
   async getAvailableAccounts() {
-    const result = await tauriInvoke<TauriAvailableAccount[]>('get_available_accounts')
-    return result.map(mapTauriAvailableAccount)
+    const result = await tauriInvoke<TauriAccountWithStatus[]>('get_available_accounts')
+    return result.map(mapTauriAccount)
   },
 
-  async getMappedAccounts() {
-    const result = await tauriInvoke<TauriMappedAccount[]>('get_mapped_accounts')
-    return result.map(mapTauriMappedAccount)
+  async addAccountToManagement(twitterId) {
+    await tauriInvoke<void>('add_account_to_management', { twitterId })
   },
 
-  async mapAccount(screenName) {
-    const result = await tauriInvoke<TauriMappedAccount>('map_account', { screenName })
-    return mapTauriMappedAccount(result)
+  async removeAccountFromManagement(twitterId) {
+    await tauriInvoke<void>('remove_account_from_management', { twitterId })
   },
 
-  async deleteAccountMapping(screenName) {
-    await tauriInvoke<void>('delete_account_mapping', { screenName })
-  },
-
-  async verifyAccountStatus(screenName) {
-    return tauriInvoke<AccountStatus>('verify_account_status', { screenName })
+  async deleteAccountCompletely(twitterId) {
+    await tauriInvoke<void>('delete_account_completely', { twitterId })
   },
 
   async refreshAllAccountsStatus() {
     await tauriInvoke<void>('refresh_all_accounts_status')
-  },
-
-  async reconnectAccount(screenName) {
-    await tauriInvoke<void>('reconnect_account', { screenName })
-  },
-
-  async getAccountSettings(screenName) {
-    const result = await tauriInvoke<TauriAccountSettings>('get_account_settings', {
-      screenName,
-    })
-    return mapTauriAccountSettings(result)
-  },
-
-  async saveAccountPersonality(screenName, personality) {
-    await tauriInvoke<void>('save_account_personality', {
-      screenName,
-      personality,
-    })
-  },
-
-  async unlinkAccount(screenName) {
-    await tauriInvoke<void>('unlink_account', { screenName })
-  },
-
-  async deleteAccountCompletely(screenName) {
-    await tauriInvoke<void>('delete_account_completely', { screenName })
   },
 }

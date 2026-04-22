@@ -8,7 +8,9 @@ pub use types::{Timer, TimerType};
 pub use executor::TimerExecutor;
 pub use registry::TimerRegistry;
 pub use event_loop::EventLoop;
-pub use executors::{AccountSyncExecutor, PythonScriptExecutor};
+// DEPRECATED: AccountSyncExecutor is no longer used
+// pub use executors::{AccountSyncExecutor, PythonScriptExecutor};
+pub use executors::PythonScriptExecutor;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

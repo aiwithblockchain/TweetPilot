@@ -25,9 +25,14 @@ pub struct Task {
     pub timeout: Option<i64>,
     pub retry_count: Option<i64>,
     pub retry_delay: Option<i64>,
-    #[serde(rename = "accountScreenName")]
+    #[serde(rename = "accountId")]
     pub account_id: String,
     pub parameters: String,
+    #[serde(rename = "tweetId")]
+    pub tweet_id: Option<String>,
+    pub text: Option<String>,
+    #[serde(rename = "lastExecutionStatus")]
+    pub last_execution_status: Option<String>,
     #[serde(rename = "lastExecutionTime")]
     pub last_execution_time: Option<String>,
     #[serde(rename = "nextExecutionTime")]
@@ -132,8 +137,8 @@ impl TaskDatabase {
             "INSERT INTO tasks (
                 id, name, description, type, status, enabled,
                 script_path, schedule, schedule_type, interval_seconds, timeout, retry_count, retry_delay,
-                account_id, parameters, tags, next_execution_time, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                account_id, parameters, tweet_id, text, tags, next_execution_time, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
                 id,
                 input.name,
@@ -150,6 +155,8 @@ impl TaskDatabase {
                 input.retry_delay,
                 input.account_id,
                 parameters,
+                None::<String>, // tweet_id
+                None::<String>, // text
                 tags,
                 next_execution_time,
                 now_str,
@@ -206,15 +213,18 @@ impl TaskDatabase {
                 retry_delay: row.get(14)?,
                 account_id: row.get(15)?,
                 parameters: row.get(16)?,
-                last_execution_time: row.get(17)?,
-                next_execution_time: row.get(18)?,
-                total_executions: row.get(19)?,
-                success_count: row.get(20)?,
-                failure_count: row.get(21)?,
-                average_duration: row.get(22)?,
-                created_at: row.get(23)?,
-                updated_at: row.get(24)?,
-                tags: row.get(25)?,
+                tweet_id: row.get(17)?,
+                text: row.get(18)?,
+                last_execution_status: row.get(19)?,
+                last_execution_time: row.get(20)?,
+                next_execution_time: row.get(21)?,
+                total_executions: row.get(22)?,
+                success_count: row.get(23)?,
+                failure_count: row.get(24)?,
+                average_duration: row.get(25)?,
+                created_at: row.get(26)?,
+                updated_at: row.get(27)?,
+                tags: row.get(28)?,
             })
         })
     }
@@ -240,15 +250,18 @@ impl TaskDatabase {
                 retry_delay: row.get(14)?,
                 account_id: row.get(15)?,
                 parameters: row.get(16)?,
-                last_execution_time: row.get(17)?,
-                next_execution_time: row.get(18)?,
-                total_executions: row.get(19)?,
-                success_count: row.get(20)?,
-                failure_count: row.get(21)?,
-                average_duration: row.get(22)?,
-                created_at: row.get(23)?,
-                updated_at: row.get(24)?,
-                tags: row.get(25)?,
+                tweet_id: row.get(17)?,
+                text: row.get(18)?,
+                last_execution_status: row.get(19)?,
+                last_execution_time: row.get(20)?,
+                next_execution_time: row.get(21)?,
+                total_executions: row.get(22)?,
+                success_count: row.get(23)?,
+                failure_count: row.get(24)?,
+                average_duration: row.get(25)?,
+                created_at: row.get(26)?,
+                updated_at: row.get(27)?,
+                tags: row.get(28)?,
             })
         })?;
 
@@ -558,4 +571,191 @@ impl TaskDatabase {
 
         results.collect()
     }
+
+    // ==================== Account Management Methods ====================
+
+    pub fn account_exists(&self, twitter_id: &str) -> Result<bool> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(*) FROM managed_twitter_accounts WHERE twitter_id = ?1"
+        )?;
+        let count: i64 = stmt.query_row(params![twitter_id], |row| row.get(0))?;
+        Ok(count > 0)
+    }
+
+    pub fn is_account_managed(&self, twitter_id: &str) -> Result<bool> {
+        let mut stmt = self.conn.prepare(
+            "SELECT is_managed FROM managed_twitter_accounts WHERE twitter_id = ?1"
+        )?;
+        let is_managed: bool = stmt.query_row(params![twitter_id], |row| row.get(0))?;
+        Ok(is_managed)
+    }
+
+    pub fn insert_account(
+        &self,
+        twitter_id: &str,
+        screen_name: &str,
+        display_name: &str,
+        avatar_url: Option<&str>,
+        description: Option<&str>,
+        is_verified: bool,
+        instance_id: &str,
+        extension_name: &str,
+        is_managed: bool,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT INTO managed_twitter_accounts (
+                twitter_id, screen_name, display_name, avatar_url, description,
+                is_verified, is_managed, last_online_time, instance_id, extension_name,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                twitter_id,
+                screen_name,
+                display_name,
+                avatar_url,
+                description,
+                is_verified,
+                is_managed,
+                now,
+                instance_id,
+                extension_name,
+                now,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_account_info(
+        &self,
+        twitter_id: &str,
+        screen_name: &str,
+        display_name: &str,
+        avatar_url: Option<&str>,
+        description: Option<&str>,
+        is_verified: bool,
+        instance_id: &str,
+        extension_name: &str,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE managed_twitter_accounts SET
+                screen_name = ?2,
+                display_name = ?3,
+                avatar_url = ?4,
+                description = ?5,
+                is_verified = ?6,
+                last_online_time = ?7,
+                instance_id = ?8,
+                extension_name = ?9,
+                updated_at = ?10
+            WHERE twitter_id = ?1",
+            params![
+                twitter_id,
+                screen_name,
+                display_name,
+                avatar_url,
+                description,
+                is_verified,
+                now,
+                instance_id,
+                extension_name,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_account_managed(&self, twitter_id: &str, is_managed: bool) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE managed_twitter_accounts SET is_managed = ?2, updated_at = ?3 WHERE twitter_id = ?1",
+            params![twitter_id, is_managed, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_account(&self, twitter_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM managed_twitter_accounts WHERE twitter_id = ?1",
+            params![twitter_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_managed_accounts(&self) -> Result<Vec<ManagedAccount>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT twitter_id, screen_name, display_name, avatar_url, description,
+                    is_verified, is_managed, last_online_time, instance_id, extension_name,
+                    created_at, updated_at
+             FROM managed_twitter_accounts
+             WHERE is_managed = 1
+             ORDER BY last_online_time DESC"
+        )?;
+
+        let results = stmt.query_map([], |row| {
+            Ok(ManagedAccount {
+                twitter_id: row.get(0)?,
+                screen_name: row.get(1)?,
+                display_name: row.get(2)?,
+                avatar_url: row.get(3)?,
+                description: row.get(4)?,
+                is_verified: row.get(5)?,
+                is_managed: row.get(6)?,
+                last_online_time: row.get(7)?,
+                instance_id: row.get(8)?,
+                extension_name: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+
+        results.collect()
+    }
+
+    pub fn get_all_accounts(&self) -> Result<Vec<ManagedAccount>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT twitter_id, screen_name, display_name, avatar_url, description,
+                    is_verified, is_managed, last_online_time, instance_id, extension_name,
+                    created_at, updated_at
+             FROM managed_twitter_accounts
+             ORDER BY last_online_time DESC"
+        )?;
+
+        let results = stmt.query_map([], |row| {
+            Ok(ManagedAccount {
+                twitter_id: row.get(0)?,
+                screen_name: row.get(1)?,
+                display_name: row.get(2)?,
+                avatar_url: row.get(3)?,
+                description: row.get(4)?,
+                is_verified: row.get(5)?,
+                is_managed: row.get(6)?,
+                last_online_time: row.get(7)?,
+                instance_id: row.get(8)?,
+                extension_name: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+
+        results.collect()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ManagedAccount {
+    pub twitter_id: String,
+    pub screen_name: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub description: Option<String>,
+    pub is_verified: bool,
+    pub is_managed: bool,
+    pub last_online_time: Option<String>,
+    pub instance_id: Option<String>,
+    pub extension_name: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }

@@ -74,18 +74,6 @@ const DETAIL_COPY: Record<View, Record<string, { title: string; description: str
       bullets: ['当前待处理 3 条', '可扩展为批量审核操作', '可与 Claude 面板形成协作流'],
     },
   },
-  settings: {
-    'setting-account': {
-      title: '账号设置',
-      description: '设置页已切换为 Google 登录 Mock 版本。',
-      bullets: ['支持登录 / 登出切换', '显示订阅等级与 token 配额', '符合文档阶段 5 的要求'],
-    },
-    'setting-system': {
-      title: '系统偏好',
-      description: '管理语言、主题与 LocalBridge 配置。',
-      bullets: ['支持语言与主题切换', '支持 LocalBridge endpoint 配置', '后续可补更多偏好项'],
-    },
-  },
 }
 
 export function DetailPanel({ view, item }: DetailPanelProps) {

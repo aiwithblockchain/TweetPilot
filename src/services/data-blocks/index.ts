@@ -1,5 +1,3 @@
-import { serviceMode } from '../runtime'
-import { dataBlocksMockService } from './mock'
 import { dataBlocksTauriService } from './tauri'
 
 export type {
@@ -10,4 +8,4 @@ export type {
   KnownDataBlockCardType,
 } from './types'
 
-export const dataBlocksService = serviceMode === 'tauri' ? dataBlocksTauriService : dataBlocksMockService
+export const dataBlocksService = dataBlocksTauriService

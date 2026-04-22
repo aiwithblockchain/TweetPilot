@@ -37,46 +37,4 @@ describe('taskTauriService', () => {
       },
     })
   })
-
-  it('derives aggregate stats from mapped task statuses', async () => {
-    const { taskTauriService } = await import('./tauri')
-
-    tauriInvokeMock.mockResolvedValueOnce([
-      {
-        id: '1',
-        name: 'Task 1',
-        type: 'scheduled',
-        scriptPath: '/scripts/1.ts',
-        status: 'running',
-      },
-      {
-        id: '2',
-        name: 'Task 2',
-        type: 'scheduled',
-        scriptPath: '/scripts/2.ts',
-        status: 'paused',
-      },
-      {
-        id: '3',
-        name: 'Task 3',
-        type: 'immediate',
-        scriptPath: '/scripts/3.ts',
-        status: 'failed',
-      },
-      {
-        id: '4',
-        name: 'Task 4',
-        type: 'immediate',
-        scriptPath: '/scripts/4.ts',
-        status: 'idle',
-      },
-    ])
-
-    await expect(taskTauriService.getTaskStats()).resolves.toEqual({
-      total: 4,
-      running: 1,
-      paused: 1,
-      failed: 1,
-    })
-  })
 })

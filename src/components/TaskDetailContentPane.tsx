@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { taskService } from '@/services'
 import { TaskActionBar } from './TaskActionBar'
 import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
-import type { ExecutionResult, Task, TaskDetail } from '@/services/task'
+import type { Task, TaskDetail } from '@/services/task'
 
 interface TaskDetailContentPaneProps {
   taskId: string
@@ -274,22 +274,6 @@ function SidePanel({ title, children }: { title: string; children: React.ReactNo
       <div className="text-sm font-semibold text-[var(--color-text)] mb-3">{title}</div>
       {children}
     </section>
-  )
-}
-
-function HistoryCard({ item }: { item: ExecutionResult }) {
-  return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-[var(--color-text)]">{item.status === 'success' ? '执行成功' : '执行失败'}</div>
-        <div className={['text-[11px]', item.status === 'success' ? 'text-[#4EC9B0]' : 'text-[#F48771]'].join(' ')}>
-          {item.status === 'success' ? 'SUCCESS' : 'FAILURE'}
-        </div>
-      </div>
-      <div className="text-[11px] text-[var(--color-text-secondary)] mt-2">开始：{formatDateTime(item.startTime)}</div>
-      <div className="text-[11px] text-[var(--color-text-secondary)] mt-1">结束：{formatDateTime(item.endTime)}</div>
-      <div className="text-[11px] text-[var(--color-text-secondary)] mt-1">耗时：{item.duration}s</div>
-    </div>
   )
 }
 

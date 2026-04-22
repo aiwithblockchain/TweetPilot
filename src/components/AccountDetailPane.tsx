@@ -1,7 +1,7 @@
 import type { SidebarItem } from '@/config/layout'
 import type { AppInstance } from '@/types/layout'
 import { accountService } from '@/services'
-import type { MappedAccount } from '@/services/account'
+import type { ManagedAccount } from '@/services/account'
 import { useEffect, useMemo, useState } from 'react'
 
 interface AccountDetailPaneProps {
@@ -10,7 +10,7 @@ interface AccountDetailPaneProps {
 }
 
 export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
-  const [accounts, setAccounts] = useState<MappedAccount[]>([])
+  const [accounts, setAccounts] = useState<ManagedAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -19,7 +19,7 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
       try {
         setLoading(true)
         setError(null)
-        const result = await accountService.getMappedAccounts()
+        const result = await accountService.getManagedAccounts()
         setAccounts(result)
       } catch (err) {
         setError(err instanceof Error ? err.message : '读取账号失败')
@@ -34,8 +34,8 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
   const selectedAccount = useMemo(() => {
     if (!item) return null
 
-    // item.id is the screenName from the sidebar
-    return accounts.find((account) => account.screenName === item.id)
+    // item.id is the twitterId from the sidebar
+    return accounts.find((account) => account.twitterId === item.id)
   }, [accounts, item])
 
   const linkedInstance = useMemo(() => {
@@ -59,8 +59,8 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 rounded-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg)] flex items-center justify-center">
-          {selectedAccount?.avatar ? (
-            <img src={selectedAccount.avatar} alt={selectedAccount.displayName ?? item.label} className="w-full h-full object-cover" />
+          {selectedAccount?.avatarUrl ? (
+            <img src={selectedAccount.avatarUrl} alt={selectedAccount.displayName ?? item.label} className="w-full h-full object-cover" />
           ) : (
             <span className="text-xl text-[var(--color-text-secondary)]">?</span>
           )}
@@ -77,7 +77,7 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
             { label: '账号名称', value: selectedAccount?.displayName ?? item.label },
             { label: '用户名', value: selectedAccount?.screenName ?? 'TODO' },
             { label: 'Twitter ID', value: selectedAccount?.twitterId ?? '未知' },
-            { label: '状态', value: selectedAccount?.status ?? 'TODO' },
+            { label: '状态', value: selectedAccount?.isOnline ? '在线' : '离线' },
           ]}
         />
       </InfoPanel>
@@ -85,9 +85,9 @@ export function AccountDetailPane({ item, instances }: AccountDetailPaneProps) {
       <InfoPanel title="账号统计">
         <InfoGrid
           items={[
-            { label: '粉丝数', value: selectedAccount?.followersCount?.toString() ?? '0' },
-            { label: '关注数', value: selectedAccount?.followingCount?.toString() ?? '0' },
-            { label: '推文数', value: selectedAccount?.tweetCount?.toString() ?? '0' },
+            { label: '粉丝数', value: '暂无数据' },
+            { label: '关注数', value: '暂无数据' },
+            { label: '推文数', value: '暂无数据' },
             { label: '简介', value: selectedAccount?.description || '暂无简介' },
           ]}
         />

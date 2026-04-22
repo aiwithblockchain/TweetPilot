@@ -11,7 +11,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { AddDataBlockMenu } from './components/AddDataBlockMenu'
 import { ToastProvider } from './contexts/ToastContext'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
-import { settingsService } from './services'
+import { settingsService, workspaceService } from './services'
 import type { AppSettings } from './services/settings'
 import './styles/vscode-theme.css'
 

@@ -1,49 +1,34 @@
-export type AccountStatus = 'online' | 'offline' | 'verifying' | 'unknown'
-
-export interface AvailableAccount {
+export interface ManagedAccount {
+  twitterId: string
   screenName: string
   displayName: string
-  avatar: string
-}
-
-export interface MappedAccount {
-  screenName: string
-  displayName: string
-  avatar: string
-  status: AccountStatus
-  lastVerified: string
-  twitterId?: string
+  avatarUrl?: string
   description?: string
+  isVerified: boolean
+  isOnline: boolean
+  lastOnlineTime?: string
   instanceId?: string
   extensionName?: string
-  defaultTabId?: number
-  isLoggedIn?: boolean
-  followersCount?: number
-  followingCount?: number
-  tweetCount?: number
 }
 
-export interface AccountSettings {
+export interface AvailableAccount {
   twitterId: string
-  name: string
   screenName: string
-  avatar: string
-  isLinked: boolean
-  extensionId?: string
+  displayName: string
+  avatarUrl?: string
+  description?: string
+  isVerified: boolean
+  isOnline: boolean
+  lastOnlineTime?: string
+  instanceId?: string
   extensionName?: string
-  personality: string
 }
 
 export interface AccountService {
+  getManagedAccounts(): Promise<ManagedAccount[]>
   getAvailableAccounts(): Promise<AvailableAccount[]>
-  getMappedAccounts(): Promise<MappedAccount[]>
-  mapAccount(screenName: string): Promise<MappedAccount>
-  deleteAccountMapping(screenName: string): Promise<void>
-  verifyAccountStatus(screenName: string): Promise<AccountStatus>
+  addAccountToManagement(twitterId: string): Promise<void>
+  removeAccountFromManagement(twitterId: string): Promise<void>
+  deleteAccountCompletely(twitterId: string): Promise<void>
   refreshAllAccountsStatus(): Promise<void>
-  reconnectAccount(screenName: string): Promise<void>
-  getAccountSettings(screenName: string): Promise<AccountSettings>
-  saveAccountPersonality(screenName: string, personality: string): Promise<void>
-  unlinkAccount(screenName: string): Promise<void>
-  deleteAccountCompletely(screenName: string): Promise<void>
 }

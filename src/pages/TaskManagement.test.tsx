@@ -8,16 +8,11 @@ describe('TaskManagement service integration', () => {
     // Tests run against mock service in test environment
   })
 
-  it('loads task list and computes statistics', async () => {
+  it('loads task list', async () => {
     // Simulate what TaskManagement page does on mount
     const tasks = await taskService.getTasks()
-    const stats = await taskService.getTaskStats()
 
     expect(Array.isArray(tasks)).toBe(true)
-    expect(stats).toHaveProperty('total')
-    expect(stats).toHaveProperty('running')
-    expect(stats).toHaveProperty('paused')
-    expect(stats).toHaveProperty('failed')
   })
 
   it('creates a new task and retrieves it', async () => {

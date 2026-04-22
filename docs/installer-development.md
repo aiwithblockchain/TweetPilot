@@ -47,20 +47,26 @@ TweetPilot 首次安装时需要完成环境初始化，包括 ClawBot 库的安
 
 ```
 ~/.tweetpilot/
-└── clawbot/                        # ClawBot 库（全局共享）
-    ├── __init__.py
-    ├── client.py
-    ├── config.py
-    ├── services/
-    ├── domain/
-    ├── transport/
-    ├── workflows/
-    └── examples/                   # 示例脚本
-        ├── publish_tweet.py
-        ├── reply_with_media.py
-        ├── read_timeline.py
-        ├── ai_reply_pinned_tweet.py
-        └── ...
+└── clawbot/                        # ClawBot 根目录（全局共享）
+    ├── clawbot/                    # ClawBot Python 包
+    │   ├── __init__.py
+    │   ├── client.py
+    │   ├── config.py
+    │   ├── services/
+    │   ├── domain/
+    │   ├── transport/
+    │   └── workflows/
+    ├── examples/                   # 示例脚本（可直接运行）
+    │   ├── publish_tweet.py
+    │   ├── reply_with_media.py
+    │   ├── read_timeline.py
+    │   ├── ai_reply_pinned_tweet.py
+    │   └── ...
+    ├── scripts/                    # 辅助脚本
+    ├── tests/                      # 测试文件
+    ├── utils/                      # 工具函数
+    ├── README.md                   # 文档
+    └── requirements.txt            # 依赖列表
 ```
 
 ### 3.2 ClawBot 来源
@@ -416,7 +422,150 @@ async function checkClawBotVersion(): Promise<VersionCheckResult> {
 
 ---
 
-## 12. 测试清单
+## 12. Python 脚本管理方案
+
+### 12.1 目录结构约定
+
+TweetPilot 支持两种类型的 Python 资源：
+
+**全局 ClawBot 代码库**（系统自带）：
+```
+~/.tweetpilot/clawbot/
+├── clawbot/                    # ClawBot Python 包（核心库）
+│   ├── __init__.py
+│   ├── client.py
+│   ├── config.py
+│   ├── services/
+│   ├── domain/
+│   ├── transport/
+│   └── workflows/
+├── examples/                   # 示例脚本
+│   ├── publish_tweet.py
+│   ├── reply_with_media.py
+│   └── ...
+├── README.md                   # 文档
+└── api_docs.json              # API 文档
+```
+
+**用户自定义脚本**（用户开发）：
+```
+<workspace-root>/scripts/
+├── my_script.py
+└── ...
+```
+
+### 12.2 AI 脚本管理能力
+
+通过在 AI Session 的 System Prompt 中注入以下约定，实现脚本解释和脚本生成功能：
+
+#### System Prompt 配置
+
+```markdown
+## Python 代码库访问能力
+
+你可以访问完整的 ClawBot Python 代码库和用户自定义脚本：
+
+1. **ClawBot 代码库** (`~/.tweetpilot/clawbot/`)
+   - 完整的 ClawBot Python 包，包含所有源代码、文档和示例
+   - 你可以读取任何文件来理解 API、实现细节和使用方法
+   - 核心库：`~/.tweetpilot/clawbot/clawbot/` (client.py, services/, domain/, transport/, workflows/)
+   - 示例脚本：`~/.tweetpilot/clawbot/examples/` (publish_tweet.py, reply_with_media.py 等)
+   - 文档：`~/.tweetpilot/clawbot/README.md`, `~/.tweetpilot/clawbot/api_docs.json`
+   - 使用 Glob 工具查看：`~/.tweetpilot/clawbot/**/*.py`
+   - 使用 Read 工具读取任何源代码、文档或示例
+
+2. **用户自定义脚本** (`{working_dir}/scripts/`)
+   - 用户自己开发的脚本
+   - 可以修改和扩展
+   - 使用 Glob 工具查看：`{working_dir}/scripts/*.py`
+   - 使用 Read 工具读取脚本内容
+
+### 代码理解能力
+
+当用户询问 ClawBot 功能或脚本时：
+1. 使用 Read 工具读取相关源代码、文档或示例
+2. 分析代码实现、API 接口、参数说明
+3. 用简洁的语言解释功能、用法和最佳实践
+4. 可以引用具体的代码位置和示例
+
+### 脚本生成能力
+
+当用户要求生成脚本时：
+1. 先读取 ClawBot 源代码和示例，理解正确的 API 用法
+2. 使用 Write 工具创建脚本到 `{working_dir}/scripts/` 目录
+3. 确保脚本遵循 ClawBot 的最佳实践
+4. 包含必要的注释和使用说明
+5. 告诉用户如何运行脚本（需要配置 ClawBot 凭证）
+```
+
+### 12.3 实现方式
+
+**无需修改代码**，只需要：
+
+1. **在 ClaurstSession 初始化时注入 System Prompt**
+   - 位置：[src-tauri/src/claurst_session.rs](src-tauri/src/claurst_session.rs)
+   - 使用 Claurst 的 System Prompt 机制注入上述配置
+
+2. **确保用户工作区有 scripts/ 目录**
+   - 在工作目录初始化时自动创建 `scripts/` 目录
+   - 或在首次使用时由 AI 自动创建
+
+### 12.4 用户体验
+
+用户可以直接在 AI 对话中：
+
+**理解 ClawBot API**：
+```
+用户: "ClawBot 怎么发推文？"
+AI: 读取 ~/.tweetpilot/clawbot/clawbot/client.py 和相关源代码，解释 API 用法
+```
+
+**查看示例代码**：
+```
+用户: "有哪些示例脚本？"
+AI: 使用 Glob 列出 ~/.tweetpilot/clawbot/examples/ 下的所有脚本
+```
+
+**深入理解实现**：
+```
+用户: "ClawBot 的 transport 层是怎么工作的？"
+AI: 读取 ~/.tweetpilot/clawbot/clawbot/transport/ 下的源代码并解释架构
+```
+
+**生成新脚本**：
+```
+用户: "帮我生成一个自动点赞的脚本"
+AI: 先读取 ClawBot 源代码和示例，理解正确的 API 用法，然后生成脚本到 {working_dir}/scripts/auto_like.py
+```
+
+### 12.5 工作目录初始化扩展
+
+在第 11 章的工作目录初始化流程中，添加 `scripts/` 目录创建：
+
+```
+4. 创建项目结构
+   - 创建 .tweetpilot.json（空文件）
+   - 创建 .tweetpilot/ 目录
+   - 创建 .tweetpilot/tasks.db
+   - 创建 .tweetpilot/logs/
+   - 创建 scripts/ 目录（用户自定义脚本）
+```
+
+更新后的目录结构：
+
+```
+<workspace-root>/
+├── .tweetpilot.json                # 项目标识（空文件）
+├── .tweetpilot/                    # 项目配置目录
+│   ├── tasks.db                    # 任务数据库
+│   └── logs/                       # 执行日志
+└── scripts/                        # 用户自定义脚本目录
+    └── README.md                   # 脚本说明（可选）
+```
+
+---
+
+## 13. 测试清单
 
 - [ ] 全新安装（无 Python）
 - [ ] 全新安装（有 Python）

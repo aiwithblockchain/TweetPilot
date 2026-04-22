@@ -5,12 +5,26 @@ use crate::task_executor::TaskExecutor;
 use crate::unified_timer::{UnifiedTimerManager, Timer, TimerType, PythonScriptExecutor};
 
 use std::sync::Arc;
+use tokio::sync::mpsc;
+
+#[derive(Debug, Clone)]
+pub struct AccountSyncMessage {
+    pub twitter_id: String,
+    pub screen_name: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub is_verified: bool,
+    pub description: Option<String>,
+    pub instance_id: String,
+    pub extension_name: String,
+}
 
 pub struct TaskState {
     pub db: Arc<Mutex<Option<TaskDatabase>>>,
     pub executor: Arc<TaskExecutor>,
     pub workspace_root: Arc<Mutex<String>>,
     pub timer_manager: Arc<UnifiedTimerManager>,
+    pub account_sync_tx: mpsc::Sender<AccountSyncMessage>,
 }
 
 impl TaskState {
@@ -309,6 +323,110 @@ pub async fn get_task_detail(
     println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
 
     Ok(result)
+}
+
+// ==================== Account Sync Worker ====================
+
+pub fn spawn_account_sync_worker(
+    mut rx: mpsc::Receiver<AccountSyncMessage>,
+    db: Arc<Mutex<Option<TaskDatabase>>>,
+) {
+    tauri::async_runtime::spawn(async move {
+        log::info!("[AccountSyncWorker] Background worker started");
+        let mut batch = Vec::new();
+        let batch_size = 10;
+        let batch_timeout = tokio::time::Duration::from_secs(5);
+
+        loop {
+            tokio::select! {
+                Some(msg) = rx.recv() => {
+                    log::debug!("[AccountSyncWorker] Received message for account: {}", msg.twitter_id);
+                    batch.push(msg);
+
+                    if batch.len() >= batch_size {
+                        log::info!("[AccountSyncWorker] Batch size reached ({}), processing", batch.len());
+                        process_account_batch(&batch, &db).await;
+                        batch.clear();
+                    }
+                }
+                _ = tokio::time::sleep(batch_timeout), if !batch.is_empty() => {
+                    log::info!("[AccountSyncWorker] Batch timeout reached, processing {} accounts", batch.len());
+                    process_account_batch(&batch, &db).await;
+                    batch.clear();
+                }
+            }
+        }
+    });
+}
+
+async fn process_account_batch(
+    batch: &[AccountSyncMessage],
+    db: &Arc<Mutex<Option<TaskDatabase>>>,
+) {
+    let db_guard = match db.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            log::error!("[AccountSyncWorker] Failed to acquire database lock: {}", e);
+            return;
+        }
+    };
+
+    if let Some(ref database) = *db_guard {
+        for msg in batch {
+            match database.account_exists(&msg.twitter_id) {
+                Ok(exists) => {
+                    if exists {
+                        match database.is_account_managed(&msg.twitter_id) {
+                            Ok(is_managed) => {
+                                if is_managed {
+                                    if let Err(e) = database.update_account_info(
+                                        &msg.twitter_id,
+                                        &msg.screen_name,
+                                        &msg.display_name,
+                                        msg.avatar_url.as_deref(),
+                                        msg.description.as_deref(),
+                                        msg.is_verified,
+                                        &msg.instance_id,
+                                        &msg.extension_name,
+                                    ) {
+                                        log::error!("[AccountSyncWorker] Failed to update account {}: {}", msg.twitter_id, e);
+                                    } else {
+                                        log::debug!("[AccountSyncWorker] Updated managed account: {}", msg.twitter_id);
+                                    }
+                                } else {
+                                    log::debug!("[AccountSyncWorker] Account {} exists but not managed, skipping update", msg.twitter_id);
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("[AccountSyncWorker] Failed to check if account {} is managed: {}", msg.twitter_id, e);
+                            }
+                        }
+                    } else {
+                        if let Err(e) = database.insert_account(
+                            &msg.twitter_id,
+                            &msg.screen_name,
+                            &msg.display_name,
+                            msg.avatar_url.as_deref(),
+                            msg.description.as_deref(),
+                            msg.is_verified,
+                            &msg.instance_id,
+                            &msg.extension_name,
+                            false,
+                        ) {
+                            log::error!("[AccountSyncWorker] Failed to insert account {}: {}", msg.twitter_id, e);
+                        } else {
+                            log::info!("[AccountSyncWorker] Inserted new account: {} (is_managed=0)", msg.twitter_id);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("[AccountSyncWorker] Failed to check if account {} exists: {}", msg.twitter_id, e);
+                }
+            }
+        }
+    } else {
+        log::warn!("[AccountSyncWorker] Database not initialized, skipping batch");
+    }
 }
 
 #[tauri::command]

@@ -6,7 +6,7 @@ interface ThinkingBlockProps {
   isComplete: boolean
 }
 
-export function ThinkingBlock({ thinking, isActive, isComplete }: ThinkingBlockProps) {
+export function ThinkingBlock({ thinking, isActive }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(isActive)
 
   if (!thinking) return null

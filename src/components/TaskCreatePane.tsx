@@ -1,7 +1,7 @@
 import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { accountService, taskService } from '@/services'
-import type { MappedAccount, TaskType } from '@/services'
+import type { ManagedAccount, TaskType } from '@/services'
 import { ScriptSelector } from './ScriptSelector'
 import { ParameterEditor } from './ParameterEditor'
 
@@ -19,8 +19,8 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [intervalValue, setIntervalValue] = useState(2)
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [cronFields, setCronFields] = useState({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
-  const [accountScreenName, setAccountScreenName] = useState('')
-  const [accounts, setAccounts] = useState<MappedAccount[]>([])
+  const [accountId, setAccountId] = useState('')
+  const [accounts, setAccounts] = useState<ManagedAccount[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,14 +31,14 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
 
     const loadAccounts = async () => {
       try {
-        const result = await accountService.getMappedAccounts()
+        const result = await accountService.getManagedAccounts()
         if (!mounted) return
         setAccounts(result)
-        setAccountScreenName(result.find((item) => item.isLoggedIn)?.screenName || result[0]?.screenName || '')
+        setAccountId(result.find((item) => item.isOnline)?.twitterId || result[0]?.twitterId || '')
       } catch (err) {
-        console.error('Failed to load mapped accounts:', err)
+        console.error('Failed to load managed accounts:', err)
         if (!mounted) return
-        setError('加载账号失败，请先检查账号映射配置')
+        setError('加载账号失败，请先添加账号到管理')
       } finally {
         if (mounted) {
           setAccountsLoading(false)
@@ -58,7 +58,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   }, [cronFields])
 
   const cronDescription = useMemo(() => {
-    const { second, minute, hour, day, month, weekday } = cronFields
+    const { minute, hour, day, month, weekday } = cronFields
 
     // 简单的人类可读描述生成
     const parts: string[] = []
@@ -95,8 +95,8 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   }, [scriptPath])
 
   const selectedAccount = useMemo(
-    () => accounts.find((account) => account.screenName === accountScreenName) ?? null,
-    [accounts, accountScreenName]
+    () => accounts.find((account) => account.twitterId === accountId) ?? null,
+    [accounts, accountId]
   )
 
   const validateForm = () => {
@@ -171,7 +171,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronFromTemplate() : undefined,
       intervalSeconds: taskType === 'scheduled' && scheduleType === 'interval' ? getIntervalSeconds() : undefined,
       parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
-      accountScreenName: accountScreenName || undefined,
+      accountId: accountId || undefined,
     }
 
     try {
@@ -242,15 +242,16 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
 
           <Field label="执行账号（可选）">
             <select
-              value={accountScreenName}
-              onChange={(e) => setAccountScreenName(e.target.value)}
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
               disabled={accountsLoading || accounts.length === 0}
               className="w-full h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
             >
               <option value="">不指定账号</option>
               {accounts.map((account) => (
-                <option key={account.screenName} value={account.screenName}>
+                <option key={account.twitterId} value={account.twitterId}>
                   {account.displayName} · {account.screenName}
+                  {account.isOnline ? ' (在线)' : ' (离线)'}
                 </option>
               ))}
             </select>

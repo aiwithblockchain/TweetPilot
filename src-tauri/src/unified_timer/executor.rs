@@ -6,6 +6,7 @@ use std::time::Duration;
 pub trait TimerExecutor: Send + Sync {
     async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String>;
 
+    #[allow(dead_code)]
     fn timeout(&self) -> Option<Duration> {
         Some(Duration::from_secs(300))
     }

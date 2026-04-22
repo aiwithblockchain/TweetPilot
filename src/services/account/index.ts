@@ -2,10 +2,8 @@ import { accountTauriService } from './tauri'
 
 export type {
   AccountService,
-  AccountSettings,
-  AccountStatus,
   AvailableAccount,
-  MappedAccount,
+  ManagedAccount,
 } from './types'
 
 export const accountService = accountTauriService

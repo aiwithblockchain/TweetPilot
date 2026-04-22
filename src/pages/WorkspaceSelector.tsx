@@ -9,7 +9,6 @@ interface WorkspaceSelectorProps {
 }
 
 export default function WorkspaceSelector({
-  currentWorkspace,
   onWorkspaceSelected,
 }: WorkspaceSelectorProps) {
   const [loading, setLoading] = useState(false)
