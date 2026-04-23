@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS x_account_trend (
     media_count INTEGER,
     account_created_at TEXT,
     last_online_time TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
     FOREIGN KEY (twitter_id) REFERENCES x_accounts(twitter_id) ON DELETE CASCADE
 );
 

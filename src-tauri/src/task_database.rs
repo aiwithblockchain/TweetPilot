@@ -809,13 +809,15 @@ impl TaskDatabase {
     }
 
     pub fn insert_account_snapshot(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
         self.conn.execute(
             "INSERT INTO x_account_trend (
                 twitter_id, screen_name, display_name, avatar_url, description,
                 is_verified, followers_count, following_count, tweet_count,
                 favourites_count, listed_count, media_count, account_created_at,
-                last_online_time
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                last_online_time, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 account.twitter_id,
                 account.screen_name,
@@ -831,6 +833,51 @@ impl TaskDatabase {
                 account.media_count,
                 account.created_at,
                 account.last_seen.to_rfc3339(),
+                now.clone(),
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_account_snapshot(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "UPDATE x_account_trend SET
+                screen_name = ?2,
+                display_name = ?3,
+                avatar_url = ?4,
+                description = ?5,
+                is_verified = ?6,
+                followers_count = ?7,
+                following_count = ?8,
+                tweet_count = ?9,
+                favourites_count = ?10,
+                listed_count = ?11,
+                media_count = ?12,
+                account_created_at = ?13,
+                last_online_time = ?14,
+                updated_at = ?15
+            WHERE twitter_id = ?1
+            AND id = (SELECT id FROM x_account_trend WHERE twitter_id = ?1 ORDER BY created_at DESC LIMIT 1)",
+            params![
+                account.twitter_id,
+                account.screen_name,
+                account.display_name,
+                account.avatar_url,
+                account.description,
+                account.is_verified,
+                account.followers_count,
+                account.following_count,
+                account.tweet_count,
+                account.favourites_count,
+                account.listed_count,
+                account.media_count,
+                account.created_at,
+                account.last_seen.to_rfc3339(),
+                now,
             ],
         )?;
 

@@ -186,7 +186,11 @@ async fn process_user_info(
                                 log::info!("[process_user_info] Account snapshot inserted successfully");
                             }
                         } else {
-                            log::debug!("[process_user_info] Skipping snapshot for managed account {} (last snapshot < 1h)", account.twitter_id);
+                            if let Err(e) = db_guard.update_account_snapshot(&account) {
+                                log::error!("[process_user_info] Failed to update account snapshot: {}", e);
+                            } else {
+                                log::info!("[process_user_info] Account snapshot updated successfully (last snapshot < 1h)");
+                            }
                         }
                     }
                     Err(e) => {
