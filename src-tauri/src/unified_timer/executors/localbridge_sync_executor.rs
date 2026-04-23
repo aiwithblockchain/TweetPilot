@@ -197,9 +197,12 @@ async fn process_user_info(
                 unmanaged_accounts.lock().unwrap().remove(&account.twitter_id);
             }
             Ok(Some(_account_row)) => {
-                // Historical managed account: keep record in x_accounts, but don't track as unmanaged-online.
-                unmanaged_accounts.lock().unwrap().remove(&account.twitter_id);
-                log::debug!("[process_user_info] Historical account {} observed online but excluded from unmanaged-online group", account.twitter_id);
+                // Unmanaged account with history: track as unmanaged-online
+                unmanaged_accounts
+                    .lock()
+                    .unwrap()
+                    .insert(account.twitter_id.clone(), UnmanagedAccountRecord::from(&account));
+                log::info!("[process_user_info] Historical unmanaged account {} tracked as unmanaged-online", account.twitter_id);
             }
             Ok(None) => {
                 unmanaged_accounts
@@ -348,6 +351,7 @@ impl TimerExecutor for LocalBridgeSyncExecutor {
         })?;
 
         log::info!("[LocalBridgeSyncExecutor] Found {} instances from LocalBridge", instances.len());
+        log::info!("[LocalBridgeSyncExecutor] Raw instances data: {:?}", instances);
 
         let mut online_instance_ids = HashSet::new();
         let mut resolved_instance_ids = HashSet::new();

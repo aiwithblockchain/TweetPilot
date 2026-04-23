@@ -88,7 +88,10 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
 
   const sourceLabel = useMemo(() => {
     if (!detail) return null
-    return detail.account.source === 'managed-db' ? '当前已管理账号' : '未管理在线账号'
+    if (detail.account.isManaged) {
+      return '当前已管理账号'
+    }
+    return detail.account.source === 'managed-db' ? '历史管理账号' : '未管理在线账号'
   }, [detail])
 
   if (!item) {
@@ -246,7 +249,7 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
         <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-text-secondary)] space-y-3">
           <p>当前阶段支持通过后端 API 进行加入管理、解除管理、性格提示词更新与彻底删除。</p>
           <div className="flex flex-wrap gap-2">
-            {detail.account.source === 'unmanaged-memory' ? (
+            {detail.account.source === 'unmanaged-memory' || !detail.account.isManaged ? (
               <ActionButton
                 label="加入管理"
                 onClick={async () => {
@@ -259,19 +262,17 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
               />
             ) : (
               <>
-                {detail.account.isManaged && (
-                  <ActionButton
-                    label="解除管理"
-                    onClick={async () => {
-                      await removeAccountFromManagement(detail.account.twitterId)
-                      toast.success('账号已解除管理')
-                      await Promise.all([
-                        onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                      ])
-                      onAccountSelectionCleared?.()
-                    }}
-                  />
-                )}
+                <ActionButton
+                  label="解除管理"
+                  onClick={async () => {
+                    await removeAccountFromManagement(detail.account.twitterId)
+                    toast.success('账号已解除管理')
+                    await Promise.all([
+                      onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                    ])
+                    onAccountSelectionCleared?.()
+                  }}
+                />
                 <ActionButton
                   label="彻底删除"
                   danger
