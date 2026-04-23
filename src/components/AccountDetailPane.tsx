@@ -18,6 +18,8 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
   const [detail, setDetail] = useState<AccountDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingPrompt, setEditingPrompt] = useState(false)
+  const [promptValue, setPromptValue] = useState('')
 
   const loadDetail = async (twitterId: string) => {
     setLoading(true)
@@ -43,6 +45,7 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
         setDetail(null)
         setError(null)
         setLoading(false)
+        setEditingPrompt(false)
         return
       }
 
@@ -55,6 +58,8 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
         console.log('[AccountDetailPane] getAccountDetail success:', nextDetail)
         if (!cancelled) {
           setDetail(nextDetail)
+          setPromptValue(nextDetail.account.personalityPrompt || '')
+          setEditingPrompt(false)
         }
       } catch (loadError) {
         console.error('[AccountDetailPane] getAccountDetail failed:', loadError)
@@ -136,12 +141,89 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
             ['管理状态', detail.account.isManaged ? '当前已管理' : '未管理'],
             ['实例 ID', detail.account.instanceId ?? '—'],
             ['扩展名称', detail.account.extensionName ?? '—'],
-            ['性格提示词', detail.account.personalityPrompt ?? '未设置'],
             ['管理时间', detail.account.managedAt ?? '—'],
             ['解除管理时间', detail.account.unmanagedAt ?? '—'],
             ['更新时间', detail.account.updatedAt ?? '—'],
           ]}
         />
+        {detail.account.source === 'managed-db' && (
+          <div className="mt-3 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] text-[var(--color-text-secondary)]">性格提示词</div>
+              {!editingPrompt && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPrompt(true)
+                    setPromptValue(detail.account.personalityPrompt || '')
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] transition-colors"
+                >
+                  编辑
+                </button>
+              )}
+            </div>
+            {editingPrompt ? (
+              <div className="space-y-2">
+                <textarea
+                  value={promptValue}
+                  onChange={(e) => setPromptValue(e.target.value)}
+                  className="w-full min-h-[80px] px-2 py-1.5 text-sm bg-[var(--color-bg)] border border-[var(--color-border)] rounded text-[var(--color-text)] resize-y"
+                  placeholder="输入性格提示词..."
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await updateAccountPersonalityPrompt(detail.account.twitterId, promptValue || undefined)
+                      toast.success('性格提示词已保存')
+                      setEditingPrompt(false)
+                      await Promise.all([
+                        reloadDetail(),
+                        onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                      ])
+                    }}
+                    className="px-3 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-xs text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] transition-colors"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPrompt(false)
+                      setPromptValue(detail.account.personalityPrompt || '')
+                    }}
+                    className="px-3 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-bg)] text-xs text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] transition-colors"
+                  >
+                    取消
+                  </button>
+                  {promptValue && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateAccountPersonalityPrompt(detail.account.twitterId, undefined)
+                        toast.success('性格提示词已删除')
+                        setEditingPrompt(false)
+                        setPromptValue('')
+                        await Promise.all([
+                          reloadDetail(),
+                          onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                        ])
+                      }}
+                      className="px-3 py-1.5 rounded border border-red-800/50 bg-red-950/30 text-xs text-[#F48771] hover:bg-red-950/50 transition-colors"
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-[var(--color-text)] break-words whitespace-pre-wrap">
+                {detail.account.personalityPrompt || '未设置'}
+              </div>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section title="最新账号信息">
@@ -177,17 +259,6 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
               />
             ) : (
               <>
-                <ActionButton
-                  label="清除性格提示词"
-                  onClick={async () => {
-                    await updateAccountPersonalityPrompt(detail.account.twitterId)
-                    toast.success('性格提示词已清除')
-                    await Promise.all([
-                      reloadDetail(),
-                      onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                    ])
-                  }}
-                />
                 {detail.account.isManaged && (
                   <ActionButton
                     label="解除管理"

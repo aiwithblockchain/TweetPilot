@@ -213,13 +213,22 @@ pub async fn add_account_to_management(twitter_id: String, state: State<'_, Task
 
 #[tauri::command]
 pub async fn remove_account_from_management(twitter_id: String, state: State<'_, TaskState>) -> Result<(), String> {
+    log::info!("[remove_account_from_management] ========== START ==========");
+    log::info!("[remove_account_from_management] twitter_id: {}", twitter_id);
+
     let workspace_ctx = state.get_context().await;
     let ctx = workspace_ctx.as_ref()
         .ok_or("数据库未初始化，请先选择工作区")?;
 
+    log::info!("[remove_account_from_management] Calling database remove");
     ctx.db.lock().unwrap()
         .remove_account_from_management(&twitter_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("[remove_account_from_management] Database error: {}", e);
+            e.to_string()
+        })?;
+
+    log::info!("[remove_account_from_management] ========== SUCCESS ==========");
     Ok(())
 }
 
@@ -229,13 +238,23 @@ pub async fn update_account_personality_prompt(
     personality_prompt: Option<String>,
     state: State<'_, TaskState>,
 ) -> Result<(), String> {
+    log::info!("[update_account_personality_prompt] ========== START ==========");
+    log::info!("[update_account_personality_prompt] twitter_id: {}", twitter_id);
+    log::info!("[update_account_personality_prompt] personality_prompt: {:?}", personality_prompt);
+
     let workspace_ctx = state.get_context().await;
     let ctx = workspace_ctx.as_ref()
         .ok_or("数据库未初始化，请先选择工作区")?;
 
+    log::info!("[update_account_personality_prompt] Calling database update");
     ctx.db.lock().unwrap()
         .update_account_personality_prompt(&twitter_id, personality_prompt.as_deref())
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("[update_account_personality_prompt] Database error: {}", e);
+            e.to_string()
+        })?;
+
+    log::info!("[update_account_personality_prompt] ========== SUCCESS ==========");
     Ok(())
 }
 
