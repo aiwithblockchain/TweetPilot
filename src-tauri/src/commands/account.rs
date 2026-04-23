@@ -134,6 +134,9 @@ pub async fn get_unmanaged_online_accounts(state: State<'_, TaskState>) -> Resul
 
 #[tauri::command]
 pub async fn add_account_to_management(twitter_id: String, state: State<'_, TaskState>) -> Result<(), String> {
+    log::info!("[add_account_to_management] ========== START ==========");
+    log::info!("[add_account_to_management] twitter_id: {}", twitter_id);
+
     let workspace_ctx = state.get_context().await;
     let ctx = workspace_ctx.as_ref()
         .ok_or("数据库未初始化，请先选择工作区")?;
@@ -143,6 +146,7 @@ pub async fn add_account_to_management(twitter_id: String, state: State<'_, Task
         .await;
 
     let account = if let Some(account) = maybe_unmanaged {
+        log::info!("[add_account_to_management] Found in unmanaged-memory: @{}", account.screen_name);
         crate::models::twitter_account::TwitterBasicAccount {
             twitter_id: account.twitter_id,
             screen_name: account.screen_name,
@@ -185,17 +189,25 @@ pub async fn add_account_to_management(twitter_id: String, state: State<'_, Task
             last_seen: chrono::Utc::now(),
         }
     } else {
+        log::error!("[add_account_to_management] Account not found in unmanaged-memory or database: {}", twitter_id);
         return Err("账号不存在于未管理在线列表或历史管理记录中".to_string());
     };
 
+    log::info!("[add_account_to_management] Calling database add_account_to_management");
     ctx.db.lock().unwrap()
         .add_account_to_management(&account)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("[add_account_to_management] Database error: {}", e);
+            e.to_string()
+        })?;
+    log::info!("[add_account_to_management] Database operation successful");
 
     ctx.timer_manager
         .remove_unmanaged_online_account(&twitter_id)
         .await;
+    log::info!("[add_account_to_management] Removed from unmanaged-memory");
 
+    log::info!("[add_account_to_management] ========== SUCCESS ==========");
     Ok(())
 }
 
@@ -242,32 +254,49 @@ pub async fn delete_account_completely(twitter_id: String, state: State<'_, Task
 
 #[tauri::command]
 pub async fn get_account_detail(twitter_id: String, state: State<'_, TaskState>) -> Result<AccountDetailDto, String> {
+    log::info!("[get_account_detail] ========== API CALLED ==========");
+    log::info!("[get_account_detail] Requested twitter_id: {}", twitter_id);
+
     let workspace_ctx = state.get_context().await;
     let ctx = workspace_ctx.as_ref()
         .ok_or("数据库未初始化，请先选择工作区")?;
 
-    if let Some(account_row) = ctx.db.lock().unwrap()
+    log::info!("[get_account_detail] Querying x_accounts table");
+    let account_row = ctx.db.lock().unwrap()
         .get_account_management_detail(&twitter_id)
-        .map_err(|e| e.to_string())? {
+        .map_err(|e| e.to_string())?;
+
+    if let Some(account_row) = account_row {
+        log::info!("[get_account_detail] Found in x_accounts: is_managed={}", account_row.is_managed);
+
+        log::info!("[get_account_detail] Querying x_account_trend table");
         let latest_trend = ctx.db.lock().unwrap()
             .get_latest_account_snapshot(&twitter_id)
             .map_err(|e| e.to_string())?
-            .map(|trend| AccountLatestTrendDto {
-                screen_name: trend.screen_name,
-                display_name: trend.display_name,
-                avatar_url: trend.avatar_url,
-                description: trend.description,
-                followers_count: trend.followers_count,
-                following_count: trend.following_count,
-                tweet_count: trend.tweet_count,
-                favourites_count: trend.favourites_count,
-                listed_count: trend.listed_count,
-                media_count: trend.media_count,
-                account_created_at: trend.account_created_at,
-                last_online_time: trend.last_online_time,
-                created_at: Some(trend.created_at),
+            .map(|trend| {
+                log::info!("[get_account_detail] Found snapshot: @{}", trend.screen_name);
+                AccountLatestTrendDto {
+                    screen_name: trend.screen_name,
+                    display_name: trend.display_name,
+                    avatar_url: trend.avatar_url,
+                    description: trend.description,
+                    followers_count: trend.followers_count,
+                    following_count: trend.following_count,
+                    tweet_count: trend.tweet_count,
+                    favourites_count: trend.favourites_count,
+                    listed_count: trend.listed_count,
+                    media_count: trend.media_count,
+                    account_created_at: trend.account_created_at,
+                    last_online_time: trend.last_online_time,
+                    created_at: Some(trend.created_at),
+                }
             });
 
+        if latest_trend.is_none() {
+            log::warn!("[get_account_detail] No snapshot found in x_account_trend for twitter_id: {}", twitter_id);
+        }
+
+        log::info!("[get_account_detail] Returning managed account detail");
         return Ok(AccountDetailDto {
             account: AccountDetailAccountDto {
                 twitter_id: account_row.twitter_id,

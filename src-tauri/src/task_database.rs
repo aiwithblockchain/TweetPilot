@@ -659,8 +659,10 @@ impl TaskDatabase {
     }
 
     pub fn add_account_to_management(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        log::info!("[DB] add_account_to_management START for twitter_id: {}", account.twitter_id);
         let now = chrono::Utc::now().to_rfc3339();
 
+        log::info!("[DB] Inserting into x_accounts table");
         self.conn.execute(
             "INSERT INTO x_accounts (
                 twitter_id, is_managed, managed_at, unmanaged_at, instance_id, extension_name,
@@ -682,7 +684,14 @@ impl TaskDatabase {
                 now,
             ],
         )?;
+        log::info!("[DB] x_accounts insert successful");
 
+        // Insert initial snapshot to x_account_trend table
+        log::info!("[DB] Inserting initial snapshot into x_account_trend table");
+        self.insert_account_snapshot(account)?;
+        log::info!("[DB] x_account_trend insert successful");
+
+        log::info!("[DB] add_account_to_management SUCCESS");
         Ok(())
     }
 
@@ -829,6 +838,8 @@ impl TaskDatabase {
     }
 
     pub fn get_latest_account_snapshot(&self, twitter_id: &str) -> Result<Option<AccountTrendSnapshot>> {
+        log::info!("[DB] get_latest_account_snapshot START for twitter_id: {}", twitter_id);
+
         let mut stmt = self.conn.prepare(
             "SELECT id, twitter_id, screen_name, display_name, avatar_url, description,
                     is_verified, followers_count, following_count, tweet_count,
@@ -840,7 +851,9 @@ impl TaskDatabase {
              LIMIT 1"
         )?;
 
+        log::info!("[DB] Executing query for twitter_id: {}", twitter_id);
         let result = stmt.query_row(params![twitter_id], |row| {
+            log::info!("[DB] Found row in x_account_trend");
             Ok(AccountTrendSnapshot {
                 id: row.get(0)?,
                 twitter_id: row.get(1)?,

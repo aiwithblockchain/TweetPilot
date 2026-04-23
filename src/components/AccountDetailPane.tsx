@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useToast } from '@/contexts/ToastContext'
 import type { SidebarItem } from '@/config/layout'
 import type { AccountDetail } from '@/services/account'
-import { deleteAccountCompletely, getAccountDetail, removeAccountFromManagement, updateAccountPersonalityPrompt } from '@/services/account'
+import { addAccountToManagement, deleteAccountCompletely, getAccountDetail, removeAccountFromManagement, updateAccountPersonalityPrompt } from '@/services/account'
 import type { AppInstance } from '@/types/layout'
 
 interface AccountDetailPaneProps {
@@ -13,6 +13,7 @@ interface AccountDetailPaneProps {
 }
 
 export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionCleared }: AccountDetailPaneProps) {
+  console.log('[AccountDetailPane] Component rendered with item:', item ? { id: item.id, label: item.label } : null)
   const toast = useToast()
   const [detail, setDetail] = useState<AccountDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -33,25 +34,30 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
   }
 
   useEffect(() => {
+    console.log('[AccountDetailPane] useEffect triggered, item.id:', item?.id)
     let cancelled = false
 
     const run = async () => {
       if (!item) {
+        console.log('[AccountDetailPane] No item, clearing state')
         setDetail(null)
         setError(null)
         setLoading(false)
         return
       }
 
+      console.log('[AccountDetailPane] Calling getAccountDetail for:', item.id)
       setLoading(true)
       setError(null)
 
       try {
         const nextDetail = await getAccountDetail(item.id)
+        console.log('[AccountDetailPane] getAccountDetail success:', nextDetail)
         if (!cancelled) {
           setDetail(nextDetail)
         }
       } catch (loadError) {
+        console.error('[AccountDetailPane] getAccountDetail failed:', loadError)
         if (!cancelled) {
           setDetail(null)
           setError(loadError instanceof Error ? loadError.message : '账号详情加载失败')
@@ -68,7 +74,7 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
     return () => {
       cancelled = true
     }
-  }, [item])
+  }, [item?.id])
 
   const reloadDetail = async () => {
     if (!item) return
@@ -158,42 +164,57 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
         <div className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-text-secondary)] space-y-3">
           <p>当前阶段支持通过后端 API 进行加入管理、解除管理、性格提示词更新与彻底删除。</p>
           <div className="flex flex-wrap gap-2">
-            <ActionButton
-              label="清除性格提示词"
-              onClick={async () => {
-                await updateAccountPersonalityPrompt(detail.account.twitterId)
-                toast.success('性格提示词已清除')
-                await Promise.all([
-                  reloadDetail(),
-                  onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                ])
-              }}
-            />
-            {detail.account.isManaged && (
+            {detail.account.source === 'unmanaged-memory' ? (
               <ActionButton
-                label="解除管理"
+                label="加入管理"
                 onClick={async () => {
-                  await removeAccountFromManagement(detail.account.twitterId)
-                  toast.success('账号已解除管理')
-                  await Promise.all([
-                    onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                  ])
-                  onAccountSelectionCleared?.()
+                  await addAccountToManagement(detail.account.twitterId)
+                  toast.success('账号已加入管理')
+                  await (onAccountsMutated ? onAccountsMutated() : Promise.resolve())
+                  // 重新加载详情，不清除选中状态
+                  await reloadDetail()
                 }}
               />
+            ) : (
+              <>
+                <ActionButton
+                  label="清除性格提示词"
+                  onClick={async () => {
+                    await updateAccountPersonalityPrompt(detail.account.twitterId)
+                    toast.success('性格提示词已清除')
+                    await Promise.all([
+                      reloadDetail(),
+                      onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                    ])
+                  }}
+                />
+                {detail.account.isManaged && (
+                  <ActionButton
+                    label="解除管理"
+                    onClick={async () => {
+                      await removeAccountFromManagement(detail.account.twitterId)
+                      toast.success('账号已解除管理')
+                      await Promise.all([
+                        onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                      ])
+                      onAccountSelectionCleared?.()
+                    }}
+                  />
+                )}
+                <ActionButton
+                  label="彻底删除"
+                  danger
+                  onClick={async () => {
+                    await deleteAccountCompletely(detail.account.twitterId)
+                    toast.success('账号已删除')
+                    await Promise.all([
+                      onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                    ])
+                    onAccountSelectionCleared?.()
+                  }}
+                />
+              </>
             )}
-            <ActionButton
-              label="彻底删除"
-              danger
-              onClick={async () => {
-                await deleteAccountCompletely(detail.account.twitterId)
-                toast.success('账号已删除')
-                await Promise.all([
-                  onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                ])
-                onAccountSelectionCleared?.()
-              }}
-            />
           </div>
         </div>
       </Section>
