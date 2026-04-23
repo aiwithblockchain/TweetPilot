@@ -5,10 +5,13 @@ import { TitleBar } from '@/components/TitleBar'
 
 interface WorkspaceSelectorProps {
   currentWorkspace: string | null
-  onWorkspaceSelected: (path: string) => void
+  isInitializingWorkspace?: boolean
+  onWorkspaceSelected: (path: string) => void | Promise<void>
 }
 
 export default function WorkspaceSelector({
+  currentWorkspace,
+  isInitializingWorkspace = false,
   onWorkspaceSelected,
 }: WorkspaceSelectorProps) {
   const [loading, setLoading] = useState(false)
@@ -28,11 +31,9 @@ export default function WorkspaceSelector({
   const loadRecentWorkspaces = async () => {
     try {
       const recent = await workspaceService.getRecentWorkspaces()
-      // Filter out non-existent directories
       const validWorkspaces = []
       for (const workspace of recent) {
         try {
-          // Try to access the directory to check if it exists
           const exists = await workspaceService.checkDirectoryExists(workspace.path)
           if (exists) {
             validWorkspaces.push(workspace)
@@ -47,6 +48,19 @@ export default function WorkspaceSelector({
     }
   }
 
+  const handleOpenWorkspace = async (path: string) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      await onWorkspaceSelected(path)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '打开工作目录失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSelectDirectory = async () => {
     setLoading(true)
     setError(null)
@@ -58,8 +72,7 @@ export default function WorkspaceSelector({
         return
       }
 
-      // Don't persist workspace - just use it for this session
-      onWorkspaceSelected(path)
+      await onWorkspaceSelected(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to select directory')
     } finally {
@@ -93,19 +106,17 @@ export default function WorkspaceSelector({
     setError(null)
     setCloneProgress('')
 
-    // Listen for clone progress events
     const unlisten = await listen<string>('clone-progress', (event) => {
       setCloneProgress(event.payload)
     })
 
     try {
       const path = await workspaceService.cloneFromGithub(repoUrl.trim(), targetDirectory)
-      // Don't persist workspace - just use it for this session
       setShowCloneDialog(false)
       setRepoUrl('')
       setTargetDirectory(null)
       setCloneProgress('')
-      onWorkspaceSelected(path)
+      await onWorkspaceSelected(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : '克隆失败')
     } finally {
@@ -113,6 +124,8 @@ export default function WorkspaceSelector({
       unlisten()
     }
   }
+
+  const isBusy = loading || cloning || isInitializingWorkspace
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-bg)]">
@@ -129,82 +142,74 @@ export default function WorkspaceSelector({
             <p className="text-base text-[var(--color-text)]">
               选择一个工作目录开始使用
             </p>
+            {currentWorkspace && !isBusy && (
+              <p className="mt-2 text-xs text-[var(--color-text-secondary)] break-all">
+                当前选择: {currentWorkspace}
+              </p>
+            )}
           </div>
 
-        <div className="grid gap-4">
-          <button
-            onClick={handleSelectDirectory}
-            disabled={loading}
-            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
-          >
-            <div className="text-base font-medium mb-1 text-[var(--color-text)]">📁 选择本地目录</div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
-              选择一个现有的目录作为工作目录
-            </div>
-          </button>
+          <div className="grid gap-4">
+            <button
+              onClick={handleSelectDirectory}
+              disabled={isBusy}
+              className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+            >
+              <div className="text-base font-medium mb-1 text-[var(--color-text)]">📁 选择本地目录</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">
+                选择一个现有的目录作为工作目录
+              </div>
+            </button>
 
-          <button
-            onClick={() => setShowCloneDialog(true)}
-            disabled={loading || cloning}
-            className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
-          >
-            <div className="text-base font-medium mb-1 text-[var(--color-text)]">🔗 从 GitHub 克隆</div>
-            <div className="text-xs text-[var(--color-text-secondary)]">
-              克隆一个 GitHub 仓库作为工作目录
-            </div>
-          </button>
+            <button
+              onClick={() => setShowCloneDialog(true)}
+              disabled={isBusy}
+              className="p-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+            >
+              <div className="text-base font-medium mb-1 text-[var(--color-text)]">🔗 从 GitHub 克隆</div>
+              <div className="text-xs text-[var(--color-text-secondary)]">
+                克隆一个 GitHub 仓库作为工作目录
+              </div>
+            </button>
 
-          {recentWorkspaces.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-[var(--color-text-secondary)]">最近使用</div>
-              {recentWorkspaces.slice(0, 3).map((workspace) => (
-                <button
-                  key={workspace.path}
-                  onClick={async () => {
-                    console.log('[WorkspaceSelector] Clicking recent workspace:', workspace.path)
-                    setLoading(true)
-                    setError(null)
-                    try {
-                      console.log('[WorkspaceSelector] Opening recent workspace')
-                      // Don't persist workspace - just use it for this session
-                      onWorkspaceSelected(workspace.path)
-                    } catch (err) {
-                      console.error('[WorkspaceSelector] Failed to open workspace:', err)
-                      const errorMessage = err instanceof Error ? err.message : '打开工作目录失败'
-                      setError(errorMessage)
-                    } finally {
-                      setLoading(false)
-                    }
-                  }}
-                  className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left"
-                >
-                  <div className="text-sm font-medium mb-1 text-[var(--color-text)]">{workspace.name}</div>
-                  <div className="text-xs text-[var(--color-text-secondary)] truncate">{workspace.path}</div>
-                </button>
-              ))}
-              {recentWorkspaces.length > 3 && (
-                <button
-                  onClick={() => setShowRecentWorkspaces(true)}
-                  className="w-full p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-center text-sm text-[var(--color-text-secondary)]"
-                >
-                  查看全部 {recentWorkspaces.length} 个工作目录
-                </button>
-              )}
+            {recentWorkspaces.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-[var(--color-text-secondary)]">最近使用</div>
+                {recentWorkspaces.slice(0, 3).map((workspace) => (
+                  <button
+                    key={workspace.path}
+                    onClick={() => void handleOpenWorkspace(workspace.path)}
+                    disabled={isBusy}
+                    className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+                  >
+                    <div className="text-sm font-medium mb-1 text-[var(--color-text)]">{workspace.name}</div>
+                    <div className="text-xs text-[var(--color-text-secondary)] truncate">{workspace.path}</div>
+                  </button>
+                ))}
+                {recentWorkspaces.length > 3 && (
+                  <button
+                    onClick={() => setShowRecentWorkspaces(true)}
+                    disabled={isBusy}
+                    className="w-full p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-center text-sm text-[var(--color-text-secondary)] disabled:opacity-50"
+                  >
+                    查看全部 {recentWorkspaces.length} 个工作目录
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-4 p-4 bg-red-500/10 border border-red-500 rounded-lg text-red-500">
+              {error}
             </div>
           )}
-        </div>
 
-        {error && (
-          <div className="mt-4 p-4 bg-red-500/10 border border-red-500 rounded-lg text-red-500">
-            {error}
-          </div>
-        )}
-
-        {loading && (
-          <div className="mt-4 text-center text-[var(--color-text-secondary)]">
-            正在选择目录...
-          </div>
-        )}
+          {isBusy && (
+            <div className="mt-4 text-center text-[var(--color-text-secondary)]">
+              {cloning ? '正在克隆仓库...' : '正在打开工作目录...'}
+            </div>
+          )}
         </div>
       </div>
 
@@ -223,7 +228,7 @@ export default function WorkspaceSelector({
                 onChange={(e) => setRepoUrl(e.target.value)}
                 placeholder="https://github.com/username/repo.git"
                 className="w-full px-3 py-2 bg-[var(--color-bg)] border border-[var(--color-border)] rounded text-sm"
-                disabled={cloning}
+                disabled={cloning || isInitializingWorkspace}
               />
               <div className="mt-2 text-xs text-secondary">
                 支持 HTTPS 和 SSH 格式
@@ -260,7 +265,7 @@ export default function WorkspaceSelector({
                   setTargetDirectory(null)
                   setError(null)
                 }}
-                disabled={cloning}
+                disabled={cloning || isInitializingWorkspace}
                 className="px-4 py-2 text-sm border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors disabled:opacity-50"
               >
                 取消
@@ -268,7 +273,7 @@ export default function WorkspaceSelector({
               {!targetDirectory ? (
                 <button
                   onClick={handleSelectTargetDirectory}
-                  disabled={cloning}
+                  disabled={cloning || isInitializingWorkspace}
                   className="px-4 py-2 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
                 >
                   选择目录
@@ -276,7 +281,7 @@ export default function WorkspaceSelector({
               ) : (
                 <button
                   onClick={handleCloneFromGithub}
-                  disabled={cloning || !repoUrl.trim()}
+                  disabled={cloning || isInitializingWorkspace || !repoUrl.trim()}
                   className="px-4 py-2 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
                 >
                   {cloning ? '克隆中...' : '开始克隆'}
@@ -287,7 +292,6 @@ export default function WorkspaceSelector({
         </div>
       )}
 
-      {/* Recent Workspaces Dialog */}
       {showRecentWorkspaces && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
@@ -297,16 +301,12 @@ export default function WorkspaceSelector({
               {recentWorkspaces.map((workspace) => (
                 <button
                   key={workspace.path}
-                  onClick={async () => {
-                    try {
-                      // Don't persist workspace - just use it for this session
-                      setShowRecentWorkspaces(false)
-                      onWorkspaceSelected(workspace.path)
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : '打开工作目录失败')
-                    }
+                  onClick={() => {
+                    setShowRecentWorkspaces(false)
+                    void handleOpenWorkspace(workspace.path)
                   }}
-                  className="w-full p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left"
+                  disabled={isBusy}
+                  className="w-full p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
                 >
                   <div className="text-sm font-medium mb-1">{workspace.name}</div>
                   <div className="text-xs text-secondary break-all">{workspace.path}</div>
