@@ -1,29 +1,4 @@
--- Managed Twitter Accounts table
-CREATE TABLE IF NOT EXISTS managed_twitter_accounts (
-    twitter_id TEXT PRIMARY KEY,
-    screen_name TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    avatar_url TEXT,
-    description TEXT,
-    is_verified BOOLEAN DEFAULT 0,
-    is_managed BOOLEAN DEFAULT 0,
-    last_online_time TIMESTAMP,
-    instance_id TEXT,
-    extension_name TEXT,
-    followers_count INTEGER,
-    following_count INTEGER,
-    tweet_count INTEGER,
-    favourites_count INTEGER,
-    listed_count INTEGER,
-    media_count INTEGER,
-    account_created_at TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+-- This migration file is deprecated and kept for reference only.
+-- The managed_twitter_accounts table has been replaced by x_accounts table in migration 003.
+-- No tables are created by this migration.
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_accounts_last_online
-ON managed_twitter_accounts(last_online_time DESC);
-
-CREATE INDEX IF NOT EXISTS idx_accounts_is_managed
-ON managed_twitter_accounts(is_managed);
