@@ -34,10 +34,12 @@ describe('settingsTauriService', () => {
       syncIntervalMs: 60000,
     })
 
-    expect(tauriInvokeMock).toHaveBeenCalledWith('update_localbridge_config', {
-      endpoint: 'http://localhost:3000',
-      timeoutMs: 30000,
-      syncIntervalMs: 60000,
+    expect(tauriInvokeMock).toHaveBeenCalledWith('update_local_bridge_config', {
+      config: {
+        endpoint: 'http://localhost:3000',
+        timeout_ms: 30000,
+        sync_interval_ms: 60000,
+      },
     })
   })
 })

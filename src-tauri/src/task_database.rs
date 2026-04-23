@@ -79,6 +79,69 @@ pub struct TaskConfigInput {
     pub tags: Option<Vec<String>>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct XAccountRow {
+    pub twitter_id: String,
+    pub is_managed: bool,
+    pub managed_at: Option<String>,
+    pub unmanaged_at: Option<String>,
+    pub instance_id: Option<String>,
+    pub extension_name: Option<String>,
+    pub personality_prompt: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountTrendSnapshot {
+    pub id: i64,
+    pub twitter_id: String,
+    pub screen_name: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub description: Option<String>,
+    pub is_verified: bool,
+    pub followers_count: Option<i64>,
+    pub following_count: Option<i64>,
+    pub tweet_count: Option<i64>,
+    pub favourites_count: Option<i64>,
+    pub listed_count: Option<i64>,
+    pub media_count: Option<i64>,
+    pub account_created_at: Option<String>,
+    pub last_online_time: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountWithLatestSnapshot {
+    pub twitter_id: String,
+    pub is_managed: bool,
+    pub managed_at: Option<String>,
+    pub unmanaged_at: Option<String>,
+    pub instance_id: Option<String>,
+    pub extension_name: Option<String>,
+    pub personality_prompt: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub screen_name: Option<String>,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub description: Option<String>,
+    pub is_verified: Option<bool>,
+    pub followers_count: Option<i64>,
+    pub following_count: Option<i64>,
+    pub tweet_count: Option<i64>,
+    pub favourites_count: Option<i64>,
+    pub listed_count: Option<i64>,
+    pub media_count: Option<i64>,
+    pub account_created_at: Option<String>,
+    pub last_online_time: Option<String>,
+    pub latest_snapshot_at: Option<String>,
+}
+
 pub struct TaskDatabase {
     conn: Connection,
 }
@@ -93,6 +156,8 @@ impl TaskDatabase {
     fn init_schema(conn: &Connection) -> Result<()> {
         conn.execute_batch(include_str!("../migrations/001_create_tasks_tables.sql"))?;
         conn.execute_batch(include_str!("../migrations/002_create_accounts_table.sql"))?;
+        conn.execute_batch(include_str!("../migrations/003_create_x_accounts_and_trend.sql"))?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         Ok(())
     }
 
@@ -573,9 +638,276 @@ impl TaskDatabase {
     }
 
     // Account management methods
-    pub fn get_account_last_update(&self, twitter_id: &str) -> Result<Option<String>> {
+    #[allow(dead_code)]
+    pub fn account_exists(&self, twitter_id: &str) -> Result<bool> {
         let mut stmt = self.conn.prepare(
-            "SELECT updated_at FROM managed_twitter_accounts WHERE twitter_id = ?1"
+            "SELECT EXISTS(SELECT 1 FROM x_accounts WHERE twitter_id = ?1)"
+        )?;
+
+        let exists: i64 = stmt.query_row(params![twitter_id], |row| row.get(0))?;
+        Ok(exists == 1)
+    }
+
+    #[allow(dead_code)]
+    pub fn is_account_managed(&self, twitter_id: &str) -> Result<bool> {
+        let mut stmt = self.conn.prepare(
+            "SELECT EXISTS(SELECT 1 FROM x_accounts WHERE twitter_id = ?1 AND is_managed = 1)"
+        )?;
+
+        let exists: i64 = stmt.query_row(params![twitter_id], |row| row.get(0))?;
+        Ok(exists == 1)
+    }
+
+    pub fn add_account_to_management(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "INSERT INTO x_accounts (
+                twitter_id, is_managed, managed_at, unmanaged_at, instance_id, extension_name,
+                created_at, updated_at
+            ) VALUES (?1, 1, ?2, NULL, ?3, ?4, ?5, ?6)
+            ON CONFLICT(twitter_id) DO UPDATE SET
+                is_managed = 1,
+                managed_at = excluded.managed_at,
+                unmanaged_at = NULL,
+                instance_id = excluded.instance_id,
+                extension_name = excluded.extension_name,
+                updated_at = excluded.updated_at",
+            params![
+                account.twitter_id,
+                now,
+                account.instance_id,
+                account.extension_name,
+                now,
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn remove_account_from_management(&self, twitter_id: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "UPDATE x_accounts SET
+                is_managed = 0,
+                unmanaged_at = ?2,
+                updated_at = ?2
+            WHERE twitter_id = ?1",
+            params![twitter_id, now],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn update_account_instance_binding(
+        &self,
+        twitter_id: &str,
+        instance_id: Option<&str>,
+        extension_name: Option<&str>,
+    ) -> Result<bool> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = self.conn.execute(
+            "UPDATE x_accounts SET
+                instance_id = ?2,
+                extension_name = ?3,
+                updated_at = ?4
+            WHERE twitter_id = ?1
+              AND (
+                COALESCE(instance_id, '') != COALESCE(?2, '')
+                OR COALESCE(extension_name, '') != COALESCE(?3, '')
+              )",
+            params![twitter_id, instance_id, extension_name, now],
+        )?;
+
+        Ok(affected > 0)
+    }
+
+    pub fn update_account_personality_prompt(&self, twitter_id: &str, personality_prompt: Option<&str>) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE x_accounts SET
+                personality_prompt = ?2,
+                updated_at = ?3
+            WHERE twitter_id = ?1",
+            params![twitter_id, personality_prompt, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_account_management_detail(&self, twitter_id: &str) -> Result<Option<XAccountRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT twitter_id, is_managed, managed_at, unmanaged_at, instance_id, extension_name,
+                    personality_prompt, created_at, updated_at
+             FROM x_accounts
+             WHERE twitter_id = ?1"
+        )?;
+
+        let result = stmt.query_row(params![twitter_id], |row| {
+            Ok(XAccountRow {
+                twitter_id: row.get(0)?,
+                is_managed: row.get(1)?,
+                managed_at: row.get(2)?,
+                unmanaged_at: row.get(3)?,
+                instance_id: row.get(4)?,
+                extension_name: row.get(5)?,
+                personality_prompt: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        });
+
+        match result {
+            Ok(account) => Ok(Some(account)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_managed_accounts(&self) -> Result<Vec<XAccountRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT twitter_id, is_managed, managed_at, unmanaged_at, instance_id, extension_name,
+                    personality_prompt, created_at, updated_at
+             FROM x_accounts
+             WHERE is_managed = 1
+             ORDER BY COALESCE(managed_at, created_at) DESC"
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(XAccountRow {
+                twitter_id: row.get(0)?,
+                is_managed: row.get(1)?,
+                managed_at: row.get(2)?,
+                unmanaged_at: row.get(3)?,
+                instance_id: row.get(4)?,
+                extension_name: row.get(5)?,
+                personality_prompt: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn delete_account_completely(&self, twitter_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM x_accounts WHERE twitter_id = ?1",
+            params![twitter_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_account_snapshot(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO x_account_trend (
+                twitter_id, screen_name, display_name, avatar_url, description,
+                is_verified, followers_count, following_count, tweet_count,
+                favourites_count, listed_count, media_count, account_created_at,
+                last_online_time
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                account.twitter_id,
+                account.screen_name,
+                account.display_name,
+                account.avatar_url,
+                account.description,
+                account.is_verified,
+                account.followers_count,
+                account.following_count,
+                account.tweet_count,
+                account.favourites_count,
+                account.listed_count,
+                account.media_count,
+                account.created_at,
+                account.last_seen.to_rfc3339(),
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_latest_account_snapshot(&self, twitter_id: &str) -> Result<Option<AccountTrendSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, twitter_id, screen_name, display_name, avatar_url, description,
+                    is_verified, followers_count, following_count, tweet_count,
+                    favourites_count, listed_count, media_count, account_created_at,
+                    last_online_time, created_at
+             FROM x_account_trend
+             WHERE twitter_id = ?1
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1"
+        )?;
+
+        let result = stmt.query_row(params![twitter_id], |row| {
+            Ok(AccountTrendSnapshot {
+                id: row.get(0)?,
+                twitter_id: row.get(1)?,
+                screen_name: row.get(2)?,
+                display_name: row.get(3)?,
+                avatar_url: row.get(4)?,
+                description: row.get(5)?,
+                is_verified: row.get(6)?,
+                followers_count: row.get(7)?,
+                following_count: row.get(8)?,
+                tweet_count: row.get(9)?,
+                favourites_count: row.get(10)?,
+                listed_count: row.get(11)?,
+                media_count: row.get(12)?,
+                account_created_at: row.get(13)?,
+                last_online_time: row.get(14)?,
+                created_at: row.get(15)?,
+            })
+        });
+
+        match result {
+            Ok(snapshot) => Ok(Some(snapshot)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_account_snapshots(&self, twitter_id: &str, limit: Option<i64>) -> Result<Vec<AccountTrendSnapshot>> {
+        let limit = limit.unwrap_or(50);
+        let mut stmt = self.conn.prepare(
+            "SELECT id, twitter_id, screen_name, display_name, avatar_url, description,
+                    is_verified, followers_count, following_count, tweet_count,
+                    favourites_count, listed_count, media_count, account_created_at,
+                    last_online_time, created_at
+             FROM x_account_trend
+             WHERE twitter_id = ?1
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?2"
+        )?;
+
+        let rows = stmt.query_map(params![twitter_id, limit], |row| {
+            Ok(AccountTrendSnapshot {
+                id: row.get(0)?,
+                twitter_id: row.get(1)?,
+                screen_name: row.get(2)?,
+                display_name: row.get(3)?,
+                avatar_url: row.get(4)?,
+                description: row.get(5)?,
+                is_verified: row.get(6)?,
+                followers_count: row.get(7)?,
+                following_count: row.get(8)?,
+                tweet_count: row.get(9)?,
+                favourites_count: row.get(10)?,
+                listed_count: row.get(11)?,
+                media_count: row.get(12)?,
+                account_created_at: row.get(13)?,
+                last_online_time: row.get(14)?,
+                created_at: row.get(15)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn get_account_last_snapshot_time(&self, twitter_id: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT created_at FROM x_account_trend WHERE twitter_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1"
         )?;
 
         let result = stmt.query_row(params![twitter_id], |row| row.get(0));
@@ -587,86 +919,73 @@ impl TaskDatabase {
         }
     }
 
-    pub fn insert_account(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        self.conn.execute(
-            "INSERT INTO managed_twitter_accounts (
-                twitter_id, screen_name, display_name, avatar_url, description,
-                is_verified, is_managed, last_online_time, instance_id, extension_name,
-                followers_count, following_count, tweet_count, favourites_count,
-                listed_count, media_count, account_created_at,
-                created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
-            params![
-                account.twitter_id,
-                account.screen_name,
-                account.display_name,
-                account.avatar_url,
-                account.description,
-                account.is_verified,
-                false, // is_managed defaults to false
-                account.last_seen.to_rfc3339(),
-                account.instance_id,
-                account.extension_name,
-                account.followers_count,
-                account.following_count,
-                account.tweet_count,
-                account.favourites_count,
-                account.listed_count,
-                account.media_count,
-                account.created_at,
-                now,
-                now,
-            ],
+    pub fn get_managed_accounts_with_latest_snapshot(&self) -> Result<Vec<AccountWithLatestSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                a.twitter_id,
+                a.is_managed,
+                a.managed_at,
+                a.unmanaged_at,
+                a.instance_id,
+                a.extension_name,
+                a.personality_prompt,
+                a.created_at,
+                a.updated_at,
+                t.screen_name,
+                t.display_name,
+                t.avatar_url,
+                t.description,
+                t.is_verified,
+                t.followers_count,
+                t.following_count,
+                t.tweet_count,
+                t.favourites_count,
+                t.listed_count,
+                t.media_count,
+                t.account_created_at,
+                t.last_online_time,
+                t.created_at AS latest_snapshot_at
+             FROM x_accounts a
+             LEFT JOIN (
+                SELECT twitter_id, screen_name, display_name, avatar_url, description,
+                       is_verified, followers_count, following_count, tweet_count,
+                       favourites_count, listed_count, media_count, account_created_at,
+                       last_online_time, created_at,
+                       ROW_NUMBER() OVER (PARTITION BY twitter_id ORDER BY created_at DESC, id DESC) AS rn
+                FROM x_account_trend
+             ) t ON a.twitter_id = t.twitter_id AND t.rn = 1
+             WHERE a.is_managed = 1
+             ORDER BY COALESCE(t.created_at, a.updated_at) DESC"
         )?;
 
-        Ok(())
-    }
+        let rows = stmt.query_map([], |row| {
+            Ok(AccountWithLatestSnapshot {
+                twitter_id: row.get(0)?,
+                is_managed: row.get(1)?,
+                managed_at: row.get(2)?,
+                unmanaged_at: row.get(3)?,
+                instance_id: row.get(4)?,
+                extension_name: row.get(5)?,
+                personality_prompt: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                screen_name: row.get(9)?,
+                display_name: row.get(10)?,
+                avatar_url: row.get(11)?,
+                description: row.get(12)?,
+                is_verified: row.get(13)?,
+                followers_count: row.get(14)?,
+                following_count: row.get(15)?,
+                tweet_count: row.get(16)?,
+                favourites_count: row.get(17)?,
+                listed_count: row.get(18)?,
+                media_count: row.get(19)?,
+                account_created_at: row.get(20)?,
+                last_online_time: row.get(21)?,
+                latest_snapshot_at: row.get(22)?,
+            })
+        })?;
 
-    pub fn update_account(&self, account: &crate::models::twitter_account::TwitterBasicAccount) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        self.conn.execute(
-            "UPDATE managed_twitter_accounts SET
-                screen_name = ?2,
-                display_name = ?3,
-                avatar_url = ?4,
-                description = ?5,
-                is_verified = ?6,
-                last_online_time = ?7,
-                instance_id = ?8,
-                extension_name = ?9,
-                followers_count = ?10,
-                following_count = ?11,
-                tweet_count = ?12,
-                favourites_count = ?13,
-                listed_count = ?14,
-                media_count = ?15,
-                account_created_at = ?16,
-                updated_at = ?17
-            WHERE twitter_id = ?1",
-            params![
-                account.twitter_id,
-                account.screen_name,
-                account.display_name,
-                account.avatar_url,
-                account.description,
-                account.is_verified,
-                account.last_seen.to_rfc3339(),
-                account.instance_id,
-                account.extension_name,
-                account.followers_count,
-                account.following_count,
-                account.tweet_count,
-                account.favourites_count,
-                account.listed_count,
-                account.media_count,
-                account.created_at,
-                now,
-            ],
-        )?;
-
-        Ok(())
+        rows.collect()
     }
 }

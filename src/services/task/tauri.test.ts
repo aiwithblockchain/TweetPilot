@@ -28,12 +28,15 @@ describe('taskTauriService', () => {
       config: {
         name: 'Nightly Sync',
         description: 'Sync tweets nightly',
-        task_type: 'scheduled',
+        type: 'scheduled',
         script_path: '/scripts/sync.ts',
         schedule: '0 2 * * *',
+        schedule_type: undefined,
+        interval_seconds: undefined,
         parameters: {
           account: '@tweetpilot',
         },
+        account_id: '',
       },
     })
   })

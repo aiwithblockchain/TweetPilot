@@ -1,8 +1,24 @@
 export { workspaceService } from './workspace'
 export type { WorkspaceHistory, WorkspaceService } from './workspace'
 
-export { getInstances } from './account'
-export type { LocalBridgeInstance, TwitterBasicInfo } from './account'
+export {
+  addAccountToManagement,
+  deleteAccountCompletely,
+  getAccountDetail,
+  getInstances,
+  getManagedAccounts,
+  getUnmanagedOnlineAccounts,
+  removeAccountFromManagement,
+  updateAccountPersonalityPrompt,
+} from './account'
+export type {
+  AccountDetail,
+  AccountLatestTrend,
+  AccountListItem,
+  AccountSource,
+  LocalBridgeInstance,
+  TwitterBasicInfo,
+} from './account'
 
 export { taskService } from './task'
 export type {

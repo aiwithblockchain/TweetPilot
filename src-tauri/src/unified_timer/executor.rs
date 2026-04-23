@@ -1,9 +1,12 @@
 use crate::unified_timer::types::{ExecutionContext, ExecutionResult, Timer};
 use async_trait::async_trait;
+use std::any::Any;
 use std::time::Duration;
 
 #[async_trait]
 pub trait TimerExecutor: Send + Sync {
+    fn as_any(&self) -> &dyn Any;
+
     async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String>;
 
     #[allow(dead_code)]
@@ -20,6 +23,10 @@ pub struct DummyExecutor;
 
 #[async_trait]
 impl TimerExecutor for DummyExecutor {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String> {
         let start_time = chrono::Utc::now();
 

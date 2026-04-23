@@ -1,5 +1,6 @@
 use crate::unified_timer::registry::TimerRegistry;
 use crate::unified_timer::executor::{TimerExecutor, DummyExecutor};
+use crate::unified_timer::executors::LocalBridgeSyncExecutor;
 use crate::unified_timer::types::{ExecutionContext, Timer};
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -40,6 +41,38 @@ impl EventLoop {
 
     pub async fn is_running(&self) -> bool {
         *self.running.read().await
+    }
+
+    pub async fn get_unmanaged_online_accounts(&self) -> Vec<crate::unified_timer::UnmanagedAccountRecord> {
+        let executors = self.executors.read().await;
+        executors.values()
+            .find_map(|executor| {
+                executor
+                    .as_any()
+                    .downcast_ref::<LocalBridgeSyncExecutor>()
+                    .map(|sync| sync.get_unmanaged_online_accounts())
+            })
+            .unwrap_or_default()
+    }
+
+    pub async fn get_unmanaged_online_account(&self, twitter_id: &str) -> Option<crate::unified_timer::UnmanagedAccountRecord> {
+        let executors = self.executors.read().await;
+        executors.values()
+            .find_map(|executor| {
+                executor
+                    .as_any()
+                    .downcast_ref::<LocalBridgeSyncExecutor>()
+                    .and_then(|sync| sync.get_unmanaged_online_account(twitter_id))
+            })
+    }
+
+    pub async fn remove_unmanaged_online_account(&self, twitter_id: &str) {
+        let executors = self.executors.read().await;
+        if let Some(sync) = executors.values()
+            .find_map(|executor| executor.as_any().downcast_ref::<LocalBridgeSyncExecutor>())
+        {
+            sync.remove_unmanaged_online_account(twitter_id);
+        }
     }
 
     pub async fn stop(&self) {

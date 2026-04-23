@@ -1,4 +1,5 @@
 import { Bot, Database, FolderOpen, UserRound, Zap } from 'lucide-react'
+import type { AccountSource } from '@/services/account'
 import type { AppInstance } from '@/types/layout'
 
 export type View = 'workspace' | 'accounts' | 'data-blocks' | 'tasks'
@@ -14,6 +15,10 @@ export interface SidebarItem {
   id: string
   label: string
   description: string
+  badge?: string
+  badgeTone?: 'default' | 'success' | 'warning' | 'danger'
+  group?: 'managed' | 'unmanaged'
+  source?: AccountSource
 }
 
 export interface SidebarSectionAction {
@@ -95,7 +100,7 @@ export const SIDEBAR_SECTION_CONFIG: Record<View, SidebarSectionConfig> = {
   },
   accounts: {
     title: 'TWITTER ACCOUNTS',
-    description: '选择左侧账号，在中间查看头像、名称与关联实例信息。',
+    description: '左侧按当前已管理账号与未管理在线账号分组展示，中间查看详情。',
     actions: [{ id: 'refresh-accounts', label: '刷新', icon: 'refresh' }],
     emptyMessage: '当前没有推特账号，后续可在这里接入真实账号数据。',
   },

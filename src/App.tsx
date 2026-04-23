@@ -53,6 +53,9 @@ function AppShell() {
     handleTaskDeleted,
     handleToggleWorkspaceItem,
     handleViewChange,
+    managedAccounts,
+    unmanagedAccounts,
+    reloadAccounts,
     instances,
     isCompactLayout,
     leftSidebarVisible,
@@ -70,6 +73,7 @@ function AppShell() {
     setMobileSidebarOpen,
     settingsDialogOpen,
     settingsInitialSection,
+    clearAccountsSelection,
     closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,
@@ -147,6 +151,10 @@ function AppShell() {
               selectedSidebarItem={selectedSidebarItem}
               centerMode={centerMode}
               instances={instances}
+              managedAccounts={managedAccounts}
+              unmanagedAccounts={unmanagedAccounts}
+              onAccountsMutated={reloadAccounts}
+              onAccountSelectionCleared={clearAccountsSelection}
               workspaceFileContent={workspaceFileContent}
               workspaceFolderSummary={workspaceFolderSummary}
               workspaceLoading={workspaceDetailLoading}

@@ -4,6 +4,8 @@ mod registry;
 mod event_loop;
 pub mod executors;
 
+pub use executors::localbridge_sync_executor::UnmanagedAccountRecord;
+
 pub use types::{Timer, TimerType};
 pub use executor::TimerExecutor;
 pub use registry::TimerRegistry;
@@ -131,6 +133,18 @@ impl UnifiedTimerManager {
                 last_execution: t.last_execution,
             }).collect(),
         }
+    }
+
+    pub async fn get_unmanaged_online_accounts(&self) -> Vec<UnmanagedAccountRecord> {
+        self.event_loop.get_unmanaged_online_accounts().await
+    }
+
+    pub async fn get_unmanaged_online_account(&self, twitter_id: &str) -> Option<UnmanagedAccountRecord> {
+        self.event_loop.get_unmanaged_online_account(twitter_id).await
+    }
+
+    pub async fn remove_unmanaged_online_account(&self, twitter_id: &str) {
+        self.event_loop.remove_unmanaged_online_account(twitter_id).await;
     }
 
     pub async fn stop(&self) {

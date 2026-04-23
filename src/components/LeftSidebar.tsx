@@ -1,5 +1,5 @@
 import { FolderPlus, FilePlus2, Plus, RefreshCw, ChevronRight, ChevronDown, File, Folder, Image as ImageIcon, FileCode2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { SidebarSectionAction, SidebarSectionConfig, View } from '@/config/layout'
 
 export interface SidebarItem {
@@ -8,6 +8,7 @@ export interface SidebarItem {
   description: string
   badge?: string
   badgeTone?: 'default' | 'success' | 'warning' | 'danger'
+  group?: 'managed' | 'unmanaged'
 }
 
 export interface SidebarTreeItem {
@@ -68,6 +69,10 @@ export function LeftSidebar({
   onToggleTreeItem,
 }: LeftSidebarProps) {
   const shouldRenderTree = activeView === 'workspace' && treeItems
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<'managed' | 'unmanaged', boolean>>({
+    managed: false,
+    unmanaged: false,
+  })
 
   return (
     <aside
@@ -160,43 +165,66 @@ export function LeftSidebar({
         ) : items.length === 0 ? (
           <div className="px-2 py-3 text-xs text-[var(--color-text-secondary)] leading-5">{section.emptyMessage}</div>
         ) : (
-          <div className="space-y-0.5">
-            {items.map((item) => {
-              const isSelected = selectedItemId === item.id
+          <div className="space-y-3">
+            {(['managed', 'unmanaged'] as const)
+              .filter((group) => items.some((item) => (item.group ?? 'managed') === group))
+              .map((group) => {
+                const groupItems = items.filter((item) => (item.group ?? 'managed') === group)
+                const groupLabel = group === 'managed' ? '当前已管理账号' : '未管理在线账号'
 
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelectItem(item.id)}
-                  className={[
-                    'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
-                    isSelected
-                      ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
-                      : 'border-transparent text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] hover:border-[var(--color-border)]',
-                  ].join(' ')}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate">{item.label}</div>
-                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
-                        {item.description}
+                return (
+                  <div key={group} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setCollapsedGroups((prev) => ({ ...prev, [group]: !prev[group] }))}
+                      className="w-full px-2.5 flex items-center justify-between text-[11px] font-semibold tracking-[0.06em] text-[var(--color-text-secondary)] cursor-pointer"
+                    >
+                      <span>{groupLabel}</span>
+                      {collapsedGroups[group] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {!collapsedGroups[group] && (
+                      <div className="space-y-0.5">
+                        {groupItems.map((item) => {
+                          const isSelected = selectedItemId === item.id
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => onSelectItem(item.id)}
+                              className={[
+                                'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
+                                isSelected
+                                  ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
+                                  : 'border-transparent text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] hover:border-[var(--color-border)]',
+                              ].join(' ')}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm truncate">{item.label}</div>
+                                  <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
+                                    {item.description}
+                                  </div>
+                                </div>
+                                {item.badge && (
+                                  <span
+                                    className={[
+                                      'text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap mt-0.5',
+                                      BADGE_TONES[item.badgeTone ?? 'default'],
+                                    ].join(' ')}
+                                  >
+                                    {item.badge}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
-                    </div>
-                    {item.badge && (
-                      <span
-                        className={[
-                          'text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap mt-0.5',
-                          BADGE_TONES[item.badgeTone ?? 'default'],
-                        ].join(' ')}
-                      >
-                        {item.badge}
-                      </span>
                     )}
                   </div>
-                </button>
-              )
-            })}
+                )
+              })}
           </div>
         )}
       </div>

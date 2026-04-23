@@ -2,14 +2,81 @@ use crate::unified_timer::executor::TimerExecutor;
 use crate::unified_timer::types::{ExecutionContext, ExecutionResult};
 use async_trait::async_trait;
 use chrono::{Utc, DateTime};
-use std::collections::HashMap;
+use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AccountBindingSnapshot {
+    instance_id: String,
+    extension_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmanagedAccountRecord {
+    pub twitter_id: String,
+    pub screen_name: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub description: Option<String>,
+    pub is_verified: bool,
+    pub followers_count: Option<i64>,
+    pub following_count: Option<i64>,
+    pub tweet_count: Option<i64>,
+    pub favourites_count: Option<i64>,
+    pub listed_count: Option<i64>,
+    pub media_count: Option<i64>,
+    pub created_at: Option<String>,
+    pub instance_id: String,
+    pub extension_name: String,
+    pub last_seen: String,
+}
+
+impl From<&crate::models::twitter_account::TwitterBasicAccount> for UnmanagedAccountRecord {
+    fn from(account: &crate::models::twitter_account::TwitterBasicAccount) -> Self {
+        Self {
+            twitter_id: account.twitter_id.clone(),
+            screen_name: account.screen_name.clone(),
+            display_name: account.display_name.clone(),
+            avatar_url: account.avatar_url.clone(),
+            description: account.description.clone(),
+            is_verified: account.is_verified,
+            followers_count: account.followers_count,
+            following_count: account.following_count,
+            tweet_count: account.tweet_count,
+            favourites_count: account.favourites_count,
+            listed_count: account.listed_count,
+            media_count: account.media_count,
+            created_at: account.created_at.clone(),
+            instance_id: account.instance_id.clone(),
+            extension_name: account.extension_name.clone(),
+            last_seen: account.last_seen.to_rfc3339(),
+        }
+    }
+}
+
+fn should_insert_snapshot(last_snapshot_time: Option<String>) -> bool {
+    match last_snapshot_time {
+        Some(last_snapshot_time) => match chrono::DateTime::parse_from_rfc3339(&last_snapshot_time) {
+            Ok(last_snapshot_time) => {
+                let now = Utc::now();
+                let elapsed = now.signed_duration_since(last_snapshot_time.with_timezone(&Utc));
+                elapsed.num_hours() >= 1
+            }
+            Err(_) => true,
+        },
+        None => true,
+    }
+}
 
 async fn process_user_info(
     instance_name: String,
     instance_id: String,
     basic_info: crate::services::localbridge::XUser,
     db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+    binding_cache: Arc<Mutex<HashMap<String, AccountBindingSnapshot>>>,
+    unmanaged_accounts: Arc<Mutex<HashMap<String, UnmanagedAccountRecord>>>,
 ) {
     log::info!("[process_user_info] Processing user info for instance: {}", instance_name);
 
@@ -74,42 +141,72 @@ async fn process_user_info(
     log::info!("[process_user_info] Last Seen: {}", account.last_seen);
     log::info!("[process_user_info] ============================================");
 
-    // 2. Check database and decide insert/update
+    // 2. Check database and decide how to store/update the account
     let db_guard = db.lock().unwrap();
-    match db_guard.get_account_last_update(&account.twitter_id) {
-            Ok(Some(last_update)) => {
-                // Account exists in database
-                match chrono::DateTime::parse_from_rfc3339(&last_update) {
-                    Ok(last_update_time) => {
-                        let now = Utc::now();
-                        let elapsed = now.signed_duration_since(last_update_time.with_timezone(&Utc));
-                        let elapsed_hours = elapsed.num_hours();
+    match db_guard.get_account_management_detail(&account.twitter_id) {
+            Ok(Some(account_row)) if account_row.is_managed => {
+                let latest_binding = AccountBindingSnapshot {
+                    instance_id: account.instance_id.clone(),
+                    extension_name: account.extension_name.clone(),
+                };
 
-                        if elapsed_hours >= 1 {
-                            log::info!("[process_user_info] Updating account {} (last update: {} hours ago)",
-                                account.twitter_id, elapsed_hours);
-                            if let Err(e) = db_guard.update_account(&account) {
-                                log::error!("[process_user_info] Failed to update account: {}", e);
+                let should_update_binding = binding_cache
+                    .lock()
+                    .unwrap()
+                    .get(&account.twitter_id)
+                    .map(|cached| cached != &latest_binding)
+                    .unwrap_or(true);
+
+                if should_update_binding {
+                    match db_guard.update_account_instance_binding(
+                        &account.twitter_id,
+                        Some(account.instance_id.as_str()),
+                        Some(account.extension_name.as_str()),
+                    ) {
+                        Ok(updated) => {
+                            if updated {
+                                binding_cache
+                                    .lock()
+                                    .unwrap()
+                                    .insert(account.twitter_id.clone(), latest_binding);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("[process_user_info] Failed to update account binding: {}", e);
+                        }
+                    }
+                }
+
+                match db_guard.get_account_last_snapshot_time(&account.twitter_id) {
+                    Ok(last_snapshot_time) => {
+                        if should_insert_snapshot(last_snapshot_time) {
+                            if let Err(e) = db_guard.insert_account_snapshot(&account) {
+                                log::error!("[process_user_info] Failed to insert account snapshot: {}", e);
                             } else {
-                                log::info!("[process_user_info] Account updated successfully");
+                                log::info!("[process_user_info] Account snapshot inserted successfully");
                             }
                         } else {
-                            log::debug!("[process_user_info] Skipping update for {} (last update: {} hours ago)",
-                                account.twitter_id, elapsed_hours);
+                            log::debug!("[process_user_info] Skipping snapshot for managed account {} (last snapshot < 1h)", account.twitter_id);
                         }
                     }
                     Err(e) => {
-                        log::error!("[process_user_info] Failed to parse last_update time: {}", e);
+                        log::error!("[process_user_info] Failed to query latest snapshot time: {}", e);
                     }
                 }
+
+                unmanaged_accounts.lock().unwrap().remove(&account.twitter_id);
+            }
+            Ok(Some(_account_row)) => {
+                // Historical managed account: keep record in x_accounts, but don't track as unmanaged-online.
+                unmanaged_accounts.lock().unwrap().remove(&account.twitter_id);
+                log::debug!("[process_user_info] Historical account {} observed online but excluded from unmanaged-online group", account.twitter_id);
             }
             Ok(None) => {
-                log::info!("[process_user_info] Inserting new account: {}", account.twitter_id);
-                if let Err(e) = db_guard.insert_account(&account) {
-                    log::error!("[process_user_info] Failed to insert account: {}", e);
-                } else {
-                    log::info!("[process_user_info] Account inserted successfully");
-                }
+                unmanaged_accounts
+                    .lock()
+                    .unwrap()
+                    .insert(account.twitter_id.clone(), UnmanagedAccountRecord::from(&account));
+                log::info!("[process_user_info] Account {} tracked as unmanaged-online", account.twitter_id);
             }
             Err(e) => {
                 log::error!("[process_user_info] Database query failed: {}", e);
@@ -122,15 +219,68 @@ async fn process_user_info(
 
 pub struct LocalBridgeSyncExecutor {
     last_user_info_query: Mutex<HashMap<String, DateTime<Utc>>>,
+    account_binding_cache: Arc<Mutex<HashMap<String, AccountBindingSnapshot>>>,
+    unmanaged_online_accounts: Arc<Mutex<HashMap<String, UnmanagedAccountRecord>>>,
     db: Arc<Mutex<crate::task_database::TaskDatabase>>,
 }
 
 impl LocalBridgeSyncExecutor {
     pub fn new(db: Arc<Mutex<crate::task_database::TaskDatabase>>) -> Self {
+        let account_binding_cache = {
+            let db_guard = db.lock().unwrap();
+            let managed_accounts = db_guard.get_managed_accounts().unwrap_or_default();
+            let mut cache = HashMap::new();
+            for account in managed_accounts {
+                if let (Some(instance_id), Some(extension_name)) = (account.instance_id, account.extension_name) {
+                    cache.insert(
+                        account.twitter_id,
+                        AccountBindingSnapshot {
+                            instance_id,
+                            extension_name,
+                        },
+                    );
+                }
+            }
+            Arc::new(Mutex::new(cache))
+        };
+
         Self {
             last_user_info_query: Mutex::new(HashMap::new()),
+            account_binding_cache,
+            unmanaged_online_accounts: Arc::new(Mutex::new(HashMap::new())),
             db,
         }
+    }
+
+    pub fn get_unmanaged_online_accounts(&self) -> Vec<UnmanagedAccountRecord> {
+        self.unmanaged_online_accounts
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_unmanaged_online_account(&self, twitter_id: &str) -> Option<UnmanagedAccountRecord> {
+        self.unmanaged_online_accounts
+            .lock()
+            .unwrap()
+            .get(twitter_id)
+            .cloned()
+    }
+
+    pub fn remove_unmanaged_online_account(&self, twitter_id: &str) {
+        self.unmanaged_online_accounts
+            .lock()
+            .unwrap()
+            .remove(twitter_id);
+    }
+
+    fn prune_unmanaged_online_accounts(&self, active_instance_ids: &HashSet<String>) {
+        self.unmanaged_online_accounts
+            .lock()
+            .unwrap()
+            .retain(|_, account| active_instance_ids.contains(&account.instance_id));
     }
 
     fn should_query_user_info(&self, instance_id: &str) -> bool {
@@ -168,6 +318,10 @@ impl LocalBridgeSyncExecutor {
 
 #[async_trait]
 impl TimerExecutor for LocalBridgeSyncExecutor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String> {
         let start_time = Utc::now();
         log::info!("[LocalBridgeSyncExecutor] Starting LocalBridge instance sync for timer {}", context.timer_id);
@@ -195,6 +349,11 @@ impl TimerExecutor for LocalBridgeSyncExecutor {
 
         log::info!("[LocalBridgeSyncExecutor] Found {} instances from LocalBridge", instances.len());
 
+        let mut online_instance_ids = HashSet::new();
+        let mut resolved_instance_ids = HashSet::new();
+
+        let mut handles = Vec::new();
+
         for instance in &instances {
             let instance_id = instance
                 .get("instanceId")
@@ -206,20 +365,30 @@ impl TimerExecutor for LocalBridgeSyncExecutor {
                 .unwrap_or("unknown");
 
             log::info!("[LocalBridgeSyncExecutor] Instance: {} ({})", instance_name, instance_id);
+            online_instance_ids.insert(instance_id.to_string());
 
             // 检查是否需要查询用户信息
             if self.should_query_user_info(instance_id) {
                 match client.get_basic_info_with_instance(instance_id).await {
                     Ok(basic_info) => {
+                        resolved_instance_ids.insert(instance_id.to_string());
+                        if let Some(twitter_id) = basic_info.id.clone() {
+                            log::debug!("[LocalBridgeSyncExecutor] Resolved twitter_id {} for instance {}", twitter_id, instance_id);
+                        }
+
                         let instance_name_clone = instance_name.to_string();
                         let instance_id_clone = instance_id.to_string();
                         let db_clone = self.db.clone();
-                        tokio::spawn(process_user_info(
+                        let binding_cache_clone = self.account_binding_cache.clone();
+                        let unmanaged_accounts_clone = self.unmanaged_online_accounts.clone();
+                        handles.push(tokio::spawn(process_user_info(
                             instance_name_clone,
                             instance_id_clone,
                             basic_info,
                             db_clone,
-                        ));
+                            binding_cache_clone,
+                            unmanaged_accounts_clone,
+                        )));
 
                         // 更新查询时间
                         self.update_query_time(instance_id);
@@ -230,6 +399,22 @@ impl TimerExecutor for LocalBridgeSyncExecutor {
                 }
             }
         }
+
+        for handle in handles {
+            if let Err(e) = handle.await {
+                log::warn!("[LocalBridgeSyncExecutor] process_user_info task join failed: {}", e);
+            }
+        }
+
+        self.prune_unmanaged_online_accounts(&online_instance_ids);
+        let unmanaged_count = self.unmanaged_online_accounts.lock().unwrap().len();
+        log::info!(
+            "[LocalBridgeSyncExecutor] Sync round summary: instances={}, online_instance_ids={}, resolved_instance_ids={}, unmanaged_online_accounts={}",
+            instances.len(),
+            online_instance_ids.len(),
+            resolved_instance_ids.len(),
+            unmanaged_count
+        );
 
         let end_time = Utc::now();
         let duration = (end_time - start_time).num_milliseconds() as f64 / 1000.0;

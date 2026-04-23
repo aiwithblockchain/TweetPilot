@@ -24,6 +24,10 @@ impl PythonScriptExecutor {
 
 #[async_trait]
 impl TimerExecutor for PythonScriptExecutor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String> {
         let start_time = chrono::Utc::now();
         let start_instant = Instant::now();

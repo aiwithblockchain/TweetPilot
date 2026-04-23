@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { AccountListItem } from '@/services/account'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import { useTasksSidebarItems } from './useTasksSidebarItems'
 import {
@@ -22,7 +23,7 @@ import {
 } from '@/config/layout'
 import type { SidebarTreeItem } from '@/components/LeftSidebar'
 import { useToast } from '@/contexts/ToastContext'
-import { dataBlocksService, workspaceService } from '@/services'
+import { dataBlocksService, getManagedAccounts, getUnmanagedOnlineAccounts, workspaceService } from '@/services'
 import { layoutService } from '@/services/layout'
 import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
@@ -70,6 +71,29 @@ function getEntryIcon(entry: WorkspaceEntry): SidebarTreeItem['icon'] {
   return 'file'
 }
 
+function mapAccountToSidebarItem(account: AccountListItem, group: 'managed' | 'unmanaged'): SidebarItem {
+  return {
+    id: account.twitterId,
+    label: account.displayName || `@${account.screenName}` || account.twitterId,
+    description: account.instanceId || account.extensionName || account.twitterId,
+    badge: group === 'managed'
+      ? account.isOnline ? 'managed · online' : 'managed'
+      : 'unmanaged · online',
+    badgeTone: group === 'managed'
+      ? account.isOnline ? 'success' : 'default'
+      : 'warning',
+    group,
+    source: account.source,
+  }
+}
+
+function buildAccountSidebarItems(managed: AccountListItem[], unmanaged: AccountListItem[]): SidebarItem[] {
+  return [
+    ...managed.map((account) => mapAccountToSidebarItem(account, 'managed')),
+    ...unmanaged.map((account) => mapAccountToSidebarItem(account, 'unmanaged')),
+  ]
+}
+
 export function useAppLayoutState() {
   const tasksSidebar = useTasksSidebarItems()
   const toast = useToast()
@@ -96,6 +120,8 @@ export function useAppLayoutState() {
   const [instancesError, setInstancesError] = useState<string | null>(null)
   const [accountItems, setAccountItems] = useState<SidebarItem[]>([])
   const [accountsLoading, setAccountsLoading] = useState(false)
+  const [managedAccounts, setManagedAccounts] = useState<AccountListItem[]>([])
+  const [unmanagedAccounts, setUnmanagedAccounts] = useState<AccountListItem[]>([])
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([
     {
       id: 'workspace',
@@ -184,6 +210,26 @@ export function useAppLayoutState() {
 
     return currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? null
   }, [activeView, currentSidebarItems, selectedSidebarItemId, workspaceRoot, workspaceRootName, workspaceTree])
+
+  const reloadAccounts = async () => {
+    setAccountsLoading(true)
+    try {
+      const [managed, unmanaged] = await Promise.all([
+        getManagedAccounts(),
+        getUnmanagedOnlineAccounts(),
+      ])
+
+      setManagedAccounts(managed)
+      setUnmanagedAccounts(unmanaged)
+      setAccountItems(buildAccountSidebarItems(managed, unmanaged))
+      console.log('[accounts] reloadAccounts', {
+        managed: managed.length,
+        unmanaged: unmanaged.length,
+      })
+    } finally {
+      setAccountsLoading(false)
+    }
+  }
 
   const workspaceTreeItems = useMemo<SidebarTreeItem[]>(() => {
     if (!workspaceRoot) return []
@@ -307,9 +353,61 @@ export function useAppLayoutState() {
   }, [])
 
   useEffect(() => {
-    // Account loading removed - will be reimplemented
-    setAccountItems([])
-    setAccountsLoading(false)
+    if (activeView !== 'accounts') {
+      return
+    }
+
+    void reloadAccounts().catch((error) => {
+      console.error('[accounts] active view reload failed', error)
+    })
+  }, [activeView])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadAccounts = async () => {
+      setAccountsLoading(true)
+      try {
+        const [managed, unmanaged] = await Promise.all([
+          getManagedAccounts(),
+          getUnmanagedOnlineAccounts(),
+        ])
+        if (cancelled) return
+
+        setManagedAccounts(managed)
+        setUnmanagedAccounts(unmanaged)
+        setAccountItems(buildAccountSidebarItems(managed, unmanaged))
+        console.log('[accounts] initial load', {
+          managed: managed.length,
+          unmanaged: unmanaged.length,
+        })
+      } catch {
+        if (cancelled) return
+        setManagedAccounts([])
+        setUnmanagedAccounts([])
+        setAccountItems([])
+      } finally {
+        if (!cancelled) {
+          setAccountsLoading(false)
+        }
+      }
+    }
+
+    void loadAccounts()
+    const followUpTimeout = window.setTimeout(() => {
+      void reloadAccounts().catch((error) => {
+        console.error('[accounts] follow-up reload failed', error)
+      })
+    }, 3000)
+    const interval = window.setInterval(() => {
+      void reloadAccounts().catch(() => {})
+    }, 60000)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(followUpTimeout)
+      window.clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -425,6 +523,16 @@ export function useAppLayoutState() {
       cancelled = true
     }
   }, [activeView, selectedSidebarItemId, workspaceRoot, workspaceTree])
+
+  const clearAccountsSelection = () => {
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      accounts: null,
+    }))
+    if (activeView === 'accounts') {
+      setCenterMode('empty')
+    }
+  }
 
   const persistLeftWidth = (nextWidth: number) => {
     const width = clamp(nextWidth, MIN_LEFT_WIDTH, MAX_LEFT_WIDTH)
@@ -583,8 +691,13 @@ export function useAppLayoutState() {
     }
 
     if (actionId === 'refresh-accounts') {
-      // Account refresh removed - will be reimplemented
-      toast.info('账号功能正在重构中')
+      setAccountsLoading(true)
+      try {
+        await reloadAccounts()
+        toast.success('账号列表已刷新')
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '账号列表刷新失败')
+      }
       setCenterMode(selectedItemsByView[activeView] ? 'detail' : 'empty')
       return
     }
@@ -706,6 +819,9 @@ export function useAppLayoutState() {
     handleTaskDeleted,
     handleToggleWorkspaceItem,
     handleViewChange,
+    managedAccounts,
+    unmanagedAccounts,
+    reloadAccounts,
     instances,
     instancesError,
     isCompactLayout,
@@ -724,6 +840,7 @@ export function useAppLayoutState() {
     setMobileSidebarOpen,
     settingsDialogOpen,
     settingsInitialSection,
+    clearAccountsSelection,
     closeDataBlockMenu,
     closeSettingsDialog,
     toggleLeftSidebarVisible,

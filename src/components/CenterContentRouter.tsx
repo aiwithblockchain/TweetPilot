@@ -1,8 +1,10 @@
 import { AccountDetailPane } from './AccountDetailPane'
+import AccountManagement from './AccountManagement'
 import { DataBlockDetailPane } from './DataBlockDetailPane'
 import { TaskDetailPane } from './TaskDetailPane'
 import { WorkspaceDetailPane } from './WorkspaceDetailPane'
 import type { SidebarItem, View } from '@/config/layout'
+import type { AccountListItem } from '@/services/account'
 import type { WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
 
@@ -11,6 +13,10 @@ interface CenterContentRouterProps {
   selectedSidebarItem: SidebarItem | null
   centerMode: 'empty' | 'detail' | 'create-task'
   instances: AppInstance[]
+  managedAccounts?: AccountListItem[]
+  unmanagedAccounts?: AccountListItem[]
+  onAccountsMutated?: () => Promise<void>
+  onAccountSelectionCleared?: () => void
   workspaceFileContent?: WorkspaceFileContent | null
   workspaceFolderSummary?: WorkspaceFolderSummary | null
   workspaceLoading?: boolean
@@ -24,6 +30,10 @@ export function CenterContentRouter({
   selectedSidebarItem,
   centerMode,
   instances,
+  managedAccounts,
+  unmanagedAccounts,
+  onAccountsMutated,
+  onAccountSelectionCleared,
   workspaceFileContent,
   workspaceFolderSummary,
   workspaceLoading,
@@ -36,12 +46,28 @@ export function CenterContentRouter({
   }
 
   if (!selectedSidebarItem) {
+    if (activeView === 'accounts') {
+      return (
+        <AccountManagement
+          managedAccounts={managedAccounts ?? []}
+          unmanagedAccounts={unmanagedAccounts ?? []}
+          onAccountsMutated={onAccountsMutated}
+        />
+      )
+    }
     return <CenterEmptyState view={activeView} />
   }
 
   switch (activeView) {
     case 'accounts':
-      return <AccountDetailPane item={selectedSidebarItem} instances={instances} />
+      return (
+        <AccountDetailPane
+          item={selectedSidebarItem}
+          instances={instances}
+          onAccountsMutated={onAccountsMutated}
+          onAccountSelectionCleared={onAccountSelectionCleared}
+        />
+      )
     case 'data-blocks':
       return <DataBlockDetailPane item={selectedSidebarItem} />
     case 'tasks':

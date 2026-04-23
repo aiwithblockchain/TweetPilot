@@ -1,2 +1,18 @@
-export { getInstances } from './tauri'
-export type { LocalBridgeInstance, TwitterBasicInfo } from './types'
+export {
+  addAccountToManagement,
+  deleteAccountCompletely,
+  getAccountDetail,
+  getInstances,
+  getManagedAccounts,
+  getUnmanagedOnlineAccounts,
+  removeAccountFromManagement,
+  updateAccountPersonalityPrompt,
+} from './tauri'
+export type {
+  AccountDetail,
+  AccountLatestTrend,
+  AccountListItem,
+  AccountSource,
+  LocalBridgeInstance,
+  TwitterBasicInfo,
+} from './types'

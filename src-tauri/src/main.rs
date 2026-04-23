@@ -140,6 +140,14 @@ fn main() {
             workspace::create_workspace_folder,
             // Account commands
             account::get_instances,
+            account::get_managed_accounts,
+            account::get_unmanaged_online_accounts,
+            account::add_account_to_management,
+            account::remove_account_from_management,
+            account::update_account_personality_prompt,
+            account::delete_account_completely,
+            account::get_account_detail,
+            account::get_account_trend,
             // Task commands (new implementation)
             task_module::create_task,
             task_module::get_tasks,
