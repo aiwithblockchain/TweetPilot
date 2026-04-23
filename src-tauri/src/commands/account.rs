@@ -384,3 +384,18 @@ pub async fn get_account_trend(
         .map_err(|e| e.to_string())?;
     Ok(snapshots)
 }
+
+#[tauri::command]
+pub async fn get_managed_accounts_for_task_selection(
+    state: State<'_, TaskState>,
+) -> Result<Vec<crate::task_database::ManagedAccountForTask>, String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let result = ctx.db.lock().unwrap()
+        .get_managed_accounts_for_task_selection()
+        .map_err(|e| format!("Failed to get managed accounts: {}", e))?;
+
+    Ok(result)
+}

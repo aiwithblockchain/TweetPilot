@@ -59,3 +59,10 @@ export interface AccountDetail {
   }
   latestTrend: AccountLatestTrend | null
 }
+
+export interface ManagedAccountForTask {
+  twitterId: string
+  screenName?: string
+  displayName?: string
+  avatarUrl?: string
+}

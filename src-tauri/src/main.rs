@@ -147,6 +147,7 @@ fn main() {
             account::update_account_personality_prompt,
             account::delete_account_completely,
             account::get_account_detail,
+            account::get_managed_accounts_for_task_selection,
             account::get_account_trend,
             // Task commands (new implementation)
             task_module::create_task,

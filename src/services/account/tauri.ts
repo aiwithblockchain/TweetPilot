@@ -1,5 +1,5 @@
 import { tauriInvoke } from '@/lib/tauri-api'
-import type { AccountDetail, AccountListItem, LocalBridgeInstance } from './types'
+import type { AccountDetail, AccountListItem, LocalBridgeInstance, ManagedAccountForTask } from './types'
 
 interface TauriAccountListItem {
   twitterId: string
@@ -63,4 +63,8 @@ export async function updateAccountPersonalityPrompt(twitterId: string, personal
 
 export async function deleteAccountCompletely(twitterId: string): Promise<void> {
   await tauriInvoke('delete_account_completely', { twitterId })
+}
+
+export async function getManagedAccountsForTaskSelection(): Promise<ManagedAccountForTask[]> {
+  return tauriInvoke<ManagedAccountForTask[]>('get_managed_accounts_for_task_selection')
 }

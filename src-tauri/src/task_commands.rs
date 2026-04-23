@@ -196,16 +196,28 @@ pub async fn execute_task(
 
     let result = ctx.executor.execute_task(&task, &ctx.workspace_path).await;
 
+    log::info!("[execute_task] Task execution returned, processing result");
+
     match result {
         Ok(exec_result) => {
+            log::info!("[execute_task] Execution successful, saving to database");
             ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
+            log::info!("[execute_task] Updating task status to idle");
             ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
 
             if task.task_type == "scheduled" && exec_result.status == "success" {
-                match ctx.db.lock().unwrap().get_task(&task_id) {
+                log::info!("[execute_task] Task is scheduled, updating next execution time");
+                let updated_task = ctx.db.lock().unwrap().get_task(&task_id);
+                match updated_task {
                     Ok(updated_task) => {
-                        if let Err(e) = ctx.db.lock().unwrap().update_next_execution_time(&task_id, &updated_task) {
-                            log::error!("[execute_task] Failed to update next execution time: {}", e);
+                        log::info!("[execute_task] Re-fetched task, calling update_next_execution_time");
+                        match ctx.db.lock().unwrap().update_next_execution_time(&task_id, &updated_task) {
+                            Ok(_) => {
+                                log::info!("[execute_task] Successfully updated next execution time");
+                            }
+                            Err(e) => {
+                                log::error!("[execute_task] Failed to update next execution time: {}", e);
+                            }
                         }
                     }
                     Err(e) => {
@@ -214,9 +226,11 @@ pub async fn execute_task(
                 }
             }
 
+            log::info!("[execute_task] Returning execution result to frontend");
             Ok(exec_result)
         }
         Err(e) => {
+            log::error!("[execute_task] Execution failed: {}", e);
             ctx.db.lock().unwrap().update_task_status(&task_id, "failed").map_err(|e| e.to_string())?;
             Err(e)
         }

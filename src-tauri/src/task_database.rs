@@ -142,6 +142,15 @@ pub struct AccountWithLatestSnapshot {
     pub latest_snapshot_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedAccountForTask {
+    pub twitter_id: String,
+    pub screen_name: Option<String>,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
 pub struct TaskDatabase {
     conn: Connection,
 }
@@ -451,6 +460,7 @@ impl TaskDatabase {
     }
 
     pub fn update_next_execution_time(&self, task_id: &str, task: &Task) -> Result<()> {
+        log::info!("[update_next_execution_time] Starting for task: {}, schedule_type: {}", task_id, task.schedule_type);
         let now = chrono::Utc::now();
 
         let next_execution_time = match task.schedule_type.as_str() {
@@ -496,12 +506,14 @@ impl TaskDatabase {
             _ => return Err(rusqlite::Error::InvalidQuery)
         };
 
+        log::info!("[update_next_execution_time] Calculated next_execution_time: {}", next_execution_time);
+
         let rows_affected = self.conn.execute(
             "UPDATE tasks SET next_execution_time = ?1, updated_at = ?2 WHERE id = ?3",
             params![next_execution_time, now.to_rfc3339(), task_id],
         )?;
 
-        eprintln!("📝 Updated {} rows, new next_execution_time: {}", rows_affected, next_execution_time);
+        log::info!("[update_next_execution_time] Updated {} rows, new next_execution_time: {}", rows_affected, next_execution_time);
 
         Ok(())
     }
@@ -1047,5 +1059,39 @@ impl TaskDatabase {
         })?;
 
         rows.collect()
+    }
+
+    pub fn get_managed_accounts_for_task_selection(&self) -> Result<Vec<ManagedAccountForTask>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                a.twitter_id,
+                t.screen_name,
+                t.display_name,
+                t.avatar_url
+             FROM x_accounts a
+             LEFT JOIN (
+                 SELECT twitter_id, screen_name, display_name, avatar_url
+                 FROM x_account_trend
+                 WHERE (twitter_id, created_at) IN (
+                     SELECT twitter_id, MAX(created_at)
+                     FROM x_account_trend
+                     GROUP BY twitter_id
+                 )
+             ) t ON a.twitter_id = t.twitter_id
+             WHERE a.is_managed = 1
+             ORDER BY a.managed_at DESC"
+        )?;
+
+        let accounts = stmt.query_map([], |row| {
+            Ok(ManagedAccountForTask {
+                twitter_id: row.get(0)?,
+                screen_name: row.get(1)?,
+                display_name: row.get(2)?,
+                avatar_url: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(accounts)
     }
 }

@@ -1,6 +1,6 @@
 import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { taskService } from '@/services'
+import { taskService, getManagedAccountsForTaskSelection, type ManagedAccountForTask } from '@/services'
 import type { TaskType } from '@/services'
 import { ScriptSelector } from './ScriptSelector'
 import { ParameterEditor } from './ParameterEditor'
@@ -20,16 +20,20 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [intervalUnit, setIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [cronFields, setCronFields] = useState({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
   const [accountId, setAccountId] = useState('')
-  const [accounts, setAccounts] = useState<Array<{ twitterId: string; screenName: string; displayName: string; isOnline: boolean }>>([])
+  const [accounts, setAccounts] = useState<ManagedAccountForTask[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    // Account loading removed - will be reimplemented
-    setAccounts([])
-    setAccountsLoading(false)
+    getManagedAccountsForTaskSelection()
+      .then(setAccounts)
+      .catch((err) => {
+        console.error('Failed to load managed accounts:', err)
+        setAccounts([])
+      })
+      .finally(() => setAccountsLoading(false))
   }, [])
 
   const cronExpression = useMemo(() => {
@@ -74,9 +78,14 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   }, [scriptPath])
 
   const selectedAccount = useMemo(
-    () => accounts.find((account) => account.twitterId === accountId) ?? null,
+    () => accounts.find((account) => account.twitterId === accountId),
     [accounts, accountId]
   )
+
+  const selectedAccountDisplay = useMemo(() => {
+    if (!selectedAccount) return '未指定'
+    return selectedAccount.displayName || selectedAccount.screenName || selectedAccount.twitterId
+  }, [selectedAccount])
 
   const validateForm = () => {
     if (!name.trim()) return '请输入任务名称'
@@ -188,7 +197,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
             <HeroStat label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
             <HeroStat label="脚本文件" value={scriptFileName} />
-            <HeroStat label="目标账号" value={selectedAccount?.displayName ?? '可选'} />
+            <HeroStat label="目标账号" value={selectedAccountDisplay} />
           </div>
         </div>
       </div>
@@ -229,8 +238,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               <option value="">不指定账号</option>
               {accounts.map((account) => (
                 <option key={account.twitterId} value={account.twitterId}>
-                  {account.displayName} · {account.screenName}
-                  {account.isOnline ? ' (在线)' : ' (离线)'}
+                  {account.displayName || account.screenName || account.twitterId}
                 </option>
               ))}
             </select>
@@ -385,7 +393,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           <SidePanel title="当前任务形态">
             <InfoLine label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
             <InfoLine label="脚本文件" value={scriptFileName} />
-            <InfoLine label="目标账号" value={selectedAccount?.displayName ?? '未指定'} />
+            <InfoLine label="目标账号" value={selectedAccountDisplay} />
           </SidePanel>
 
           <SidePanel title="使用说明">

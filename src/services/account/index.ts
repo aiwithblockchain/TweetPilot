@@ -4,6 +4,7 @@ export {
   getAccountDetail,
   getInstances,
   getManagedAccounts,
+  getManagedAccountsForTaskSelection,
   getUnmanagedOnlineAccounts,
   removeAccountFromManagement,
   updateAccountPersonalityPrompt,
@@ -14,5 +15,6 @@ export type {
   AccountListItem,
   AccountSource,
   LocalBridgeInstance,
+  ManagedAccountForTask,
   TwitterBasicInfo,
 } from './types'
