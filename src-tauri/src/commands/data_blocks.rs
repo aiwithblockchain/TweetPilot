@@ -1,8 +1,8 @@
 use crate::services::storage;
-use crate::services::localbridge::LocalBridgeClient;
+use crate::task_commands::TaskState;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use tauri::State;
 
 const LAYOUT_FILE: &str = "data-blocks-layout.json";
 
@@ -12,16 +12,30 @@ fn default_cards() -> Vec<Card> {
     vec![
         Card {
             id: "card_1".to_string(),
-            card_type: "account_basic_data".to_string(),
+            card_type: "account_current_metrics".to_string(),
             position: 0,
             config: Some(json!({})),
             last_updated: now.clone(),
         },
         Card {
             id: "card_2".to_string(),
-            card_type: "latest_tweets".to_string(),
+            card_type: "followers_growth_trend".to_string(),
             position: 1,
-            config: Some(json!({})),
+            config: Some(json!({"hours": 24})),
+            last_updated: now.clone(),
+        },
+        Card {
+            id: "card_3".to_string(),
+            card_type: "account_activity_metrics".to_string(),
+            position: 2,
+            config: Some(json!({"hours": 24})),
+            last_updated: now.clone(),
+        },
+        Card {
+            id: "card_4".to_string(),
+            card_type: "account_overview".to_string(),
+            position: 3,
+            config: Some(json!({"hours": 24})),
             last_updated: now,
         },
     ]
@@ -123,6 +137,7 @@ pub async fn get_card_data(
     card_id: String,
     card_type: String,
     account_id: Option<String>,
+    state: State<'_, TaskState>,
 ) -> Result<Value, String> {
     let cards = load_cards()?;
     let card = get_card_or_error(&cards, &card_id)?;
@@ -130,19 +145,11 @@ pub async fn get_card_data(
         return Err("卡片类型不匹配".to_string());
     }
 
-    // Get LocalBridge client if available
-    let client = if let Ok(config) = crate::commands::preferences::get_local_bridge_config().await {
-        LocalBridgeClient::new(config.endpoint, config.timeout_ms).ok()
-    } else {
-        None
-    };
-
     match card_type.as_str() {
-        "latest_tweets" => get_latest_tweets_data(client, account_id).await,
-        "account_basic_data" => get_account_basic_data(client, account_id).await,
-        "account_interaction_data" => get_account_interaction_data(client, account_id).await,
-        "tweet_time_distribution" => get_tweet_time_distribution(client, account_id).await,
-        "task_execution_stats" => get_task_execution_stats().await,
+        "account_current_metrics" => get_account_current_metrics(account_id, state).await,
+        "followers_growth_trend" => get_followers_growth_trend(account_id, &card, state).await,
+        "account_activity_metrics" => get_account_activity_metrics(account_id, &card, state).await,
+        "account_overview" => get_account_overview(account_id, &card, state).await,
         _ => Ok(json!({})),
     }
 }
@@ -160,176 +167,161 @@ pub async fn refresh_card_data(card_id: String) -> Result<(), String> {
     save_cards(&cards)
 }
 
-async fn get_latest_tweets_data(
-    client: Option<LocalBridgeClient>,
-    _account_id: Option<String>,
-) -> Result<Value, String> {
-    if let Some(client) = client {
-        if let Ok(tweets) = client.get_timeline(None).await {
-            let tweet_data: Vec<Value> = tweets
-                .iter()
-                .take(3)
-                .map(|tweet| {
-                    json!({
-                        "time": format_tweet_time(&tweet.created_at),
-                        "text": &tweet.text,
-                        "likes": tweet.like_count.unwrap_or(0),
-                        "retweets": tweet.retweet_count.unwrap_or(0)
-                    })
-                })
-                .collect();
+async fn get_account_current_metrics(account_id: Option<String>, state: State<'_, TaskState>) -> Result<Value, String> {
+    let twitter_id = account_id.ok_or("缺少账号 ID")?;
 
-            return Ok(json!({ "tweets": tweet_data }));
-        }
-    }
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
 
-    Ok(json!({ "tweets": [] }))
-}
-
-async fn get_account_basic_data(
-    client: Option<LocalBridgeClient>,
-    _account_id: Option<String>,
-) -> Result<Value, String> {
-    if let Some(client) = client {
-        if let Ok(basic_info) = client.get_basic_info().await {
-            return Ok(json!({
-                "following": basic_info.following_count.unwrap_or(0),
-                "followers": basic_info.followers_count.unwrap_or(0),
-                "tweets": basic_info.tweet_count.unwrap_or(0),
-                "likes": 0
-            }));
-        }
-    }
+    let snapshot = ctx.db.lock().unwrap()
+        .get_latest_account_snapshot(&twitter_id)
+        .map_err(|e| format!("查询失败: {}", e))?
+        .ok_or("未找到账号数据")?;
 
     Ok(json!({
-        "following": 0,
-        "followers": 0,
-        "tweets": 0,
-        "likes": 0
+        "screenName": snapshot.screen_name,
+        "displayName": snapshot.display_name,
+        "avatarUrl": snapshot.avatar_url,
+        "isVerified": snapshot.is_verified,
+        "followers": snapshot.followers_count,
+        "following": snapshot.following_count,
+        "tweets": snapshot.tweet_count,
+        "favourites": snapshot.favourites_count,
+        "listed": snapshot.listed_count,
+        "media": snapshot.media_count,
+        "snapshotTime": snapshot.created_at,
     }))
 }
 
-async fn get_account_interaction_data(
-    client: Option<LocalBridgeClient>,
-    _account_id: Option<String>,
-) -> Result<Value, String> {
-    if let Some(client) = client {
-        if let Ok(tweets) = client.get_timeline(None).await {
-            let total_views: i64 = tweets.iter().filter_map(|t| t.view_count).sum();
-            let total_likes: i64 = tweets.iter().filter_map(|t| t.like_count).sum();
-            let total_retweets: i64 = tweets.iter().filter_map(|t| t.retweet_count).sum();
+async fn get_followers_growth_trend(account_id: Option<String>, card: &Card, state: State<'_, TaskState>) -> Result<Value, String> {
+    let twitter_id = account_id.ok_or("缺少账号 ID")?;
 
-            return Ok(json!({
-                "totalViews": total_views,
-                "totalLikes": total_likes,
-                "totalRetweets": total_retweets
-            }));
-        }
-    }
+    let hours = card.config
+        .as_ref()
+        .and_then(|c| c.get("hours"))
+        .and_then(|h| h.as_i64())
+        .unwrap_or(24);
 
-    Ok(json!({
-        "totalViews": 0,
-        "totalLikes": 0,
-        "totalRetweets": 0
-    }))
-}
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
 
-async fn get_tweet_time_distribution(
-    client: Option<LocalBridgeClient>,
-    _account_id: Option<String>,
-) -> Result<Value, String> {
-    if let Some(client) = client {
-        if let Ok(tweets) = client.get_timeline(None).await {
-            let mut day_counts: HashMap<String, i32> = HashMap::new();
-            day_counts.insert("周一".to_string(), 0);
-            day_counts.insert("周二".to_string(), 0);
-            day_counts.insert("周三".to_string(), 0);
-            day_counts.insert("周四".to_string(), 0);
-            day_counts.insert("周五".to_string(), 0);
-            day_counts.insert("周六".to_string(), 0);
-            day_counts.insert("周日".to_string(), 0);
+    let snapshots = ctx.db.lock().unwrap()
+        .get_account_snapshots(&twitter_id, Some(hours))
+        .map_err(|e| format!("查询失败: {}", e))?;
 
-            for tweet in tweets {
-                if let Some(created_at) = &tweet.created_at {
-                    if let Ok(day) = parse_day_of_week(created_at) {
-                        *day_counts.entry(day).or_insert(0) += 1;
-                    }
-                }
-            }
+    let data: Vec<Value> = snapshots.iter().rev().map(|s| {
+        json!({
+            "time": s.created_at,
+            "followers": s.followers_count,
+        })
+    }).collect();
 
-            let data: Vec<Value> = vec![
-                json!({ "day": "周一", "count": day_counts.get("周一").unwrap_or(&0) }),
-                json!({ "day": "周二", "count": day_counts.get("周二").unwrap_or(&0) }),
-                json!({ "day": "周三", "count": day_counts.get("周三").unwrap_or(&0) }),
-                json!({ "day": "周四", "count": day_counts.get("周四").unwrap_or(&0) }),
-                json!({ "day": "周五", "count": day_counts.get("周五").unwrap_or(&0) }),
-                json!({ "day": "周六", "count": day_counts.get("周六").unwrap_or(&0) }),
-                json!({ "day": "周日", "count": day_counts.get("周日").unwrap_or(&0) }),
-            ];
-
-            return Ok(json!({ "data": data }));
-        }
-    }
-
-    Ok(json!({
-        "data": [
-            { "day": "周一", "count": 0 },
-            { "day": "周二", "count": 0 },
-            { "day": "周三", "count": 0 },
-            { "day": "周四", "count": 0 },
-            { "day": "周五", "count": 0 },
-            { "day": "周六", "count": 0 },
-            { "day": "周日", "count": 0 }
-        ]
-    }))
-}
-
-async fn get_task_execution_stats() -> Result<Value, String> {
-    // TODO: Implement with new task module
-    // Temporarily return empty stats
-    Ok(json!({
-        "data": [
-            { "name": "成功", "value": 0 },
-            { "name": "失败", "value": 0 }
-        ],
-        "summary": {
-            "total": 0,
-            "success": 0,
-            "failure": 0
-        }
-    }))
-}
-
-fn format_tweet_time(created_at: &Option<String>) -> String {
-    if let Some(_time_str) = created_at {
-        "最近".to_string()
+    let growth = if snapshots.len() >= 2 {
+        let latest = snapshots.first().unwrap();
+        let oldest = snapshots.last().unwrap();
+        latest.followers_count.unwrap_or(0) - oldest.followers_count.unwrap_or(0)
     } else {
-        "未知时间".to_string()
-    }
+        0
+    };
+
+    Ok(json!({
+        "data": data,
+        "growth": growth,
+        "hours": hours,
+    }))
 }
 
-fn parse_day_of_week(created_at: &str) -> Result<String, String> {
-    let parts: Vec<&str> = created_at.split_whitespace().collect();
-    if parts.is_empty() {
-        return Err("Invalid date format".to_string());
+async fn get_account_activity_metrics(account_id: Option<String>, card: &Card, state: State<'_, TaskState>) -> Result<Value, String> {
+    let twitter_id = account_id.ok_or("缺少账号 ID")?;
+
+    let hours = card.config
+        .as_ref()
+        .and_then(|c| c.get("hours"))
+        .and_then(|h| h.as_i64())
+        .unwrap_or(24);
+
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let snapshots = ctx.db.lock().unwrap()
+        .get_account_snapshots(&twitter_id, Some(hours))
+        .map_err(|e| format!("查询失败: {}", e))?;
+
+    if snapshots.len() < 2 {
+        return Ok(json!({
+            "tweetChange": 0,
+            "favouriteChange": 0,
+            "mediaChange": 0,
+            "hours": hours,
+        }));
     }
 
-    let day_map = [
-        ("Mon", "周一"),
-        ("Tue", "周二"),
-        ("Wed", "周三"),
-        ("Thu", "周四"),
-        ("Fri", "周五"),
-        ("Sat", "周六"),
-        ("Sun", "周日"),
-    ];
+    let latest = snapshots.first().unwrap();
+    let oldest = snapshots.last().unwrap();
 
-    for (en, zh) in &day_map {
-        if parts[0] == *en {
-            return Ok(zh.to_string());
-        }
+    Ok(json!({
+        "tweetChange": latest.tweet_count.unwrap_or(0) - oldest.tweet_count.unwrap_or(0),
+        "favouriteChange": latest.favourites_count.unwrap_or(0) - oldest.favourites_count.unwrap_or(0),
+        "mediaChange": latest.media_count.unwrap_or(0) - oldest.media_count.unwrap_or(0),
+        "hours": hours,
+    }))
+}
+
+async fn get_account_overview(account_id: Option<String>, card: &Card, state: State<'_, TaskState>) -> Result<Value, String> {
+    let twitter_id = account_id.ok_or("缺少账号 ID")?;
+
+    let hours = card.config
+        .as_ref()
+        .and_then(|c| c.get("hours"))
+        .and_then(|h| h.as_i64())
+        .unwrap_or(24);
+
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let snapshots = ctx.db.lock().unwrap()
+        .get_account_snapshots(&twitter_id, Some(hours))
+        .map_err(|e| format!("查询失败: {}", e))?;
+
+    if snapshots.is_empty() {
+        return Err("未找到账号数据".to_string());
     }
 
-    Err("Unknown day".to_string())
+    let latest = snapshots.first().unwrap();
+
+    let changes = if snapshots.len() >= 2 {
+        let oldest = snapshots.last().unwrap();
+        json!({
+            "followers": latest.followers_count.unwrap_or(0) - oldest.followers_count.unwrap_or(0),
+            "following": latest.following_count.unwrap_or(0) - oldest.following_count.unwrap_or(0),
+            "tweets": latest.tweet_count.unwrap_or(0) - oldest.tweet_count.unwrap_or(0),
+            "favourites": latest.favourites_count.unwrap_or(0) - oldest.favourites_count.unwrap_or(0),
+        })
+    } else {
+        json!({
+            "followers": 0,
+            "following": 0,
+            "tweets": 0,
+            "favourites": 0,
+        })
+    };
+
+    Ok(json!({
+        "current": {
+            "screenName": latest.screen_name,
+            "displayName": latest.display_name,
+            "avatarUrl": latest.avatar_url,
+            "followers": latest.followers_count,
+            "following": latest.following_count,
+            "tweets": latest.tweet_count,
+            "favourites": latest.favourites_count,
+        },
+        "changes": changes,
+        "hours": hours,
+    }))
 }
 

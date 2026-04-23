@@ -1,9 +1,8 @@
 export type KnownDataBlockCardType =
-  | 'latest_tweets'
-  | 'account_basic_data'
-  | 'account_interaction_data'
-  | 'tweet_time_distribution'
-  | 'task_execution_stats'
+  | 'account_current_metrics'
+  | 'followers_growth_trend'
+  | 'account_activity_metrics'
+  | 'account_overview'
 
 export type DataBlockCardType = KnownDataBlockCardType | (string & {})
 
