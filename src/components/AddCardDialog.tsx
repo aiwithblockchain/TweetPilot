@@ -16,34 +16,28 @@ interface CardType {
 
 const CARD_TYPES: CardType[] = [
   {
-    id: 'latest_tweets',
-    name: '最新推文列表',
-    description: '显示账号最新的 10 条推文',
+    id: 'account_current_metrics',
+    name: '账号实时数据',
+    description: '显示账号的最新指标快照，包括粉丝、关注、推文等核心数据',
     requiresAccount: true,
   },
   {
-    id: 'account_basic_data',
-    name: '粉丝统计',
-    description: '显示关注数、被关注数等基础信息',
+    id: 'followers_growth_trend',
+    name: '粉丝增长趋势',
+    description: '显示过去 N 小时的粉丝增长曲线，直观展示账号增长情况',
     requiresAccount: true,
   },
   {
-    id: 'account_interaction_data',
-    name: '推文互动数据',
-    description: '显示总浏览量、点赞数、转推数',
+    id: 'account_activity_metrics',
+    name: '账号活跃度',
+    description: '显示推文数、点赞数、媒体数等活跃度指标的变化情况',
     requiresAccount: true,
   },
   {
-    id: 'tweet_time_distribution',
-    name: '推文时间分布',
-    description: '显示最近 7 天的推文发布数量',
+    id: 'account_overview',
+    name: '账号概览',
+    description: '综合展示多个维度的数据对比，包括当前值和变化趋势',
     requiresAccount: true,
-  },
-  {
-    id: 'task_execution_stats',
-    name: '任务执行统计',
-    description: '显示最近 24 小时的任务执行情况',
-    requiresAccount: false,
   },
 ]
 

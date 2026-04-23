@@ -61,11 +61,10 @@ export const INSTANCE_MOCKS: AppInstance[] = [
 ]
 
 const DATA_BLOCK_ITEMS: SidebarItem[] = [
-  { id: 'latest_tweets', label: '最新推文列表', description: '内容流' },
-  { id: 'account_basic_data', label: '粉丝统计', description: '账号画像' },
-  { id: 'account_interaction_data', label: '推文互动数据', description: '互动报表' },
-  { id: 'tweet_time_distribution', label: '推文时间分布', description: '发布时间报表' },
-  { id: 'task_execution_stats', label: '任务执行统计', description: '任务报表' },
+  { id: 'account_current_metrics', label: '账号实时数据', description: '实时快照' },
+  { id: 'followers_growth_trend', label: '粉丝增长趋势', description: '增长曲线' },
+  { id: 'account_activity_metrics', label: '账号活跃度', description: '活跃度分析' },
+  { id: 'account_overview', label: '账号概览', description: '综合概览' },
 ]
 
 export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {

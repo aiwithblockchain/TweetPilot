@@ -677,48 +677,77 @@ fn prune_unmanaged_online_accounts(&self, active_instance_ids: &HashSet<String>)
 - **提高同步性能**: 每 5 分钟同步时避免重复更新相同的绑定信息
 - **启动时初始化**: 从数据库加载已管理账号的绑定到缓存，确保首次同步的准确性
 
-### 8.5 为什么不使用 Channel + 后台协程？
+### 8.5 为什么使用批量并发处理而非 Channel + 后台协程？
 
-**v2.0 设计方案**使用 Channel + 后台协程架构，但**实际实现**选择了更简单的直接同步方案：
+**当前实现**: 批量并发处理（Batch Concurrent Processing）
+- 串行获取所有实例的用户信息
+- 为每个账号 `tokio::spawn` 独立异步任务
+- 所有任务并发执行（数据库写入、缓存更新）
+- 主执行器同步等待所有任务完成
 
-**原因**:
-- 当前账号数量较少（通常 < 10 个），直接同步性能足够
-- 并发处理（`tokio::spawn`）已满足性能需求
-- 减少架构复杂度，便于维护和调试
-- 未来如果账号数量增长，可以重构为 Channel 架构
+**未来优化**: Channel + 后台协程（Async Queue Processing）
+- 定时器只负责读取实例信息，立即返回
+- 账号数据发送到 `mpsc::channel`
+- 独立的后台协程异步消费队列
+- 支持批量处理和背压控制
+
+**为什么选择当前方案**:
+- 当前账号数量较少（通常 < 10 个），批量并发处理性能足够
+- 架构简单直接，易于理解和维护
+- 通过 `tokio::spawn` 实现真正的并发处理
+- 同步等待确保每轮同步的完整性和一致性
 
 **权衡**:
 - ✅ 简单直接，易于理解和维护
-- ✅ 性能满足当前需求
-- ❌ 定时器执行时间受账号数量影响
-- ❌ 缺少批量优化和背压控制
+- ✅ 真正并发执行，性能满足当前需求
+- ✅ 同步等待确保数据一致性
+- ❌ 定时器执行时间受账号数量影响（账号多时会阻塞）
+- ❌ 缺少异步队列和背压控制
+- ❌ 无法实现流式处理（必须等待所有账号处理完成）
 
 ## 九、性能优化
 
-### 9.1 并发处理
+### 9.1 批量并发处理
 
-**文件**: [src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs:392-399](../src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs#L392-L399)
+**文件**: [src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs:363-415](../src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs#L363-L415)
+
+**实现模型**: 批量并发处理（Batch Concurrent Processing）
 
 ```rust
 let mut handles = Vec::new();
+
+// 阶段 1: 串行获取所有实例的用户信息
 for instance in &instances {
-    // ... 获取账号信息
-    handles.push(tokio::spawn(process_user_info(
-        instance_name_clone,
-        instance_id_clone,
-        basic_info,
-        db_clone,
-        binding_cache_clone,
-        unmanaged_accounts_clone,
-    )));
+    if self.should_query_user_info(instance_id) {
+        match client.get_basic_info_with_instance(instance_id).await {
+            Ok(basic_info) => {
+                // 阶段 2: 为每个账号 spawn 独立异步任务
+                handles.push(tokio::spawn(process_user_info(
+                    instance_name_clone,
+                    instance_id_clone,
+                    basic_info,
+                    db_clone,
+                    binding_cache_clone,
+                    unmanaged_accounts_clone,
+                )));
+            }
+        }
+    }
 }
 
+// 阶段 3: 等待所有任务完成（同步等待）
 for handle in handles {
-    handle.await?;
+    if let Err(e) = handle.await {
+        log::warn!("process_user_info task join failed: {}", e);
+    }
 }
 ```
 
-每个账号的处理逻辑在独立的 tokio 任务中并发执行，提高同步效率。
+**关键特征**:
+- **真正并发**: 所有账号的数据库写入、缓存更新在独立的 tokio 任务中并发执行
+- **同步等待**: 主执行器等待所有任务完成才返回，确保每轮同步的完整性
+- **线程安全**: 通过 `Arc<Mutex>` 安全访问共享状态（数据库、缓存、内存账号列表）
+- **错误隔离**: 单个账号处理失败不影响其他账号
 
 ### 9.2 查询频率控制
 
@@ -774,20 +803,76 @@ ON x_account_trend(last_online_time DESC);
 
 ## 十、未来优化方向
 
-### 10.1 Channel + 后台协程架构
+### 10.1 Channel + 异步队列架构
 
-如果账号数量增长到 100+ 个，可以考虑重构为 v2.0 设计的 Channel + 后台协程架构：
+**适用场景**: 当账号数量增长到 100+ 个时
+
+**当前限制**: 
+- 批量并发处理模型中，主执行器必须等待所有账号处理完成
+- 如果某个账号处理耗时较长，会阻塞整个同步轮次
+- 定时器执行时间与账号数量成正比
+
+**优化方案**: Channel + 后台协程架构
+
+```rust
+// 定义消息结构
+struct AccountSyncMessage {
+    instance_id: String,
+    instance_name: String,
+    basic_info: XUser,
+}
+
+// 创建 channel
+let (tx, rx) = mpsc::channel::<AccountSyncMessage>(100);
+
+// 定时器只负责读取和发送
+async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult> {
+    let instances = client.get_instances().await?;
+    
+    for instance in instances {
+        if let Ok(basic_info) = client.get_basic_info_with_instance(instance_id).await {
+            tx.send(AccountSyncMessage {
+                instance_id,
+                instance_name,
+                basic_info,
+            }).await?;
+        }
+    }
+    
+    // 立即返回，不等待处理完成
+    Ok(ExecutionResult { ... })
+}
+
+// 独立的后台协程消费队列
+async fn account_sync_worker(
+    rx: mpsc::Receiver<AccountSyncMessage>,
+    db: Arc<Mutex<TaskDatabase>>,
+    // ... 其他共享状态
+) {
+    while let Some(msg) = rx.recv().await {
+        process_user_info(
+            msg.instance_name,
+            msg.instance_id,
+            msg.basic_info,
+            db.clone(),
+            // ...
+        ).await;
+    }
+}
+```
 
 **优势**:
-- 定时任务只负责读取，不阻塞
-- 后台协程批量处理，提高性能
-- 支持背压控制，避免数据库过载
+- ✅ 定时器立即返回，不阻塞
+- ✅ 后台协程异步处理，解耦读取和写入
+- ✅ 支持批量处理优化（积累 N 条后批量写入数据库）
+- ✅ 支持背压控制（channel 容量限制）
+- ✅ 支持流式处理（不需要等待所有账号）
 
 **实现要点**:
-- 定义 `AccountSyncMessage` 结构
-- 创建 `mpsc::channel` 传递账号数据
-- 实现 `account_sync_worker()` 后台协程
-- 批量处理（10 条/批，5 秒超时）
+- 使用 `tokio::sync::mpsc::channel` 创建异步队列
+- 后台协程在应用启动时创建，持续运行
+- 考虑批量处理策略（10 条/批，或 5 秒超时）
+- 考虑错误重试机制（失败的消息重新入队）
 
 ### 10.2 增量同步
 

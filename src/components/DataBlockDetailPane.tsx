@@ -4,9 +4,21 @@ import {
   MessageSquareText,
   Sparkles,
   Workflow,
+  Users,
+  UserPlus,
+  MessageSquare,
+  Heart,
+  List,
+  Image,
+  TrendingUp,
+  User,
+  ArrowUp,
+  ArrowDown,
+  CheckCircle2,
 } from 'lucide-react'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import type { SidebarItem } from '@/config/layout'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts'
 
 interface DataBlockDetailPaneProps {
   item: SidebarItem | null
@@ -44,7 +56,7 @@ export function DataBlockDetailPane({ item }: DataBlockDetailPaneProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
             <HeroStat label="展示方式" value={block?.summary ?? '详情视图'} />
             <HeroStat label="类别" value={block?.category ?? 'analytics'} />
-            <HeroStat label="状态" value="已迁移到左侧列表 + 主区详情" />
+            <HeroStat label="数据源" value="x_account_trend 表" />
           </div>
         </div>
       </div>
@@ -57,11 +69,10 @@ export function DataBlockDetailPane({ item }: DataBlockDetailPaneProps) {
           </div>
 
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-4 min-h-[360px] overflow-hidden">
-            {item.id === 'tweet_time_distribution' ? <TimeDistributionPreview /> : null}
-            {item.id === 'account_interaction_data' ? <InteractionPreview /> : null}
-            {item.id === 'account_basic_data' ? <AccountStatsPreview /> : null}
-            {item.id === 'latest_tweets' ? <LatestTweetsPreview /> : null}
-            {item.id === 'task_execution_stats' ? <TaskStatsPreview /> : null}
+            {item.id === 'account_current_metrics' ? <AccountCurrentMetricsPreview /> : null}
+            {item.id === 'followers_growth_trend' ? <FollowersGrowthTrendPreview /> : null}
+            {item.id === 'account_activity_metrics' ? <AccountActivityMetricsPreview /> : null}
+            {item.id === 'account_overview' ? <AccountOverviewPreview /> : null}
           </div>
         </section>
 
@@ -72,23 +83,23 @@ export function DataBlockDetailPane({ item }: DataBlockDetailPaneProps) {
                 { label: '名称', value: block?.name ?? item.label },
                 { label: '类型', value: block?.summary ?? '详情视图' },
                 { label: '适用场景', value: block?.description ?? item.description },
-                { label: '交互模式', value: '左侧选择，中间丰富展示' },
+                { label: '数据粒度', value: '1 小时间隔历史数据' },
               ]}
             />
           </Panel>
 
           <Panel title="设计说明" icon={<Clock3 className="w-4 h-4 text-[#D7BA7D]" />}>
             <div className="text-sm text-[var(--color-text)] leading-7 space-y-3">
-              <p>这一版把数据积木从“主区平铺卡片墙”改成“左侧积木列表 + 中间详情视图”。</p>
-              <p>左侧回归扫描型列表，中间主区则保留高表现力，这样报表类积木才真正有空间展开，而不是被压缩成几块小砖。</p>
+              <p>数据积木基于 x_account_trend 表的 1 小时间隔历史数据，提供趋势分析能力。</p>
+              <p>每 5 分钟采集一次数据，每小时插入新记录，支持查看过去 24 小时、7 天、30 天的数据变化。</p>
             </div>
           </Panel>
 
-          <Panel title="下一步可扩展" icon={<Workflow className="w-4 h-4 text-[#9CDCFE]" />}>
+          <Panel title="核心价值" icon={<Workflow className="w-4 h-4 text-[#9CDCFE]" />}>
             <div className="space-y-2 text-sm text-[var(--color-text)] leading-6">
-              <div>• 接入真实数据源与账号维度切换</div>
-              <div>• 增加积木级配置面板</div>
-              <div>• 在主区继续增强炫酷报表与大屏式指标展示</div>
+              <div>• 历史趋势分析，而非单一快照</div>
+              <div>• 多维度数据对比</div>
+              <div>• 账号运营数据可视化</div>
             </div>
           </Panel>
         </div>
@@ -131,21 +142,165 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string }> })
   )
 }
 
-function TimeDistributionPreview() {
-  const bars = [44, 26, 61, 32, 78, 18, 25]
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+function AccountCurrentMetricsPreview() {
+  const metrics = [
+    { icon: Users, label: '粉丝', value: '1,567', color: '#6D5BF6' },
+    { icon: UserPlus, label: '关注', value: '234', color: '#4EC9B0' },
+    { icon: MessageSquare, label: '推文', value: '892', color: '#9CDCFE' },
+    { icon: Heart, label: '点赞', value: '3,421', color: '#F48771' },
+    { icon: List, label: '列表', value: '12', color: '#D7BA7D' },
+    { icon: Image, label: '媒体', value: '456', color: '#CE9178' },
+  ]
 
   return (
-    <div className="h-full flex flex-col justify-between gap-5">
-      <div>
-        <div className="text-sm text-[var(--color-text)]">过去 7 天推文发布分布</div>
-        <div className="text-xs text-[var(--color-text-secondary)] mt-1">主区可以承载更完整的图表表达，而不是缩成小卡片。</div>
+    <div className="h-full flex flex-col gap-4">
+      <div className="flex items-center gap-3 pb-3 border-b border-[var(--color-border)]">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#6D5BF6] to-[#9CDCFE] flex items-center justify-center">
+          <User className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-[var(--color-text)]">@username</div>
+          <div className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            已认证账号
+          </div>
+        </div>
       </div>
-      <div className="flex items-end gap-3 h-60">
-        {bars.map((value, index) => (
-          <div key={labels[index]} className="flex-1 flex flex-col justify-end items-center gap-2">
-            <div className="w-full rounded-t-xl shadow-[0_10px_20px_rgba(0,0,0,0.18)] bg-gradient-to-t from-[#6D5BF6] via-[#8E7BFF] to-[#9CDCFE]" style={{ height: `${value * 2.2}px` }} />
-            <div className="text-[11px] text-[var(--color-text-secondary)]">{labels[index]}</div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-1">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col justify-between shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+            <div className="flex items-center gap-2 mb-2">
+              <metric.icon className="w-4 h-4" style={{ color: metric.color }} />
+              <div className="text-xs text-[var(--color-text-secondary)]">{metric.label}</div>
+            </div>
+            <div className="text-2xl font-semibold text-[var(--color-text)]">{metric.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="text-xs text-[var(--color-text-secondary)] text-center pt-2 border-t border-[var(--color-border)]">
+        最后更新: 2 分钟前
+      </div>
+    </div>
+  )
+}
+
+function FollowersGrowthTrendPreview() {
+  const data = [
+    { time: '00:00', followers: 1520 },
+    { time: '04:00', followers: 1528 },
+    { time: '08:00', followers: 1535 },
+    { time: '12:00', followers: 1548 },
+    { time: '16:00', followers: 1556 },
+    { time: '20:00', followers: 1567 },
+  ]
+
+  const growth = data[data.length - 1].followers - data[0].followers
+
+  return (
+    <div className="h-full flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-[var(--color-text)]">过去 24 小时粉丝增长</div>
+          <div className="text-xs text-[var(--color-text-secondary)] mt-1">每小时数据点</div>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
+          <TrendingUp className="w-4 h-4 text-green-600" />
+          <span className="text-lg font-semibold text-green-600">+{growth}</span>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#6D5BF6" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#6D5BF6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.3} />
+            <XAxis
+              dataKey="time"
+              stroke="var(--color-text-secondary)"
+              style={{ fontSize: '11px' }}
+            />
+            <YAxis
+              stroke="var(--color-text-secondary)"
+              style={{ fontSize: '11px' }}
+              domain={['dataMin - 10', 'dataMax + 10']}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                fontSize: '12px'
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="followers"
+              stroke="#6D5BF6"
+              strokeWidth={2}
+              fill="url(#colorFollowers)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function AccountActivityMetricsPreview() {
+  const metrics = [
+    { icon: MessageSquare, label: '推文变化', value: 5, color: '#9CDCFE' },
+    { icon: Heart, label: '点赞变化', value: 12, color: '#F48771' },
+    { icon: Image, label: '媒体变化', value: 3, color: '#CE9178' },
+  ]
+
+  return (
+    <div className="h-full flex flex-col gap-4">
+      <div>
+        <div className="text-sm font-semibold text-[var(--color-text)]">过去 24 小时活跃度</div>
+        <div className="text-xs text-[var(--color-text-secondary)] mt-1">账号内容产出变化</div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 flex-1">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${metric.color}20` }}>
+                  <metric.icon className="w-5 h-5" style={{ color: metric.color }} />
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--color-text-secondary)]">{metric.label}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-2xl font-semibold text-[var(--color-text)]">{metric.value > 0 ? '+' : ''}{metric.value}</span>
+                    {metric.value > 0 ? (
+                      <ArrowUp className="w-4 h-4 text-green-600" />
+                    ) : metric.value < 0 ? (
+                      <ArrowDown className="w-4 h-4 text-red-600" />
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="h-12 w-24 rounded-lg bg-[var(--color-input)] flex items-end gap-1 p-2">
+                {[40, 55, 45, 70, 60, 75, 85].map((height, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 rounded-sm"
+                    style={{
+                      height: `${height}%`,
+                      backgroundColor: metric.color,
+                      opacity: 0.6 + (i * 0.05)
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -153,76 +308,46 @@ function TimeDistributionPreview() {
   )
 }
 
-function InteractionPreview() {
-  const metrics = [
-    { label: '浏览量', value: '45,678' },
-    { label: '点赞', value: '3,421' },
-    { label: '转推', value: '892' },
-  ]
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-full">
-      {metrics.map((metric, index) => (
-        <div key={metric.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-col justify-between shadow-[0_8px_20px_rgba(0,0,0,0.18)]">
-          <div className="text-xs text-[var(--color-text-secondary)]">{metric.label}</div>
-          <div className="text-3xl font-semibold text-[var(--color-text)]">{metric.value}</div>
-          <div className="h-2 rounded-full bg-[var(--color-input)] overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${68 + index * 10}%`, background: index === 0 ? '#6D5BF6' : index === 1 ? '#4EC9B0' : '#9CDCFE' }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function AccountStatsPreview() {
+function AccountOverviewPreview() {
   const stats = [
-    { label: '关注', value: '234' },
-    { label: '粉丝', value: '1,567' },
-    { label: '推文', value: '892' },
-    { label: '喜欢', value: '3,421' },
+    { label: '粉丝', current: 1567, change: 47, icon: Users },
+    { label: '关注', current: 234, change: 2, icon: UserPlus },
+    { label: '推文', current: 892, change: 5, icon: MessageSquare },
+    { label: '点赞', current: 3421, change: 12, icon: Heart },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-4 h-full">
-      {stats.map((stat) => (
-        <div key={stat.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 flex flex-col justify-between min-h-[140px]">
-          <div className="text-xs text-[var(--color-text-secondary)]">{stat.label}</div>
-          <div className="text-3xl font-semibold text-[var(--color-text)]">{stat.value}</div>
+    <div className="h-full flex flex-col gap-4">
+      <div className="flex items-center gap-3 pb-3 border-b border-[var(--color-border)]">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#6D5BF6] to-[#9CDCFE] flex items-center justify-center">
+          <User className="w-6 h-6 text-white" />
         </div>
-      ))}
-    </div>
-  )
-}
-
-function LatestTweetsPreview() {
-  const tweets = [
-    '这是一条测试推文，展示数据积木详情页在主显示区的展示能力。',
-    '把左侧做轻，把主区做重，整个界面的可读性会直接上一个台阶。',
-    '报表类积木回到主显示区后，终于有空间做更炫酷的表达了。',
-  ]
-
-  return (
-    <div className="space-y-3">
-      {tweets.map((tweet, index) => (
-        <div key={tweet} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_18px_rgba(0,0,0,0.16)]">
-          <div className="text-[11px] text-[var(--color-text-secondary)] mb-2">{index === 0 ? '2小时前' : index === 1 ? '5小时前' : '1天前'}</div>
-          <div className="text-sm text-[var(--color-text)] leading-7">{tweet}</div>
+        <div>
+          <div className="text-sm font-semibold text-[var(--color-text)]">账号综合概览</div>
+          <div className="text-xs text-[var(--color-text-secondary)]">过去 24 小时数据对比</div>
         </div>
-      ))}
-    </div>
-  )
-}
+      </div>
 
-function TaskStatsPreview() {
-  return (
-    <div className="h-full flex items-center justify-center">
-      <div className="w-64 h-64 rounded-full border-[18px] border-[var(--color-border)] relative flex items-center justify-center shadow-[0_16px_36px_rgba(0,0,0,0.22)] bg-[var(--color-surface)]">
-        <div className="absolute inset-0 rounded-full border-[18px] border-transparent border-t-[#6D5BF6] border-r-[#4EC9B0] rotate-45" />
-        <div className="text-center">
-          <div className="text-4xl font-semibold text-[var(--color-text)]">85%</div>
-          <div className="text-xs text-[var(--color-text-secondary)] mt-2">任务成功率</div>
-        </div>
+      <div className="grid grid-cols-2 gap-3 flex-1">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.12)]">
+            <div className="flex items-center gap-2 mb-3">
+              <stat.icon className="w-4 h-4 text-[#6D5BF6]" />
+              <div className="text-xs text-[var(--color-text-secondary)]">{stat.label}</div>
+            </div>
+            <div className="text-2xl font-semibold text-[var(--color-text)] mb-2">
+              {stat.current.toLocaleString()}
+            </div>
+            <div className={`flex items-center gap-1 text-sm ${stat.change > 0 ? 'text-green-600' : stat.change < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+              {stat.change > 0 ? (
+                <ArrowUp className="w-3 h-3" />
+              ) : stat.change < 0 ? (
+                <ArrowDown className="w-3 h-3" />
+              ) : null}
+              <span>{stat.change > 0 ? '+' : ''}{stat.change}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
