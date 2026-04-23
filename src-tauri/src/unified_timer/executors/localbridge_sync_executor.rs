@@ -9,7 +9,7 @@ async fn process_user_info(
     instance_name: String,
     instance_id: String,
     basic_info: crate::services::localbridge::XUser,
-    db: Arc<Mutex<Option<crate::task_database::TaskDatabase>>>,
+    db: Arc<Mutex<crate::task_database::TaskDatabase>>,
 ) {
     log::info!("[process_user_info] Processing user info for instance: {}", instance_name);
 
@@ -76,8 +76,7 @@ async fn process_user_info(
 
     // 2. Check database and decide insert/update
     let db_guard = db.lock().unwrap();
-    if let Some(ref database) = *db_guard {
-        match database.get_account_last_update(&account.twitter_id) {
+    match db_guard.get_account_last_update(&account.twitter_id) {
             Ok(Some(last_update)) => {
                 // Account exists in database
                 match chrono::DateTime::parse_from_rfc3339(&last_update) {
@@ -87,10 +86,9 @@ async fn process_user_info(
                         let elapsed_hours = elapsed.num_hours();
 
                         if elapsed_hours >= 1 {
-                            // Update if more than 1 hour
                             log::info!("[process_user_info] Updating account {} (last update: {} hours ago)",
                                 account.twitter_id, elapsed_hours);
-                            if let Err(e) = database.update_account(&account) {
+                            if let Err(e) = db_guard.update_account(&account) {
                                 log::error!("[process_user_info] Failed to update account: {}", e);
                             } else {
                                 log::info!("[process_user_info] Account updated successfully");
@@ -106,23 +104,17 @@ async fn process_user_info(
                 }
             }
             Ok(None) => {
-                // Account does not exist, insert new record
                 log::info!("[process_user_info] Inserting new account: {}", account.twitter_id);
-                if let Err(e) = database.insert_account(&account) {
+                if let Err(e) = db_guard.insert_account(&account) {
                     log::error!("[process_user_info] Failed to insert account: {}", e);
                 } else {
                     log::info!("[process_user_info] Account inserted successfully");
-                    // Add to unmanaged accounts memory
-                    crate::unified_timer::unmanaged_accounts::add_unmanaged_account(account.clone());
                 }
             }
             Err(e) => {
                 log::error!("[process_user_info] Database query failed: {}", e);
             }
         }
-    } else {
-        log::warn!("[process_user_info] Database not initialized");
-    }
 
     // 3. TODO: Notify UI about data changes
     log::debug!("[process_user_info] UI notification not yet implemented");
@@ -130,11 +122,11 @@ async fn process_user_info(
 
 pub struct LocalBridgeSyncExecutor {
     last_user_info_query: Mutex<HashMap<String, DateTime<Utc>>>,
-    db: Arc<Mutex<Option<crate::task_database::TaskDatabase>>>,
+    db: Arc<Mutex<crate::task_database::TaskDatabase>>,
 }
 
 impl LocalBridgeSyncExecutor {
-    pub fn new(db: Arc<Mutex<Option<crate::task_database::TaskDatabase>>>) -> Self {
+    pub fn new(db: Arc<Mutex<crate::task_database::TaskDatabase>>) -> Self {
         Self {
             last_user_info_query: Mutex::new(HashMap::new()),
             db,

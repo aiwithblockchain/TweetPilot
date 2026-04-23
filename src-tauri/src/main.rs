@@ -13,13 +13,9 @@ mod unified_timer;
 
 use commands::{workspace, account, data_blocks, preferences, ai};
 use task_commands::TaskState;
-use std::sync::Mutex;
-use chrono::Utc;
-use serde_json::json;
 
 fn main() {
     use std::sync::Arc;
-    use unified_timer::UnifiedTimerManager;
 
     // Initialize logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -28,20 +24,8 @@ fn main() {
 
     log::info!("TweetPilot starting...");
 
-    // Initialize task state (database will be initialized when workspace is selected)
-    let task_executor = task_module::TaskExecutor::new();
-    let db = Arc::new(Mutex::new(None));
-    let workspace_root = Arc::new(Mutex::new(String::new()));
-
-    // Initialize unified timer manager
-    let timer_manager = Arc::new(UnifiedTimerManager::new());
-
-    let task_state = TaskState {
-        db: db.clone(),
-        executor: Arc::new(task_executor),
-        workspace_root: workspace_root.clone(),
-        timer_manager: timer_manager.clone(),
-    };
+    // Initialize task state (workspace context will be created when workspace is selected)
+    let task_state = TaskState::new();
 
     // Initialize AI state
     let ai_state = ai::AiState {
@@ -135,13 +119,6 @@ fn main() {
                     }
                 });
             }
-            let timer_manager_clone = timer_manager.clone();
-
-            tauri::async_runtime::spawn(async move {
-                // Only start the event loop, don't register LocalBridge timer yet
-                // LocalBridge timer will be registered when workspace is initialized
-                timer_manager_clone.start().await;
-            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

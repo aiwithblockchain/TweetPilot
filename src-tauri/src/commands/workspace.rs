@@ -408,49 +408,32 @@ pub async fn set_current_workspace(
         initialize_workspace(path.clone()).await?;
     }
 
-    // Step 1: Stop all existing timers (including LocalBridge sync timer)
-    log::info!("[set_current_workspace] Stopping all existing timers");
-    task_state.timer_manager.clear_all_timers().await;
-
-    // Step 2: Update workspace root
+    // Step 1: Stop old workspace timers and release context (if exists)
     {
-        let mut workspace_root = task_state.workspace_root.lock().map_err(|e| e.to_string())?;
-        *workspace_root = path.clone();
-        log::info!("[set_current_workspace] Workspace root updated");
+        let mut workspace_ctx = task_state.get_context().await;
+        if let Some(old_ctx) = workspace_ctx.take() {
+            log::info!("[set_current_workspace] Stopping old workspace timers");
+            old_ctx.timer_manager.stop().await;
+            log::info!("[set_current_workspace] Old workspace context released");
+            drop(old_ctx);
+        }
     }
 
-    // Step 3: Initialize database for new workspace
-    log::info!("[set_current_workspace] Initializing database");
-    task_state.init_database(&path)?;
+    // Step 2: Create new workspace context
+    log::info!("[set_current_workspace] Creating new workspace context");
+    let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone())?;
 
-    // Step 4: Register LocalBridge sync executor
-    log::info!("[set_current_workspace] Registering LocalBridge sync executor");
-    task_state.timer_manager.register_executor(
-        "localbridge_sync".to_string(),
-        std::sync::Arc::new(crate::unified_timer::LocalBridgeSyncExecutor::new(task_state.db.clone())),
-    ).await;
+    // Step 3: Start timers for new workspace
+    log::info!("[set_current_workspace] Starting timers for new workspace");
+    new_ctx.start_timers().await?;
 
-    // Step 5: Register LocalBridge sync timer
-    log::info!("[set_current_workspace] Registering LocalBridge sync timer");
-    let localbridge_timer = crate::unified_timer::Timer {
-        id: "system-localbridge-sync".to_string(),
-        name: "System LocalBridge Sync".to_string(),
-        timer_type: crate::unified_timer::TimerType::Interval { seconds: 60 },
-        enabled: true,
-        priority: 100,
-        next_execution: Some(chrono::Utc::now()),
-        last_execution: None,
-        executor: "localbridge_sync".to_string(),
-        executor_config: serde_json::json!({}),
-    };
+    // Step 4: Save new workspace context
+    {
+        let mut workspace_ctx = task_state.get_context().await;
+        *workspace_ctx = Some(new_ctx);
+    }
 
-    task_state.timer_manager.register_timer(localbridge_timer).await?;
-
-    // Step 6: Reload workspace-specific task timers
-    log::info!("[set_current_workspace] Reloading unified timers");
-    task_state.reload_unified_timers().await?;
-
-    // Step 7: Persist workspace config
+    // Step 5: Persist workspace config
     log::info!("[set_current_workspace] Persisting workspace config");
     persist_current_workspace(path)
 }

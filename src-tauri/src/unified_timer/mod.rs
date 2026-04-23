@@ -3,7 +3,6 @@ mod executor;
 mod registry;
 mod event_loop;
 pub mod executors;
-pub mod unmanaged_accounts;
 
 pub use types::{Timer, TimerType};
 pub use executor::TimerExecutor;
@@ -85,17 +84,17 @@ impl UnifiedTimerManager {
     pub async fn clear_all_timers(&self) {
         log::info!("[UnifiedTimerManager] Clearing all timers");
         let mut registry = self.registry.lock().await;
-        let all_timer_ids: Vec<String> = registry
-            .list_all()
-            .into_iter()
-            .map(|timer| timer.id)
-            .collect();
+        let all_timers = registry.list_all();
 
-        log::info!("[UnifiedTimerManager] Found {} timers to clear", all_timer_ids.len());
-        for timer_id in all_timer_ids {
-            log::debug!("[UnifiedTimerManager] Unregistering timer: {}", timer_id);
-            if let Err(e) = registry.unregister(&timer_id) {
-                log::warn!("[UnifiedTimerManager] Failed to unregister timer {}: {}", timer_id, e);
+        log::info!("[UnifiedTimerManager] Found {} timers to clear", all_timers.len());
+        for timer in &all_timers {
+            log::info!("[UnifiedTimerManager] Timer to clear: {} ({})", timer.id, timer.name);
+        }
+
+        for timer in all_timers {
+            log::info!("[UnifiedTimerManager] Unregistering timer: {} ({})", timer.id, timer.name);
+            if let Err(e) = registry.unregister(&timer.id) {
+                log::warn!("[UnifiedTimerManager] Failed to unregister timer {}: {}", timer.id, e);
             }
         }
         log::info!("[UnifiedTimerManager] All timers cleared");
@@ -132,5 +131,12 @@ impl UnifiedTimerManager {
                 last_execution: t.last_execution,
             }).collect(),
         }
+    }
+
+    pub async fn stop(&self) {
+        log::info!("[UnifiedTimerManager] Stopping timer manager");
+        self.clear_all_timers().await;
+        self.event_loop.stop().await;
+        log::info!("[UnifiedTimerManager] Timer manager stopped");
     }
 }

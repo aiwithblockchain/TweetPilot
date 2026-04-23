@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 pub struct PythonScriptExecutor {
     python_path: String,
     workspace_root: String,
-    db: Arc<Mutex<Option<TaskDatabase>>>,
+    db: Arc<Mutex<TaskDatabase>>,
 }
 
 impl PythonScriptExecutor {
-    pub fn new(workspace_root: String, db: Arc<Mutex<Option<TaskDatabase>>>) -> Self {
+    pub fn new(workspace_root: String, db: Arc<Mutex<TaskDatabase>>) -> Self {
         Self {
             python_path: "python3".to_string(),
             workspace_root,
@@ -103,25 +103,23 @@ impl TimerExecutor for PythonScriptExecutor {
             let task_id = context.timer_id.strip_prefix("task-").unwrap();
 
             let db_guard = self.db.lock().unwrap();
-            if let Some(ref db) = *db_guard {
-                let db_result = crate::task_database::ExecutionResult {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    task_id: task_id.to_string(),
-                    status: if success { "success".to_string() } else { "failed".to_string() },
-                    stdout: stdout.clone(),
-                    stderr: stderr.clone(),
-                    start_time: start_time.to_rfc3339(),
-                    end_time: end_time.to_rfc3339(),
-                    duration,
-                    exit_code: output.status.code().unwrap_or(if success { 0 } else { 1 }),
-                    metadata: None,
-                };
+            let db_result = crate::task_database::ExecutionResult {
+                id: uuid::Uuid::new_v4().to_string(),
+                task_id: task_id.to_string(),
+                status: if success { "success".to_string() } else { "failed".to_string() },
+                stdout: stdout.clone(),
+                stderr: stderr.clone(),
+                start_time: start_time.to_rfc3339(),
+                end_time: end_time.to_rfc3339(),
+                duration,
+                exit_code: output.status.code().unwrap_or(if success { 0 } else { 1 }),
+                metadata: None,
+            };
 
-                if let Err(e) = db.save_execution(&db_result) {
-                    log::error!("[PythonScriptExecutor] Failed to save execution result: {}", e);
-                } else {
-                    log::info!("[PythonScriptExecutor] Saved execution result for task {}", task_id);
-                }
+            if let Err(e) = db_guard.save_execution(&db_result) {
+                log::error!("[PythonScriptExecutor] Failed to save execution result: {}", e);
+            } else {
+                log::info!("[PythonScriptExecutor] Saved execution result for task {}", task_id);
             }
         }
 
@@ -160,22 +158,18 @@ impl TimerExecutor for PythonScriptExecutor {
         let task_id = timer.id.strip_prefix("task-").unwrap();
 
         let db_guard = self.db.lock().unwrap();
-        if let Some(ref db) = *db_guard {
-            let next_exec_str = timer.next_execution.map(|t| t.to_rfc3339());
-            let last_exec_str = timer.last_execution.map(|t| t.to_rfc3339());
+        let next_exec_str = timer.next_execution.map(|t| t.to_rfc3339());
+        let last_exec_str = timer.last_execution.map(|t| t.to_rfc3339());
 
-            log::info!("[PythonScriptExecutor] Updating task {} in database: next_execution={:?}",
-                task_id, next_exec_str);
+        log::info!("[PythonScriptExecutor] Updating task {} in database: next_execution={:?}",
+            task_id, next_exec_str);
 
-            if let Err(e) = db.update_task_execution_times(task_id, next_exec_str, last_exec_str) {
-                log::error!("[PythonScriptExecutor] Failed to update task {} in database: {}", task_id, e);
-                return Err(format!("Failed to update database: {}", e));
-            }
-
-            log::info!("[PythonScriptExecutor] Successfully updated task {} in database", task_id);
-        } else {
-            log::warn!("[PythonScriptExecutor] Database not available for task {}", task_id);
+        if let Err(e) = db_guard.update_task_execution_times(task_id, next_exec_str, last_exec_str) {
+            log::error!("[PythonScriptExecutor] Failed to update task {} in database: {}", task_id, e);
+            return Err(format!("Failed to update database: {}", e));
         }
+
+        log::info!("[PythonScriptExecutor] Successfully updated task {} in database", task_id);
 
         Ok(())
     }

@@ -42,6 +42,15 @@ impl EventLoop {
         *self.running.read().await
     }
 
+    pub async fn stop(&self) {
+        log::info!("[EventLoop] Stopping event loop");
+        let mut running = self.running.write().await;
+        *running = false;
+        drop(running);
+        self.wakeup.notify_one();
+        log::info!("[EventLoop] Event loop stop signal sent");
+    }
+
     pub async fn start(&self) {
         let mut running = self.running.write().await;
         if *running {
