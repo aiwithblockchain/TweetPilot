@@ -87,7 +87,7 @@ impl WorkspaceContext {
 
         let mut registered_count = 0;
         for task in tasks {
-            if !task.enabled || task.task_type != "scheduled" {
+            if !task.enabled || task.task_type != "scheduled" || task.status == "paused" {
                 continue;
             }
 
@@ -362,7 +362,7 @@ pub async fn update_task(
     // Reload all task timers
     let tasks = ctx.db.lock().unwrap().get_all_tasks().map_err(|e| e.to_string())?;
     for task in tasks {
-        if !task.enabled || task.task_type != "scheduled" {
+        if !task.enabled || task.task_type != "scheduled" || task.status == "paused" {
             continue;
         }
         match WorkspaceContext::build_task_timer(&task) {

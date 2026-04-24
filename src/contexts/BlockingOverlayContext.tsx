@@ -36,7 +36,7 @@ export function BlockingOverlayProvider({ children }: { children: ReactNode }) {
       {children}
       {state.active && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
           style={{ cursor: 'wait' }}
           role="alertdialog"
           aria-modal="true"
@@ -49,9 +49,9 @@ export function BlockingOverlayProvider({ children }: { children: ReactNode }) {
             }
           }}
         >
-          <div className="bg-[var(--color-bg)] rounded-lg px-6 py-4 shadow-xl flex items-center gap-3">
+          <div className="bg-[var(--color-surface)] border-2 border-[var(--color-border)] rounded-lg px-6 py-4 shadow-2xl flex items-center gap-3 min-w-[280px]">
             <Spinner size="md" />
-            <span className="text-sm text-[var(--color-text)]">{state.message}</span>
+            <span className="text-sm font-medium text-[var(--color-text)]">{state.message}</span>
           </div>
         </div>
       )}

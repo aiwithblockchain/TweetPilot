@@ -230,6 +230,11 @@ impl EventLoop {
                     reg.update_timer(updated_timer.clone());
                     drop(reg);
 
+                    // Call post_execution hook to sync database state
+                    if let Err(e) = executor.post_execution(&updated_timer).await {
+                        log::warn!("[EventLoop] post_execution failed for timer {}: {}", timer.id, e);
+                    }
+
                     if timer.id.starts_with("task-") {
                         if let Some(app_handle) = app_handle.as_ref() {
                             crate::app_events::publish_task_executed(
@@ -255,6 +260,11 @@ impl EventLoop {
                     let mut reg = registry.lock().await;
                     reg.update_timer(updated_timer.clone());
                     drop(reg);
+
+                    // Call post_execution hook to sync database state
+                    if let Err(e) = executor.post_execution(&updated_timer).await {
+                        log::warn!("[EventLoop] post_execution failed for timer {}: {}", timer.id, e);
+                    }
 
                     if timer.id.starts_with("task-") {
                         if let Some(app_handle) = app_handle.as_ref() {
