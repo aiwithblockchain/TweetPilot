@@ -220,8 +220,7 @@ async fn process_user_info(
             }
         }
 
-    // 3. TODO: Notify UI about data changes
-    log::debug!("[process_user_info] UI notification not yet implemented");
+    // 3. Notification is published once per sync round in execute(), not per account.
 }
 
 pub struct LocalBridgeSyncExecutor {
@@ -229,10 +228,11 @@ pub struct LocalBridgeSyncExecutor {
     account_binding_cache: Arc<Mutex<HashMap<String, AccountBindingSnapshot>>>,
     unmanaged_online_accounts: Arc<Mutex<HashMap<String, UnmanagedAccountRecord>>>,
     db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl LocalBridgeSyncExecutor {
-    pub fn new(db: Arc<Mutex<crate::task_database::TaskDatabase>>) -> Self {
+    pub fn new(db: Arc<Mutex<crate::task_database::TaskDatabase>>, app_handle: Option<tauri::AppHandle>) -> Self {
         let account_binding_cache = {
             let db_guard = db.lock().unwrap();
             let managed_accounts = db_guard.get_managed_accounts().unwrap_or_default();
@@ -256,6 +256,7 @@ impl LocalBridgeSyncExecutor {
             account_binding_cache,
             unmanaged_online_accounts: Arc::new(Mutex::new(HashMap::new())),
             db,
+            app_handle,
         }
     }
 
@@ -432,6 +433,10 @@ impl TimerExecutor for LocalBridgeSyncExecutor {
         );
 
         log::info!("[LocalBridgeSyncExecutor] {} in {:.3}s", output, duration);
+
+        if let Some(app_handle) = self.app_handle.as_ref() {
+            crate::app_events::publish_accounts_changed(app_handle);
+        }
 
         Ok(ExecutionResult {
             timer_id: context.timer_id,

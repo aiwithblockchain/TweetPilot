@@ -424,6 +424,7 @@ pub async fn get_recent_workspaces() -> Result<Vec<WorkspaceHistory>, String> {
 #[tauri::command]
 pub async fn set_current_workspace(
     path: String,
+    app: AppHandle,
     task_state: tauri::State<'_, crate::task_commands::TaskState>,
 ) -> Result<(), String> {
     log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
@@ -453,7 +454,7 @@ pub async fn set_current_workspace(
 
     // Step 2: Create new workspace context
     log::info!("[set_current_workspace] Creating new workspace context");
-    let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone())?;
+    let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone(), app.clone())?;
 
     // Step 3: Start timers for new workspace
     log::info!("[set_current_workspace] Starting timers for new workspace");
@@ -757,7 +758,7 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
         let task_state = app.state::<crate::task_commands::TaskState>();
 
         // Use set_current_workspace to properly update all state
-        set_current_workspace(path_str.clone(), task_state).await?;
+        set_current_workspace(path_str.clone(), app.clone(), task_state).await?;
 
         // Emit event to frontend to reload workspace
         app.emit("workspace-changed", path_str)

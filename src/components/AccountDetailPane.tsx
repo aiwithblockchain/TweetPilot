@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { useToast } from '@/contexts/ToastContext'
+import { useBlockingOverlay } from '@/contexts/BlockingOverlayContext'
 import type { SidebarItem } from '@/config/layout'
 import type { AccountDetail } from '@/services/account'
 import { addAccountToManagement, deleteAccountCompletely, getAccountDetail, removeAccountFromManagement, updateAccountPersonalityPrompt } from '@/services/account'
@@ -12,9 +14,14 @@ interface AccountDetailPaneProps {
   onAccountSelectionCleared?: () => void
 }
 
+interface AccountsChangedPayload {
+  finishedAt: string
+}
+
 export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionCleared }: AccountDetailPaneProps) {
   console.log('[AccountDetailPane] Component rendered with item:', item ? { id: item.id, label: item.label } : null)
   const toast = useToast()
+  const { block, unblock } = useBlockingOverlay()
   const [detail, setDetail] = useState<AccountDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +85,33 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
 
     return () => {
       cancelled = true
+    }
+  }, [item?.id])
+
+  useEffect(() => {
+    if (!item?.id) return
+
+    let disposed = false
+    let unlisten: null | (() => void) = null
+
+    const bind = async () => {
+      const fn = await listen<AccountsChangedPayload>('accounts-changed', () => {
+        void loadDetail(item.id)
+      })
+
+      if (disposed) {
+        fn()
+        return
+      }
+
+      unlisten = fn
+    }
+
+    void bind()
+
+    return () => {
+      disposed = true
+      unlisten?.()
     }
   }, [item?.id])
 
@@ -277,12 +311,19 @@ export function AccountDetailPane({ item, onAccountsMutated, onAccountSelectionC
                   label="彻底删除"
                   danger
                   onClick={async () => {
-                    await deleteAccountCompletely(detail.account.twitterId)
-                    toast.success('账号已删除')
-                    await Promise.all([
-                      onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
-                    ])
-                    onAccountSelectionCleared?.()
+                    block('正在彻底删除账号数据...')
+                    try {
+                      await deleteAccountCompletely(detail.account.twitterId)
+                      toast.success('账号已删除')
+                      await Promise.all([
+                        onAccountsMutated ? onAccountsMutated() : Promise.resolve(),
+                      ])
+                      onAccountSelectionCleared?.()
+                    } catch (err) {
+                      toast.error('删除失败: ' + String(err))
+                    } finally {
+                      unblock()
+                    }
                   }}
                 />
               </>

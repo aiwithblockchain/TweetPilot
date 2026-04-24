@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { taskService, workspaceService } from '@/services'
 import type { Task } from '@/services/task'
 
@@ -64,6 +65,58 @@ export function useTasksSidebarItems() {
 
   useEffect(() => {
     void loadTasks()
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null
+    const unlistenFns: Array<() => void> = []
+
+    const scheduleReload = () => {
+      if (reloadTimer) {
+        clearTimeout(reloadTimer)
+      }
+
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null
+        void loadTasks()
+      }, 300)
+    }
+
+    const bind = async () => {
+      const messageIds = [
+        'task-created',
+        'task-updated',
+        'task-deleted',
+        'task-paused',
+        'task-resumed',
+        'task-executed',
+      ] as const
+
+      for (const messageId of messageIds) {
+        const unlisten = await listen(messageId, () => {
+          scheduleReload()
+        })
+
+        if (disposed) {
+          unlisten()
+        } else {
+          unlistenFns.push(unlisten)
+        }
+      }
+    }
+
+    void bind()
+
+    return () => {
+      disposed = true
+      if (reloadTimer) {
+        clearTimeout(reloadTimer)
+      }
+      for (const fn of unlistenFns) {
+        fn()
+      }
+    }
   }, [])
 
   const items = tasks.map((task) => ({

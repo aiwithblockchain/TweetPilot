@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { taskService } from '@/services'
 import { TaskActionBar } from './TaskActionBar'
 import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
@@ -14,6 +15,16 @@ interface TaskDetailContentPaneProps {
     isEditing: boolean
     hasUnsavedChanges: boolean
   }) => void
+}
+
+interface TaskChangedPayload {
+  taskId: string
+}
+
+interface TaskExecutedPayload {
+  taskId: string
+  status: string
+  finishedAt: string
 }
 
 export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: TaskDetailContentPaneProps) {
@@ -42,6 +53,54 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
   useEffect(() => {
     void loadDetail()
   }, [taskId])
+
+  useEffect(() => {
+    if (!taskId) return
+
+    let disposed = false
+    const unlistenFns: Array<() => void> = []
+
+    const bind = async () => {
+      const messageIds = [
+        'task-executed',
+        'task-updated',
+        'task-paused',
+        'task-resumed',
+        'task-deleted',
+      ] as const
+
+      for (const messageId of messageIds) {
+        const unlisten = await listen<TaskChangedPayload | TaskExecutedPayload>(messageId, (event) => {
+          const payload = event.payload
+          if (!payload || payload.taskId !== taskId) {
+            return
+          }
+
+          if (messageId === 'task-deleted') {
+            onDeleted?.()
+            return
+          }
+
+          void loadDetail()
+        })
+
+        if (disposed) {
+          unlisten()
+        } else {
+          unlistenFns.push(unlisten)
+        }
+      }
+    }
+
+    void bind()
+
+    return () => {
+      disposed = true
+      for (const fn of unlistenFns) {
+        fn()
+      }
+    }
+  }, [taskId, onDeleted])
 
   useEffect(() => {
     setIsEditing(false)

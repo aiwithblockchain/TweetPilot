@@ -11,6 +11,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { AddDataBlockMenu } from './components/AddDataBlockMenu'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import { ToastProvider } from './contexts/ToastContext'
+import { BlockingOverlayProvider } from './contexts/BlockingOverlayContext'
 import { taskService } from './services'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import { settingsService } from './services'
@@ -489,7 +490,9 @@ function App() {
 
   return (
     <ToastProvider>
-      <AppContent />
+      <BlockingOverlayProvider>
+        <AppContent />
+      </BlockingOverlayProvider>
     </ToastProvider>
   )
 }

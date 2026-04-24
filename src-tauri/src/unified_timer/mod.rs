@@ -39,9 +39,9 @@ pub struct UnifiedTimerManager {
 }
 
 impl UnifiedTimerManager {
-    pub fn new() -> Self {
+    pub fn new(app_handle: Option<tauri::AppHandle>) -> Self {
         let registry = Arc::new(Mutex::new(TimerRegistry::new()));
-        let event_loop = Arc::new(EventLoop::new(registry.clone()));
+        let event_loop = Arc::new(EventLoop::new(registry.clone(), app_handle));
 
         Self {
             registry,

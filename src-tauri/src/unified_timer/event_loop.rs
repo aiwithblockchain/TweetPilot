@@ -4,6 +4,7 @@ use crate::unified_timer::executors::LocalBridgeSyncExecutor;
 use crate::unified_timer::types::{ExecutionContext, Timer};
 use std::sync::Arc;
 use std::collections::HashMap;
+use tauri::AppHandle;
 use tokio::sync::{Mutex, RwLock, Notify};
 use tokio::time::{sleep, Duration};
 
@@ -12,10 +13,11 @@ pub struct EventLoop {
     running: Arc<RwLock<bool>>,
     executors: Arc<RwLock<HashMap<String, Arc<dyn TimerExecutor>>>>,
     wakeup: Arc<Notify>,
+    app_handle: Option<AppHandle>,
 }
 
 impl EventLoop {
-    pub fn new(registry: Arc<Mutex<TimerRegistry>>) -> Self {
+    pub fn new(registry: Arc<Mutex<TimerRegistry>>, app_handle: Option<AppHandle>) -> Self {
         let mut executors: HashMap<String, Arc<dyn TimerExecutor>> = HashMap::new();
         executors.insert("dummy".to_string(), Arc::new(DummyExecutor));
 
@@ -24,6 +26,7 @@ impl EventLoop {
             running: Arc::new(RwLock::new(false)),
             executors: Arc::new(RwLock::new(executors)),
             wakeup: Arc::new(Notify::new()),
+            app_handle,
         }
     }
 
@@ -99,6 +102,7 @@ impl EventLoop {
         let running = self.running.clone();
         let executors = self.executors.clone();
         let wakeup = self.wakeup.clone();
+        let app_handle = self.app_handle.clone();
 
         tokio::spawn(async move {
             log::info!("[EventLoop] ========== Event loop task spawned and running ==========");
@@ -131,6 +135,7 @@ impl EventLoop {
                                     timer,
                                     registry.clone(),
                                     executors.clone(),
+                                    app_handle.clone(),
                                 ).await;
                             } else {
                                 // Timer not ready yet - sleep until it's ready, then put it back
@@ -186,6 +191,7 @@ impl EventLoop {
         timer: Timer,
         registry: Arc<Mutex<TimerRegistry>>,
         executors: Arc<RwLock<HashMap<String, Arc<dyn TimerExecutor>>>>,
+        app_handle: Option<AppHandle>,
     ) {
         log::info!("[EventLoop] Starting execution of timer: {} ({})", timer.id, timer.name);
 
@@ -220,13 +226,19 @@ impl EventLoop {
                         log::info!("[EventLoop] Timer {} has no next execution (one-time task completed)", timer.id);
                     }
 
-                    // Call post-execution callback if available
-                    if let Err(e) = executor.post_execution(&updated_timer).await {
-                        log::warn!("[EventLoop] Post-execution callback failed for timer {}: {}", timer.id, e);
-                    }
-
                     let mut reg = registry.lock().await;
-                    reg.update_timer(updated_timer);
+                    reg.update_timer(updated_timer.clone());
+                    drop(reg);
+
+                    if timer.id.starts_with("task-") {
+                        if let Some(app_handle) = app_handle.as_ref() {
+                            crate::app_events::publish_task_executed(
+                                app_handle,
+                                timer.id.trim_start_matches("task-").to_string(),
+                                "success",
+                            );
+                        }
+                    }
                 }
                 Err(e) => {
                     log::error!("[EventLoop] Timer {} execution failed: {}", timer.id, e);
@@ -241,7 +253,18 @@ impl EventLoop {
                     }
 
                     let mut reg = registry.lock().await;
-                    reg.update_timer(updated_timer);
+                    reg.update_timer(updated_timer.clone());
+                    drop(reg);
+
+                    if timer.id.starts_with("task-") {
+                        if let Some(app_handle) = app_handle.as_ref() {
+                            crate::app_events::publish_task_executed(
+                                app_handle,
+                                timer.id.trim_start_matches("task-").to_string(),
+                                "failed",
+                            );
+                        }
+                    }
                 }
             }
         } else {

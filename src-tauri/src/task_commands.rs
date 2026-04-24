@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 use std::sync::Mutex;
 use crate::task_database::{TaskDatabase, TaskConfigInput, ExecutionResult, Task};
 use crate::task_executor::TaskExecutor;
@@ -12,10 +12,11 @@ pub struct WorkspaceContext {
     pub executor: Arc<TaskExecutor>,
     pub timer_manager: UnifiedTimerManager,
     pub workspace_path: String,
+    pub app_handle: AppHandle,
 }
 
 impl WorkspaceContext {
-    pub fn new(workspace_path: String) -> Result<Self, String> {
+    pub fn new(workspace_path: String, app_handle: AppHandle) -> Result<Self, String> {
         log::info!("[WorkspaceContext] Creating new workspace context for: {}", workspace_path);
 
         let db_path = std::path::Path::new(&workspace_path)
@@ -34,7 +35,7 @@ impl WorkspaceContext {
         })?;
 
         let executor = Arc::new(TaskExecutor::new());
-        let timer_manager = UnifiedTimerManager::new();
+        let timer_manager = UnifiedTimerManager::new(Some(app_handle.clone()));
 
         log::info!("[WorkspaceContext] Workspace context created successfully");
 
@@ -43,6 +44,7 @@ impl WorkspaceContext {
             executor,
             timer_manager,
             workspace_path,
+            app_handle,
         })
     }
 
@@ -54,7 +56,7 @@ impl WorkspaceContext {
         log::info!("[WorkspaceContext] Registering LocalBridge sync executor");
         self.timer_manager.register_executor(
             "localbridge_sync".to_string(),
-            Arc::new(LocalBridgeSyncExecutor::new(self.db.clone())),
+            Arc::new(LocalBridgeSyncExecutor::new(self.db.clone(), Some(self.app_handle.clone()))),
         ).await;
 
         let localbridge_timer = Timer {
@@ -225,6 +227,7 @@ pub async fn execute_task(
             }
 
             log::info!("[execute_task] Returning execution result to frontend");
+            crate::app_events::publish_task_executed(&ctx.app_handle, task_id.clone(), exec_result.status.clone());
             Ok(exec_result)
         }
         Err(e) => {
@@ -337,6 +340,7 @@ pub async fn create_task(
     }
 
     log::info!("[create_task] Task creation completed successfully");
+    crate::app_events::publish_task_created(&ctx.app_handle, task.id.clone());
     Ok(task)
 }
 
@@ -374,6 +378,7 @@ pub async fn update_task(
         }
     }
 
+    crate::app_events::publish_task_updated(&ctx.app_handle, task_id.clone());
     Ok(())
 }
 
@@ -391,7 +396,9 @@ pub async fn delete_task(
     // Unregister the timer for this task
     let mut registry = ctx.timer_manager.registry.lock().await;
     let _ = registry.unregister(&format!("task-{}", task_id));
+    drop(registry);
 
+    crate::app_events::publish_task_deleted(&ctx.app_handle, task_id.clone());
     Ok(())
 }
 
@@ -409,7 +416,9 @@ pub async fn pause_task(
     // Unregister the timer for this task
     let mut registry = ctx.timer_manager.registry.lock().await;
     let _ = registry.unregister(&format!("task-{}", task_id));
+    drop(registry);
 
+    crate::app_events::publish_task_paused(&ctx.app_handle, task_id.clone());
     Ok(())
 }
 
@@ -440,6 +449,7 @@ pub async fn resume_task(
         }
     }
 
+    crate::app_events::publish_task_resumed(&ctx.app_handle, task_id.clone());
     Ok(())
 }
 

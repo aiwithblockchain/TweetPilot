@@ -140,10 +140,6 @@ impl ClaurstSession {
         &self.session_id
     }
 
-    pub fn get_working_dir(&self) -> &PathBuf {
-        &self.working_dir
-    }
-
     pub async fn send_message(
         &mut self,
         message: &str,

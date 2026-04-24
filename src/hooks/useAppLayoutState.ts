@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import type { AccountListItem } from '@/services/account'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import { useTasksSidebarItems } from './useTasksSidebarItems'
@@ -23,6 +24,7 @@ import {
 } from '@/config/layout'
 import type { SidebarTreeItem } from '@/components/LeftSidebar'
 import { useToast } from '@/contexts/ToastContext'
+import { useBlockingOverlay } from '@/contexts/BlockingOverlayContext'
 import { dataBlocksService, getManagedAccounts, getUnmanagedOnlineAccounts, workspaceService } from '@/services'
 import { layoutService } from '@/services/layout'
 import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
@@ -224,6 +226,7 @@ function validateWorkspaceEntryName(name: string) {
 export function useAppLayoutState() {
   const tasksSidebar = useTasksSidebarItems()
   const toast = useToast()
+  const { block, unblock } = useBlockingOverlay()
   const [activeView, setActiveView] = useState<View>('workspace')
   const [leftWidth, setLeftWidth] = useState(() => getStoredNumber(LEFT_WIDTH_STORAGE_KEY, DEFAULT_LEFT_WIDTH))
   const [rightWidth, setRightWidth] = useState(() => getStoredNumber(RIGHT_WIDTH_STORAGE_KEY, DEFAULT_RIGHT_WIDTH))
@@ -677,6 +680,7 @@ export function useAppLayoutState() {
 
     const fallbackPath = getParentDirectoryPath(workspaceDeleteState.path, workspaceRoot) ?? workspaceRoot
     setWorkspaceDeleteState((prev: WorkspaceDeleteState) => ({ ...prev, pending: true, error: null }))
+    block('正在删除...')
 
     try {
       await workspaceService.deleteEntry(workspaceDeleteState.path)
@@ -686,6 +690,8 @@ export function useAppLayoutState() {
     } catch (error) {
       const message = getWorkspaceCreateErrorMessage(error, '删除失败')
       setWorkspaceDeleteState((prev: WorkspaceDeleteState) => ({ ...prev, pending: false, error: message }))
+    } finally {
+      unblock()
     }
   }
 
@@ -924,6 +930,31 @@ export function useAppLayoutState() {
       cancelled = true
       window.clearTimeout(followUpTimeout)
       window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: null | (() => void) = null
+
+    const bind = async () => {
+      const fn = await listen('accounts-changed', () => {
+        void reloadAccounts().catch(() => {})
+      })
+
+      if (disposed) {
+        fn()
+        return
+      }
+
+      unlisten = fn
+    }
+
+    void bind()
+
+    return () => {
+      disposed = true
+      unlisten?.()
     }
   }, [])
 
