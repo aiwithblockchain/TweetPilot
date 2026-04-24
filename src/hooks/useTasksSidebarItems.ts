@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { taskService, workspaceService } from '@/services'
 import type { Task } from '@/services/task'
+import { convertCronToLocalTime } from '@/lib/cron-utils'
 
 function getTaskBadge(task: Task): { badge?: string; badgeTone?: 'default' | 'success' | 'warning' | 'danger' } {
   if (task.status === 'failed' || task.lastExecutionStatus === 'failure') {
@@ -124,7 +125,9 @@ export function useTasksSidebarItems() {
     label: task.name,
     description:
       task.type === 'scheduled'
-        ? task.schedule || '定时任务'
+        ? task.scheduleType === 'cron' && task.schedule
+          ? convertCronToLocalTime(task.schedule)
+          : task.schedule || '定时任务'
         : task.lastExecutionStatus === 'failure'
           ? '即时任务 / 最近失败'
           : '即时任务',
