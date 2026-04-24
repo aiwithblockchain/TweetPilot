@@ -9,6 +9,7 @@ import { EditorTabsBar } from './components/EditorTabsBar'
 import { CenterContentRouter } from './components/CenterContentRouter'
 import { SettingsDialog } from './components/SettingsDialog'
 import { AddDataBlockMenu } from './components/AddDataBlockMenu'
+import ConfirmDialog from './components/ui/ConfirmDialog'
 import { ToastProvider } from './contexts/ToastContext'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import { settingsService } from './services'
@@ -82,7 +83,21 @@ function AppShell() {
     workspaceError,
     workspaceFileContent,
     workspaceFolderSummary,
+    workspaceInlineCreate,
+    workspaceRenameState,
+    workspaceDeleteState,
+    workspaceRecentMutation,
+    workspaceRefreshPending,
+    workspaceRefreshError,
     workspaceTreeItems,
+    cancelWorkspaceInlineCreate,
+    submitWorkspaceInlineCreate,
+    updateWorkspaceInlineCreateValue,
+    cancelWorkspaceRename,
+    closeWorkspaceDeleteDialog,
+    confirmWorkspaceDelete,
+    submitWorkspaceRename,
+    updateWorkspaceRenameValue,
   } = useAppLayoutState()
 
   useEffect(() => {
@@ -115,9 +130,21 @@ function AppShell() {
               treeItems={workspaceTreeItems}
               section={currentSidebarSection}
               selectedItemId={selectedSidebarItemId}
+              workspaceInlineCreate={workspaceInlineCreate}
+              workspaceRenameState={workspaceRenameState}
+              workspaceDeleteState={workspaceDeleteState}
+              workspaceRecentMutation={workspaceRecentMutation}
+              workspaceRefreshPending={workspaceRefreshPending}
+              workspaceRefreshError={workspaceRefreshError}
               onAction={handleSidebarAction}
               onSelectItem={handleSelectSidebarItem}
               onToggleTreeItem={handleToggleWorkspaceItem}
+              onWorkspaceInlineCreateChange={updateWorkspaceInlineCreateValue}
+              onWorkspaceInlineCreateSubmit={submitWorkspaceInlineCreate}
+              onWorkspaceInlineCreateCancel={cancelWorkspaceInlineCreate}
+              onWorkspaceRenameChange={updateWorkspaceRenameValue}
+              onWorkspaceRenameSubmit={submitWorkspaceRename}
+              onWorkspaceRenameCancel={cancelWorkspaceRename}
             />
             <ResizableDivider side="left" onResize={persistLeftWidth} isVisible={!isCompactLayout} />
           </div>
@@ -135,13 +162,26 @@ function AppShell() {
             mobileSidebarTrigger={{
               activeView,
               items: currentSidebarItems,
+              treeItems: workspaceTreeItems,
               section: currentSidebarSection,
               selectedItemId: selectedSidebarItemId,
               mobileSidebarOpen,
+              workspaceInlineCreate,
+              workspaceRenameState,
+              workspaceDeleteState,
+              workspaceRefreshPending,
+              workspaceRefreshError,
               onAction: handleSidebarAction,
               onClose: () => setMobileSidebarOpen(false),
               onOpen: () => setMobileSidebarOpen(true),
               onSelectItem: handleSelectSidebarItem,
+              onToggleTreeItem: handleToggleWorkspaceItem,
+              onWorkspaceInlineCreateChange: updateWorkspaceInlineCreateValue,
+              onWorkspaceInlineCreateSubmit: submitWorkspaceInlineCreate,
+              onWorkspaceInlineCreateCancel: cancelWorkspaceInlineCreate,
+              onWorkspaceRenameChange: updateWorkspaceRenameValue,
+              onWorkspaceRenameSubmit: submitWorkspaceRename,
+              onWorkspaceRenameCancel: cancelWorkspaceRename,
             }}
           />
 
@@ -159,6 +199,10 @@ function AppShell() {
               workspaceFolderSummary={workspaceFolderSummary}
               workspaceLoading={workspaceDetailLoading}
               workspaceError={workspaceError}
+              workspaceRenameState={workspaceRenameState}
+              workspaceDeleteState={workspaceDeleteState}
+              onWorkspaceRename={() => void handleSidebarAction('rename-workspace-entry')}
+              onWorkspaceDelete={() => void handleSidebarAction('delete-workspace-entry')}
               onTaskCreated={handleTaskCreated}
               onTaskDeleted={handleTaskDeleted}
             />
@@ -175,6 +219,16 @@ function AppShell() {
 
       <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} initialSection={settingsInitialSection} />
       <AddDataBlockMenu open={dataBlockMenuOpen} onClose={closeDataBlockMenu} onSelect={handleAddDataBlock} />
+      <ConfirmDialog
+        open={workspaceDeleteState.open}
+        title="确认删除"
+        message={workspaceDeleteState.error ? `${workspaceDeleteState.error}` : `确定要删除 ${workspaceDeleteState.label || '当前项目'} 吗？该操作不可恢复。`}
+        confirmText={workspaceDeleteState.pending ? '删除中...' : '确认删除'}
+        cancelText="取消"
+        danger
+        onConfirm={confirmWorkspaceDelete}
+        onCancel={closeWorkspaceDeleteDialog}
+      />
     </div>
   )
 }

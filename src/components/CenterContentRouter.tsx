@@ -4,6 +4,7 @@ import { DataBlockDetailPane } from './DataBlockDetailPane'
 import { TaskDetailPane } from './TaskDetailPane'
 import { WorkspaceDetailPane } from './WorkspaceDetailPane'
 import type { SidebarItem, View } from '@/config/layout'
+import type { WorkspaceDeleteState, WorkspaceRenameState } from '@/hooks/useAppLayoutState'
 import type { AccountListItem } from '@/services/account'
 import type { WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
@@ -21,6 +22,10 @@ interface CenterContentRouterProps {
   workspaceFolderSummary?: WorkspaceFolderSummary | null
   workspaceLoading?: boolean
   workspaceError?: string | null
+  workspaceRenameState: WorkspaceRenameState
+  workspaceDeleteState: WorkspaceDeleteState
+  onWorkspaceRename: () => void
+  onWorkspaceDelete: () => void
   onTaskCreated?: (taskId?: string) => void
   onTaskDeleted?: () => void
 }
@@ -38,6 +43,10 @@ export function CenterContentRouter({
   workspaceFolderSummary,
   workspaceLoading,
   workspaceError,
+  workspaceRenameState,
+  workspaceDeleteState,
+  onWorkspaceRename,
+  onWorkspaceDelete,
   onTaskCreated,
   onTaskDeleted,
 }: CenterContentRouterProps) {
@@ -81,6 +90,10 @@ export function CenterContentRouter({
           folderSummary={workspaceFolderSummary}
           loading={workspaceLoading}
           error={workspaceError}
+          renameState={workspaceRenameState}
+          deleteState={workspaceDeleteState}
+          onRename={onWorkspaceRename}
+          onDelete={onWorkspaceDelete}
         />
       )
   }

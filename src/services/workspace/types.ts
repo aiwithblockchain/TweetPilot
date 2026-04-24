@@ -40,6 +40,11 @@ export interface CreateWorkspaceEntryInput {
   name: string
 }
 
+export interface RenameWorkspaceEntryInput {
+  path: string
+  newName: string
+}
+
 export interface WorkspaceService {
   selectLocalDirectory(): Promise<string | null>
   cloneFromGithub(repositoryUrl: string, targetPath: string): Promise<string>
@@ -54,4 +59,6 @@ export interface WorkspaceService {
   getFolderSummary(path: string): Promise<WorkspaceFolderSummary>
   createFile(input: CreateWorkspaceEntryInput): Promise<WorkspaceEntry>
   createFolder(input: CreateWorkspaceEntryInput): Promise<WorkspaceEntry>
+  renameEntry(input: RenameWorkspaceEntryInput): Promise<WorkspaceEntry>
+  deleteEntry(path: string): Promise<void>
 }

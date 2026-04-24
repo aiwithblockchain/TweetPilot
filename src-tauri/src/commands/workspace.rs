@@ -264,6 +264,38 @@ fn validate_workspace_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_workspace_entry_name(name: &str, label: &str) -> Result<String, String> {
+    let trimmed_name = name.trim();
+
+    if trimmed_name.is_empty() {
+        return Err(format!("{}不能为空", label));
+    }
+
+    if matches!(trimmed_name, "." | "..") {
+        return Err(format!("{}不能为 . 或 ..", label));
+    }
+
+    if trimmed_name.contains('/') || trimmed_name.contains('\\') {
+        return Err(format!("{}不能包含路径分隔符", label));
+    }
+
+    Ok(trimmed_name.to_string())
+}
+
+fn validate_workspace_target_path(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("目标路径无效: {}", path.display()))?;
+
+    ensure_directory_path(parent)?;
+    validate_workspace_path(parent)
+}
+
+fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> {
+    let metadata = std::fs::metadata(path).map_err(|e| format!("读取文件信息失败: {}", e))?;
+    map_workspace_entry(path, &metadata)
+}
+
 #[tauri::command]
 pub async fn select_local_directory(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -618,10 +650,7 @@ pub async fn get_workspace_folder_summary(path: String) -> Result<WorkspaceFolde
 
 #[tauri::command]
 pub async fn create_workspace_file(parent_path: String, name: String) -> Result<WorkspaceEntry, String> {
-    let trimmed_name = name.trim();
-    if trimmed_name.is_empty() {
-        return Err("文件名不能为空".to_string());
-    }
+    let trimmed_name = validate_workspace_entry_name(&name, "文件名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
@@ -633,16 +662,12 @@ pub async fn create_workspace_file(parent_path: String, name: String) -> Result<
     }
 
     std::fs::write(&target, "").map_err(|e| format!("创建文件失败: {}", e))?;
-    let metadata = std::fs::metadata(&target).map_err(|e| format!("读取文件信息失败: {}", e))?;
-    map_workspace_entry(&target, &metadata)
+    map_workspace_entry_from_path(&target)
 }
 
 #[tauri::command]
 pub async fn create_workspace_folder(parent_path: String, name: String) -> Result<WorkspaceEntry, String> {
-    let trimmed_name = name.trim();
-    if trimmed_name.is_empty() {
-        return Err("文件夹名不能为空".to_string());
-    }
+    let trimmed_name = validate_workspace_entry_name(&name, "文件夹名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
@@ -654,8 +679,48 @@ pub async fn create_workspace_folder(parent_path: String, name: String) -> Resul
     }
 
     std::fs::create_dir_all(&target).map_err(|e| format!("创建文件夹失败: {}", e))?;
-    let metadata = std::fs::metadata(&target).map_err(|e| format!("读取文件信息失败: {}", e))?;
-    map_workspace_entry(&target, &metadata)
+    map_workspace_entry_from_path(&target)
+}
+
+#[tauri::command]
+pub async fn rename_workspace_entry(path: String, new_name: String) -> Result<WorkspaceEntry, String> {
+    let trimmed_name = validate_workspace_entry_name(&new_name, "名称")?;
+    let source = PathBuf::from(&path);
+    validate_workspace_target_path(&source)?;
+
+    if !source.exists() {
+        return Err("要重命名的项目不存在".to_string());
+    }
+
+    let target = source
+        .parent()
+        .ok_or_else(|| format!("目标路径无效: {}", source.display()))?
+        .join(trimmed_name);
+
+    if target.exists() {
+        return Err("当前目录下已存在同名项目".to_string());
+    }
+
+    std::fs::rename(&source, &target).map_err(|e| format!("重命名失败: {}", e))?;
+    map_workspace_entry_from_path(&target)
+}
+
+#[tauri::command]
+pub async fn delete_workspace_entry(path: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    validate_workspace_target_path(&target)?;
+
+    if !target.exists() {
+        return Err("要删除的项目不存在".to_string());
+    }
+
+    if target.is_dir() {
+        std::fs::remove_dir_all(&target).map_err(|e| format!("删除文件夹失败: {}", e))?;
+    } else {
+        std::fs::remove_file(&target).map_err(|e| format!("删除文件失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

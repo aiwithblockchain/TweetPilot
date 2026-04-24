@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { dataBlocksService } from '@/services'
 import type { DataBlockCard } from '@/services'
+import { tauriInvoke } from '@/lib/tauri-api'
 
 vi.mock('@/lib/tauri-api', () => ({
   tauriInvoke: vi.fn(),
 }))
 
-const { tauriInvoke: tauriInvokeMock } = await import('@/lib/tauri-api')
+const tauriInvokeMock = vi.mocked(tauriInvoke)
 
 const sampleLayout: DataBlockCard[] = [
   {

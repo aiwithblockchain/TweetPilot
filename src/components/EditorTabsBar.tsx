@@ -1,17 +1,32 @@
 import { ChevronLeft, ChevronRight, PanelsTopLeft } from 'lucide-react'
 import { MobileSidebarDrawer } from './MobileSidebarDrawer'
+import type { SidebarTreeItem } from './LeftSidebar'
 import { type OpenTab, type SidebarItem, type SidebarSectionConfig, type TabId, type View } from '@/config/layout'
+import type { WorkspaceDeleteState, WorkspaceInlineCreateState, WorkspaceRenameState } from '@/hooks/useAppLayoutState'
 
 interface MobileSidebarTriggerProps {
   activeView: View
   items: SidebarItem[]
+  treeItems?: SidebarTreeItem[]
   section: SidebarSectionConfig
   selectedItemId?: string | null
   mobileSidebarOpen: boolean
+  workspaceInlineCreate: WorkspaceInlineCreateState
+  workspaceRenameState: WorkspaceRenameState
+  workspaceDeleteState: WorkspaceDeleteState
+  workspaceRefreshPending: boolean
+  workspaceRefreshError: string | null
   onAction?: (actionId: string) => void
   onClose: () => void
   onOpen: () => void
   onSelectItem: (itemId: string) => void
+  onToggleTreeItem?: (itemId: string) => void
+  onWorkspaceInlineCreateChange: (value: string) => void
+  onWorkspaceInlineCreateSubmit: () => void
+  onWorkspaceInlineCreateCancel: () => void
+  onWorkspaceRenameChange: (value: string) => void
+  onWorkspaceRenameSubmit: () => void
+  onWorkspaceRenameCancel: () => void
 }
 
 interface EditorTabsBarProps {

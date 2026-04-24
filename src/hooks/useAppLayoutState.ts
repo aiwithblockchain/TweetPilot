@@ -28,6 +28,39 @@ import { layoutService } from '@/services/layout'
 import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
 
+export type WorkspaceCreateKind = 'file' | 'folder'
+
+export interface WorkspaceInlineCreateState {
+  active: boolean
+  kind: WorkspaceCreateKind | null
+  parentPath: string | null
+  value: string
+  pending: boolean
+  error: string | null
+}
+
+export interface WorkspaceRenameState {
+  active: boolean
+  path: string | null
+  value: string
+  pending: boolean
+  error: string | null
+}
+
+export interface WorkspaceDeleteState {
+  open: boolean
+  path: string | null
+  label: string
+  pending: boolean
+  error: string | null
+}
+
+export interface WorkspaceRecentMutation {
+  path: string | null
+  kind: 'create' | 'rename' | null
+  timestamp: number | null
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -94,6 +127,100 @@ function buildAccountSidebarItems(managed: AccountListItem[], unmanaged: Account
   ]
 }
 
+function normalizePath(path: string) {
+  return path.replace(/\\/g, '/')
+}
+
+function getParentDirectoryPath(path: string, workspaceRoot: string | null) {
+  if (!workspaceRoot) return null
+
+  const normalizedPath = normalizePath(path)
+  const normalizedRoot = normalizePath(workspaceRoot)
+
+  if (normalizedPath === normalizedRoot) {
+    return workspaceRoot
+  }
+
+  const index = normalizedPath.lastIndexOf('/')
+  if (index <= 0) {
+    return workspaceRoot
+  }
+
+  const parent = normalizedPath.slice(0, index)
+  return parent || workspaceRoot
+}
+
+function collectWorkspaceEntries(tree: Record<string, WorkspaceEntry[]>) {
+  return Object.values(tree).flat()
+}
+
+function collectWorkspacePaths(tree: Record<string, WorkspaceEntry[]>, workspaceRoot: string | null) {
+  const allPaths = new Set<string>()
+  const directoryPaths = new Set<string>()
+
+  if (workspaceRoot) {
+    allPaths.add(workspaceRoot)
+    directoryPaths.add(workspaceRoot)
+  }
+
+  for (const entries of Object.values(tree)) {
+    for (const entry of entries) {
+      allPaths.add(entry.path)
+      if (entry.kind === 'directory') {
+        directoryPaths.add(entry.path)
+      }
+    }
+  }
+
+  return { allPaths, directoryPaths }
+}
+
+function findNearestExistingPath(path: string | null, validPaths: Set<string>, workspaceRoot: string | null) {
+  if (!workspaceRoot) return null
+  if (!path) return workspaceRoot
+  if (validPaths.has(path)) return path
+
+  let currentPath: string | null = path
+  while (currentPath && currentPath !== workspaceRoot) {
+    currentPath = getParentDirectoryPath(currentPath, workspaceRoot)
+    if (currentPath && validPaths.has(currentPath)) {
+      return currentPath
+    }
+  }
+
+  return validPaths.has(workspaceRoot) ? workspaceRoot : null
+}
+
+function getWorkspaceCreateErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return fallback
+}
+
+function validateWorkspaceEntryName(name: string) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    return '名称不能为空'
+  }
+
+  if (trimmedName === '.' || trimmedName === '..') {
+    return '名称不能为 . 或 ..'
+  }
+
+  if (/[\\/]/.test(trimmedName)) {
+    return '名称不能包含 / 或 \\'
+  }
+
+  if (trimmedName.length > 255) {
+    return '名称长度不能超过 255 个字符'
+  }
+
+  return null
+}
+
 export function useAppLayoutState() {
   const tasksSidebar = useTasksSidebarItems()
   const toast = useToast()
@@ -135,6 +262,35 @@ export function useAppLayoutState() {
   const [expandedWorkspacePaths, setExpandedWorkspacePaths] = useState<Record<string, boolean>>({})
   const [workspaceLoadingPaths, setWorkspaceLoadingPaths] = useState<Record<string, boolean>>({})
   const [workspaceRefreshKey] = useState(0)
+  const [workspaceInlineCreate, setWorkspaceInlineCreate] = useState<WorkspaceInlineCreateState>({
+    active: false,
+    kind: null,
+    parentPath: null,
+    value: '',
+    pending: false,
+    error: null,
+  })
+  const [workspaceRenameState, setWorkspaceRenameState] = useState<WorkspaceRenameState>({
+    active: false,
+    path: null,
+    value: '',
+    pending: false,
+    error: null,
+  })
+  const [workspaceDeleteState, setWorkspaceDeleteState] = useState<WorkspaceDeleteState>({
+    open: false,
+    path: null,
+    label: '',
+    pending: false,
+    error: null,
+  })
+  const [workspaceRecentMutation, setWorkspaceRecentMutation] = useState<WorkspaceRecentMutation>({
+    path: null,
+    kind: null,
+    timestamp: null,
+  })
+  const [workspaceRefreshPending, setWorkspaceRefreshPending] = useState(false)
+  const [workspaceRefreshError, setWorkspaceRefreshError] = useState<string | null>(null)
   const [workspaceFileContent, setWorkspaceFileContent] = useState<WorkspaceFileContent | null>(null)
   const [workspaceFolderSummary, setWorkspaceFolderSummary] = useState<WorkspaceFolderSummary | null>(null)
   const [workspaceDetailLoading, setWorkspaceDetailLoading] = useState(false)
@@ -152,6 +308,12 @@ export function useAppLayoutState() {
     }
     return SIDEBAR_ITEMS[activeView]
   }, [activeView, tasksSidebar.items, accountItems])
+
+  const workspaceEntries = useMemo(() => collectWorkspaceEntries(workspaceTree), [workspaceTree])
+
+  const workspaceEntryByPath = useMemo(() => {
+    return new Map(workspaceEntries.map((entry) => [entry.path, entry]))
+  }, [workspaceEntries])
 
   const currentSidebarSection = useMemo(() => {
     if (activeView === 'tasks' && tasksSidebar.error) {
@@ -194,14 +356,12 @@ export function useAppLayoutState() {
         }
       }
 
-      for (const entries of Object.values(workspaceTree)) {
-        const match = entries.find((entry) => entry.path === selectedSidebarItemId)
-        if (match) {
-          return {
-            id: match.path,
-            label: match.name,
-            description: getEntryDescription(match),
-          }
+      const match = workspaceEntryByPath.get(selectedSidebarItemId)
+      if (match) {
+        return {
+          id: match.path,
+          label: match.name,
+          description: getEntryDescription(match),
         }
       }
 
@@ -209,7 +369,7 @@ export function useAppLayoutState() {
     }
 
     return currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? null
-  }, [activeView, currentSidebarItems, selectedSidebarItemId, workspaceRoot, workspaceRootName, workspaceTree])
+  }, [activeView, currentSidebarItems, selectedSidebarItemId, workspaceEntryByPath, workspaceRoot, workspaceRootName])
 
   const reloadAccounts = async () => {
     setAccountsLoading(true)
@@ -279,6 +439,363 @@ export function useAppLayoutState() {
       setWorkspaceLoadingPaths((prev) => ({ ...prev, [path]: false }))
     }
   }
+
+  const refreshWorkspaceTree = async (options?: { preserveSelectionPath?: string | null }) => {
+    if (!workspaceRoot) return null
+
+    const previousExpandedPaths = Object.entries(expandedWorkspacePaths)
+      .filter(([, expanded]) => expanded)
+      .map(([path]) => path)
+    const previousSelectedPath = options?.preserveSelectionPath ?? selectedItemsByView.workspace ?? workspaceRoot
+
+    setWorkspaceRefreshPending(true)
+    setWorkspaceRefreshError(null)
+
+    try {
+      const nextTree: Record<string, WorkspaceEntry[]> = {}
+      const visited = new Set<string>()
+      const queue = [workspaceRoot]
+
+      while (queue.length > 0) {
+        const currentPath = queue.shift()
+        if (!currentPath || visited.has(currentPath)) continue
+        visited.add(currentPath)
+
+        const entries = await workspaceService.listDirectory(currentPath)
+        nextTree[currentPath] = entries
+
+        for (const entry of entries) {
+          if (entry.kind === 'directory') {
+            queue.push(entry.path)
+          }
+        }
+      }
+
+      const { allPaths, directoryPaths } = collectWorkspacePaths(nextTree, workspaceRoot)
+      const nextExpandedPaths = previousExpandedPaths.reduce<Record<string, boolean>>((acc, path) => {
+        if (directoryPaths.has(path)) {
+          acc[path] = true
+        }
+        return acc
+      }, { [workspaceRoot]: true })
+      const nextSelectedPath = findNearestExistingPath(previousSelectedPath, allPaths, workspaceRoot)
+
+      setWorkspaceTree(nextTree)
+      setExpandedWorkspacePaths(nextExpandedPaths)
+      setSelectedItemsByView((prev) => ({
+        ...prev,
+        workspace: nextSelectedPath,
+      }))
+      setWorkspaceError(null)
+      setWorkspaceRefreshError(null)
+
+      if (nextSelectedPath) {
+        setCenterMode('detail')
+      }
+
+      return nextTree
+    } catch (error) {
+      const message = getWorkspaceCreateErrorMessage(error, '刷新失败')
+      setWorkspaceRefreshError(message)
+      throw error
+    } finally {
+      setWorkspaceRefreshPending(false)
+    }
+  }
+
+  const resolveWorkspaceCreateParentPath = () => {
+    const selectedPath = selectedItemsByView.workspace
+    if (!selectedPath) return workspaceRoot
+    if (selectedPath === workspaceRoot) return workspaceRoot
+
+    const selectedEntry = workspaceEntryByPath.get(selectedPath)
+    if (selectedEntry?.kind === 'directory') {
+      return selectedEntry.path
+    }
+
+    return getParentDirectoryPath(selectedPath, workspaceRoot)
+  }
+
+  const resetWorkspaceInlineCreate = () => {
+    setWorkspaceInlineCreate({
+      active: false,
+      kind: null,
+      parentPath: null,
+      value: '',
+      pending: false,
+      error: null,
+    })
+  }
+
+  const resetWorkspaceRenameState = () => {
+    setWorkspaceRenameState({
+      active: false,
+      path: null,
+      value: '',
+      pending: false,
+      error: null,
+    })
+  }
+
+  const closeWorkspaceDeleteDialog = () => {
+    setWorkspaceDeleteState((prev) => {
+      if (prev.pending) return prev
+      return {
+        open: false,
+        path: null,
+        label: '',
+        pending: false,
+        error: null,
+      }
+    })
+  }
+
+  const startWorkspaceRename = () => {
+    const selectedPath = selectedItemsByView.workspace
+    if (!selectedPath || selectedPath === workspaceRoot) {
+      toast.error('请选择要重命名的文件或文件夹')
+      return
+    }
+
+    const selectedEntry = workspaceEntryByPath.get(selectedPath)
+    if (!selectedEntry) {
+      toast.error('当前节点不存在，无法重命名')
+      return
+    }
+
+    setWorkspaceRenameState({
+      active: true,
+      path: selectedEntry.path,
+      value: selectedEntry.name,
+      pending: false,
+      error: null,
+    })
+    setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => (prev.pending ? prev : {
+      active: false,
+      kind: null,
+      parentPath: null,
+      value: '',
+      pending: false,
+      error: null,
+    }))
+  }
+
+  const updateWorkspaceRenameValue = (value: string) => {
+    setWorkspaceRenameState((prev: WorkspaceRenameState) => ({
+      ...prev,
+      value,
+      error: prev.error ? null : prev.error,
+    }))
+  }
+
+  const cancelWorkspaceRename = () => {
+    setWorkspaceRenameState((prev: WorkspaceRenameState) => {
+      if (prev.pending) return prev
+      return {
+        active: false,
+        path: null,
+        value: '',
+        pending: false,
+        error: null,
+      }
+    })
+  }
+
+  const submitWorkspaceRename = async () => {
+    if (!workspaceRenameState.active || !workspaceRenameState.path || workspaceRenameState.pending) {
+      return
+    }
+
+    const validationError = validateWorkspaceEntryName(workspaceRenameState.value)
+    if (validationError) {
+      setWorkspaceRenameState((prev: WorkspaceRenameState) => ({ ...prev, error: validationError }))
+      return
+    }
+
+    const nextName = workspaceRenameState.value.trim()
+    const currentEntry = workspaceEntryByPath.get(workspaceRenameState.path)
+    if (!currentEntry) {
+      setWorkspaceRenameState((prev: WorkspaceRenameState) => ({ ...prev, error: '当前节点不存在，无法重命名' }))
+      return
+    }
+
+    if (currentEntry.name === nextName) {
+      resetWorkspaceRenameState()
+      return
+    }
+
+    const parentPath = getParentDirectoryPath(workspaceRenameState.path, workspaceRoot)
+    const siblingEntries = parentPath ? (workspaceTree[parentPath] ?? []) : []
+    if (siblingEntries.some((entry) => entry.path !== workspaceRenameState.path && entry.name === nextName)) {
+      setWorkspaceRenameState((prev: WorkspaceRenameState) => ({ ...prev, error: '当前目录下已存在同名项目' }))
+      return
+    }
+
+    setWorkspaceRenameState((prev: WorkspaceRenameState) => ({ ...prev, pending: true, error: null, value: nextName }))
+
+    try {
+      const renamed = await workspaceService.renameEntry({
+        path: workspaceRenameState.path,
+        newName: nextName,
+      })
+      await refreshWorkspaceTree({ preserveSelectionPath: renamed.path })
+      setWorkspaceRecentMutation({ path: renamed.path, kind: 'rename', timestamp: Date.now() })
+      resetWorkspaceRenameState()
+      toast.success('重命名成功')
+    } catch (error) {
+      const message = getWorkspaceCreateErrorMessage(error, '重命名失败')
+      setWorkspaceRenameState((prev: WorkspaceRenameState) => ({ ...prev, pending: false, error: message }))
+    }
+  }
+
+  const startWorkspaceDelete = () => {
+    const selectedPath = selectedItemsByView.workspace
+    if (!selectedPath || selectedPath === workspaceRoot) {
+      toast.error('请选择要删除的文件或文件夹')
+      return
+    }
+
+    const selectedEntry = workspaceEntryByPath.get(selectedPath)
+    if (!selectedEntry) {
+      toast.error('当前节点不存在，无法删除')
+      return
+    }
+
+    setWorkspaceDeleteState({
+      open: true,
+      path: selectedEntry.path,
+      label: selectedEntry.name,
+      pending: false,
+      error: null,
+    })
+  }
+
+  const confirmWorkspaceDelete = async () => {
+    if (!workspaceDeleteState.open || !workspaceDeleteState.path || workspaceDeleteState.pending) {
+      return
+    }
+
+    const fallbackPath = getParentDirectoryPath(workspaceDeleteState.path, workspaceRoot) ?? workspaceRoot
+    setWorkspaceDeleteState((prev: WorkspaceDeleteState) => ({ ...prev, pending: true, error: null }))
+
+    try {
+      await workspaceService.deleteEntry(workspaceDeleteState.path)
+      await refreshWorkspaceTree({ preserveSelectionPath: fallbackPath })
+      closeWorkspaceDeleteDialog()
+      toast.success('删除成功')
+    } catch (error) {
+      const message = getWorkspaceCreateErrorMessage(error, '删除失败')
+      setWorkspaceDeleteState((prev: WorkspaceDeleteState) => ({ ...prev, pending: false, error: message }))
+    }
+  }
+
+  const startWorkspaceInlineCreate = (kind: WorkspaceCreateKind) => {
+    const parentPath = resolveWorkspaceCreateParentPath()
+    if (!parentPath) {
+      toast.error('当前没有可用的工作区目录')
+      return
+    }
+
+    resetWorkspaceRenameState()
+    setExpandedWorkspacePaths((prev) => ({ ...prev, [parentPath]: true }))
+    setWorkspaceInlineCreate({
+      active: true,
+      kind,
+      parentPath,
+      value: '',
+      pending: false,
+      error: null,
+    })
+    setWorkspaceRefreshError(null)
+  }
+
+  const updateWorkspaceInlineCreateValue = (value: string) => {
+    setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => ({
+      ...prev,
+      value,
+      error: prev.error ? null : prev.error,
+    }))
+  }
+
+  const cancelWorkspaceInlineCreate = () => {
+    setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => {
+      if (prev.pending) return prev
+      return {
+        active: false,
+        kind: null,
+        parentPath: null,
+        value: '',
+        pending: false,
+        error: null,
+      }
+    })
+  }
+
+  const submitWorkspaceInlineCreate = async () => {
+    if (!workspaceInlineCreate.active || !workspaceInlineCreate.kind || !workspaceInlineCreate.parentPath || workspaceInlineCreate.pending) {
+      return
+    }
+
+    const validationError = validateWorkspaceEntryName(workspaceInlineCreate.value)
+    if (validationError) {
+      setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => ({ ...prev, error: validationError }))
+      return
+    }
+
+    const siblingEntries = workspaceTree[workspaceInlineCreate.parentPath] ?? []
+    const nextName = workspaceInlineCreate.value.trim()
+    if (siblingEntries.some((entry) => entry.name === nextName)) {
+      setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => ({ ...prev, error: '当前目录下已存在同名项目' }))
+      return
+    }
+
+    setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => ({ ...prev, pending: true, error: null, value: nextName }))
+
+    try {
+      const created = workspaceInlineCreate.kind === 'file'
+        ? await workspaceService.createFile({ parentPath: workspaceInlineCreate.parentPath, name: nextName })
+        : await workspaceService.createFolder({ parentPath: workspaceInlineCreate.parentPath, name: nextName })
+
+      await refreshWorkspaceTree({ preserveSelectionPath: created.path })
+      setWorkspaceRecentMutation({ path: created.path, kind: 'create', timestamp: Date.now() })
+      resetWorkspaceInlineCreate()
+      toast.success(workspaceInlineCreate.kind === 'file' ? '文件已创建' : '文件夹已创建')
+    } catch (error) {
+      const message = getWorkspaceCreateErrorMessage(error, workspaceInlineCreate.kind === 'file' ? '创建文件失败' : '创建文件夹失败')
+      setWorkspaceInlineCreate((prev: WorkspaceInlineCreateState) => ({ ...prev, pending: false, error: message }))
+    }
+  }
+
+  useEffect(() => {
+    if (!workspaceInlineCreate.active || workspaceInlineCreate.pending) {
+      return
+    }
+
+    const parentPath = workspaceInlineCreate.parentPath
+    if (!parentPath || parentPath === workspaceRoot) {
+      return
+    }
+
+    const parentExists = workspaceEntryByPath.get(parentPath)
+    if (parentExists?.kind === 'directory') {
+      return
+    }
+
+    cancelWorkspaceInlineCreate()
+  }, [cancelWorkspaceInlineCreate, workspaceEntryByPath, workspaceInlineCreate, workspaceRoot])
+
+  useEffect(() => {
+    if (!workspaceRenameState.active || workspaceRenameState.pending || !workspaceRenameState.path) {
+      return
+    }
+
+    const currentEntry = workspaceEntryByPath.get(workspaceRenameState.path)
+    if (currentEntry) {
+      return
+    }
+
+    cancelWorkspaceRename()
+  }, [cancelWorkspaceRename, workspaceEntryByPath, workspaceRenameState])
 
   useEffect(() => {
     let cancelled = false
@@ -603,48 +1120,7 @@ export function useAppLayoutState() {
   }
 
   const handleWorkspaceCreate = async (kind: 'file' | 'folder') => {
-    const parentPath = (() => {
-      const selectedPath = selectedItemsByView.workspace
-      if (!selectedPath) return workspaceRoot
-      if (selectedPath === workspaceRoot) return workspaceRoot
-
-      const selectedEntry = Object.values(workspaceTree)
-        .flat()
-        .find((entry) => entry.path === selectedPath)
-
-      if (selectedEntry?.kind === 'directory') {
-        return selectedEntry.path
-      }
-
-      return selectedPath.slice(0, selectedPath.lastIndexOf('/')) || workspaceRoot
-    })()
-
-    if (!parentPath) {
-      toast.error('当前没有可用的工作区目录')
-      return
-    }
-
-    const rawName = window.prompt(kind === 'file' ? '请输入新文件名' : '请输入新文件夹名')
-    const name = rawName?.trim()
-    if (!name) {
-      return
-    }
-
-    try {
-      const created = kind === 'file'
-        ? await workspaceService.createFile({ parentPath, name })
-        : await workspaceService.createFolder({ parentPath, name })
-
-      await loadWorkspaceChildren(parentPath, true)
-      if (kind === 'folder') {
-        setExpandedWorkspacePaths((prev) => ({ ...prev, [parentPath]: true }))
-      }
-      setSelectedItemsByView((prev) => ({ ...prev, workspace: created.path }))
-      setCenterMode('detail')
-      toast.success(kind === 'file' ? '文件已创建' : '文件夹已创建')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '创建失败')
-    }
+    startWorkspaceInlineCreate(kind)
   }
 
   const handleSidebarAction = async (actionId: string) => {
@@ -675,18 +1151,22 @@ export function useAppLayoutState() {
     if (actionId === 'refresh-workspace') {
       if (workspaceRoot) {
         try {
-          const expandedPaths = Object.entries(expandedWorkspacePaths)
-            .filter(([, expanded]) => expanded)
-            .map(([path]) => path)
-          await Promise.all(expandedPaths.map((path) => loadWorkspaceChildren(path, true)))
-          if (selectedItemsByView.workspace) {
-            setCenterMode('detail')
-          }
+          await refreshWorkspaceTree()
           toast.success('工作区已刷新')
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : '刷新失败')
+          toast.error(getWorkspaceCreateErrorMessage(error, '刷新失败'))
         }
       }
+      return
+    }
+
+    if (actionId === 'rename-workspace-entry') {
+      startWorkspaceRename()
+      return
+    }
+
+    if (actionId === 'delete-workspace-entry') {
+      startWorkspaceDelete()
       return
     }
 
@@ -849,9 +1329,23 @@ export function useAppLayoutState() {
     workspaceError,
     workspaceFileContent,
     workspaceFolderSummary,
+    workspaceInlineCreate,
+    workspaceRenameState,
+    workspaceDeleteState,
+    workspaceRecentMutation,
+    workspaceRefreshPending,
+    workspaceRefreshError,
     workspaceRoot,
     workspaceRootName,
     workspaceTreeItems,
     workspaceLoadingPaths,
+    cancelWorkspaceInlineCreate,
+    submitWorkspaceInlineCreate,
+    updateWorkspaceInlineCreateValue,
+    cancelWorkspaceRename,
+    closeWorkspaceDeleteDialog,
+    confirmWorkspaceDelete,
+    submitWorkspaceRename,
+    updateWorkspaceRenameValue,
   }
 }

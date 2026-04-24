@@ -138,6 +138,8 @@ fn main() {
             workspace::get_workspace_folder_summary,
             workspace::create_workspace_file,
             workspace::create_workspace_folder,
+            workspace::rename_workspace_entry,
+            workspace::delete_workspace_entry,
             // Account commands
             account::get_instances,
             account::get_managed_accounts,

@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from 'date-fns'
-import { FileText, FolderClosed, Image as ImageIcon, FileQuestion, Loader2 } from 'lucide-react'
+import { FileText, FolderClosed, Image as ImageIcon, FileQuestion, Loader2, Pencil, Trash2 } from 'lucide-react'
 import type { SidebarItem } from '@/config/layout'
+import type { WorkspaceDeleteState, WorkspaceRenameState } from '@/hooks/useAppLayoutState'
 import type { WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
 
 interface WorkspaceDetailPaneProps {
@@ -9,9 +10,23 @@ interface WorkspaceDetailPaneProps {
   folderSummary?: WorkspaceFolderSummary | null
   loading?: boolean
   error?: string | null
+  renameState: WorkspaceRenameState
+  deleteState: WorkspaceDeleteState
+  onRename: () => void
+  onDelete: () => void
 }
 
-export function WorkspaceDetailPane({ item, fileContent, folderSummary, loading, error }: WorkspaceDetailPaneProps) {
+export function WorkspaceDetailPane({
+  item,
+  fileContent,
+  folderSummary,
+  loading,
+  error,
+  renameState,
+  deleteState,
+  onRename,
+  onDelete,
+}: WorkspaceDetailPaneProps) {
   if (!item) {
     return <EmptyState title="工作区" description="请先在左侧目录树中选择一个文件或文件夹，再在中间查看内容。" />
   }
@@ -35,6 +50,11 @@ export function WorkspaceDetailPane({ item, fileContent, folderSummary, loading,
     return (
       <div className="p-6 space-y-5">
         <Header title={folderSummary.name} subtitle={item.description} />
+
+        <div className="flex flex-wrap gap-2">
+          <ActionButton label="重命名" icon={<Pencil className="w-4 h-4" />} onClick={onRename} disabled={renameState.pending || deleteState.pending} />
+          <ActionButton label={deleteState.pending ? '删除中...' : '删除'} icon={<Trash2 className="w-4 h-4" />} onClick={onDelete} danger disabled={renameState.pending || deleteState.pending} />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricCard label="总项目数" value={String(folderSummary.itemCount)} hint="当前文件夹直系子项" />
@@ -66,6 +86,11 @@ export function WorkspaceDetailPane({ item, fileContent, folderSummary, loading,
           fileContent.size != null ? `${formatSize(fileContent.size)}` : null,
         ].filter(Boolean).join(' · ')}
       />
+
+      <div className="flex flex-wrap gap-2">
+        <ActionButton label="重命名" icon={<Pencil className="w-4 h-4" />} onClick={onRename} disabled={renameState.pending || deleteState.pending} />
+        <ActionButton label={deleteState.pending ? '删除中...' : '删除'} icon={<Trash2 className="w-4 h-4" />} onClick={onDelete} danger disabled={renameState.pending || deleteState.pending} />
+      </div>
 
       {fileContent.contentType === 'text' && (
         <Panel icon={<FileText className="w-5 h-5 text-[#4EC9B0]" />} title="文本预览">
@@ -127,6 +152,37 @@ function MetricCard({ label, value, hint }: { label: string; value: string; hint
       <div className="text-lg font-semibold text-[var(--color-text)] mt-2">{value}</div>
       <div className="text-xs text-[var(--color-text-secondary)] mt-2 leading-5">{hint}</div>
     </div>
+  )
+}
+
+function ActionButton({
+  label,
+  icon,
+  onClick,
+  danger = false,
+  disabled = false,
+}: {
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+  danger?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        'inline-flex items-center gap-2 px-3 py-2 rounded border text-sm transition-colors disabled:opacity-50',
+        danger
+          ? 'border-red-800/50 bg-red-950/30 text-[#F48771] hover:bg-red-950/50'
+          : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)]',
+      ].join(' ')}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   )
 }
 

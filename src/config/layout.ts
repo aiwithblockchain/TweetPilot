@@ -5,6 +5,7 @@ import type { AppInstance } from '@/types/layout'
 
 export type View = 'workspace' | 'accounts' | 'data-blocks' | 'tasks'
 export type TabId = View | 'claude-chat'
+export type SidebarActionIcon = 'add' | 'add-file' | 'add-folder' | 'refresh' | 'rename' | 'delete'
 
 export interface OpenTab {
   id: TabId
@@ -25,7 +26,7 @@ export interface SidebarItem {
 export interface SidebarSectionAction {
   id: string
   label: string
-  icon?: 'add' | 'add-file' | 'add-folder' | 'refresh'
+  icon?: SidebarActionIcon
 }
 
 export interface SidebarSectionConfig {
@@ -94,6 +95,8 @@ export const SIDEBAR_SECTION_CONFIG: Record<View, SidebarSectionConfig> = {
       { id: 'new-file', label: '新建文件', icon: 'add-file' },
       { id: 'new-folder', label: '新建文件夹', icon: 'add-folder' },
       { id: 'refresh-workspace', label: '刷新', icon: 'refresh' },
+      { id: 'rename-workspace-entry', label: '重命名', icon: 'rename' },
+      { id: 'delete-workspace-entry', label: '删除', icon: 'delete' },
     ],
     emptyMessage: '当前工作区为空，后续可在这里显示真实目录树。',
   },

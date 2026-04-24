@@ -1,29 +1,56 @@
 import { Menu, X } from 'lucide-react'
-import { LeftSidebar } from './LeftSidebar'
+import { LeftSidebar, type SidebarTreeItem } from './LeftSidebar'
 import type { SidebarItem, SidebarSectionConfig, View } from '@/config/layout'
+import type { WorkspaceDeleteState, WorkspaceInlineCreateState, WorkspaceRenameState } from '@/hooks/useAppLayoutState'
 
 interface MobileSidebarDrawerProps {
   activeView: View
   items: SidebarItem[]
+  treeItems?: SidebarTreeItem[]
   section: SidebarSectionConfig
   selectedItemId?: string | null
   mobileSidebarOpen: boolean
+  workspaceInlineCreate: WorkspaceInlineCreateState
+  workspaceRenameState: WorkspaceRenameState
+  workspaceDeleteState: WorkspaceDeleteState
+  workspaceRefreshPending: boolean
+  workspaceRefreshError: string | null
   onAction?: (actionId: string) => void
   onClose: () => void
   onOpen: () => void
   onSelectItem: (itemId: string) => void
+  onToggleTreeItem?: (itemId: string) => void
+  onWorkspaceInlineCreateChange: (value: string) => void
+  onWorkspaceInlineCreateSubmit: () => void
+  onWorkspaceInlineCreateCancel: () => void
+  onWorkspaceRenameChange: (value: string) => void
+  onWorkspaceRenameSubmit: () => void
+  onWorkspaceRenameCancel: () => void
 }
 
 export function MobileSidebarDrawer({
   activeView,
   items,
+  treeItems,
   section,
   selectedItemId,
   mobileSidebarOpen,
+  workspaceInlineCreate,
+  workspaceRenameState,
+  workspaceDeleteState,
+  workspaceRefreshPending,
+  workspaceRefreshError,
   onAction,
   onClose,
   onOpen,
   onSelectItem,
+  onToggleTreeItem,
+  onWorkspaceInlineCreateChange,
+  onWorkspaceInlineCreateSubmit,
+  onWorkspaceInlineCreateCancel,
+  onWorkspaceRenameChange,
+  onWorkspaceRenameSubmit,
+  onWorkspaceRenameCancel,
 }: MobileSidebarDrawerProps) {
   return (
     <>
@@ -65,10 +92,23 @@ export function MobileSidebarDrawer({
           activeView={activeView}
           width={280}
           items={items}
+          treeItems={treeItems}
           section={section}
           selectedItemId={selectedItemId}
+          workspaceInlineCreate={workspaceInlineCreate}
+          workspaceRenameState={workspaceRenameState}
+          workspaceDeleteState={workspaceDeleteState}
+          workspaceRefreshPending={workspaceRefreshPending}
+          workspaceRefreshError={workspaceRefreshError}
           onAction={onAction}
           onSelectItem={onSelectItem}
+          onToggleTreeItem={onToggleTreeItem}
+          onWorkspaceInlineCreateChange={onWorkspaceInlineCreateChange}
+          onWorkspaceInlineCreateSubmit={onWorkspaceInlineCreateSubmit}
+          onWorkspaceInlineCreateCancel={onWorkspaceInlineCreateCancel}
+          onWorkspaceRenameChange={onWorkspaceRenameChange}
+          onWorkspaceRenameSubmit={onWorkspaceRenameSubmit}
+          onWorkspaceRenameCancel={onWorkspaceRenameCancel}
         />
       </div>
     </>

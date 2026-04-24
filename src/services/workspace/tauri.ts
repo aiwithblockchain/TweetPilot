@@ -1,6 +1,7 @@
 import { tauriInvoke } from '@/lib/tauri-api'
 import type {
   CreateWorkspaceEntryInput,
+  RenameWorkspaceEntryInput,
   WorkspaceEntry,
   WorkspaceFileContent,
   WorkspaceFolderSummary,
@@ -143,5 +144,14 @@ export const workspaceTauriService: WorkspaceService = {
   async createFolder(input: CreateWorkspaceEntryInput) {
     const response = await tauriInvoke<TauriWorkspaceEntry>('create_workspace_folder', input as unknown as Record<string, unknown>)
     return mapWorkspaceEntry(response)
+  },
+
+  async renameEntry(input: RenameWorkspaceEntryInput) {
+    const response = await tauriInvoke<TauriWorkspaceEntry>('rename_workspace_entry', input as unknown as Record<string, unknown>)
+    return mapWorkspaceEntry(response)
+  },
+
+  async deleteEntry(path: string) {
+    await tauriInvoke<void>('delete_workspace_entry', { path })
   },
 }
