@@ -22,5 +22,6 @@ export interface DataBlocksService {
   addCard(cardType: DataBlockCardType, config?: Record<string, unknown>): Promise<DataBlockCard>
   deleteCard(cardId: string): Promise<void>
   getCardData(cardId: string, cardType: DataBlockCardType, accountId?: string | null): Promise<DataBlockCardData>
+  getBlockPreview(cardType: DataBlockCardType, accountId?: string | null): Promise<DataBlockCardData>
   refreshCardData(cardId: string): Promise<void>
 }

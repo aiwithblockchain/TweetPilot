@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Database } from 'lucide-react'
 import SortableDataCard from '../components/SortableDataCard'
 import AddCardDialog from '../components/AddCardDialog'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
-import { dataBlocksService } from '@/services'
+import { dataBlocksService, getManagedAccountsForTaskSelection, type ManagedAccountForTask } from '@/services'
 import { useToast } from '@/contexts/ToastContext'
 import type { DataBlockCard } from '@/services/data-blocks'
 import {
@@ -28,6 +29,9 @@ export default function DataBlocks() {
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [deleteCardId, setDeleteCardId] = useState<string | null>(null)
+  const [accounts, setAccounts] = useState<ManagedAccountForTask[]>([])
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+  const [accountsLoading, setAccountsLoading] = useState(true)
   const toast = useToast()
 
   const sensors = useSensors(
@@ -39,7 +43,24 @@ export default function DataBlocks() {
 
   useEffect(() => {
     void loadData()
+    void loadAccounts()
   }, [])
+
+  const loadAccounts = async () => {
+    try {
+      const managedAccounts = await getManagedAccountsForTaskSelection()
+      setAccounts(managedAccounts)
+      // 如果有账号，默认选中第一个
+      if (managedAccounts.length > 0) {
+        setSelectedAccountId(managedAccounts[0].twitterId)
+      }
+    } catch (error) {
+      console.error('Failed to load managed accounts:', error)
+      setAccounts([])
+    } finally {
+      setAccountsLoading(false)
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -57,10 +78,10 @@ export default function DataBlocks() {
       const newCard = await dataBlocksService.addCard(cardType, {})
       setCards((prev) => [...prev, newCard])
       setShowAddDialog(false)
-      toast.success('卡片添加成功')
+      toast.success('积木添加成功')
     } catch (error) {
       console.error('Failed to add card:', error)
-      toast.error('添加卡片失败: ' + (error as Error).message)
+      toast.error('添加积木失败: ' + (error as Error).message)
     }
   }
 
@@ -75,7 +96,7 @@ export default function DataBlocks() {
       await dataBlocksService.deleteCard(deleteCardId)
       const layout = await dataBlocksService.getLayout()
       setCards(layout)
-      toast.success('卡片删除成功')
+      toast.success('积木删除成功')
     } catch (error) {
       console.error('Failed to delete card:', error)
       toast.error('删除失败: ' + (error as Error).message)
@@ -141,11 +162,27 @@ export default function DataBlocks() {
       <div className="h-12 flex items-center justify-between px-4 border-b border-[var(--color-border)]">
         <h2 className="text-lg font-semibold">数据积木</h2>
         <div className="flex items-center gap-3">
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            disabled={accountsLoading || accounts.length === 0}
+            className="h-8 px-3 text-sm rounded border border-[var(--color-border)] bg-[var(--color-input)] text-[var(--color-text)] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
+          >
+            {accounts.length === 0 ? (
+              <option value="">无可用账号</option>
+            ) : (
+              accounts.map((account) => (
+                <option key={account.twitterId} value={account.twitterId}>
+                  {account.displayName || account.screenName || account.twitterId}
+                </option>
+              ))
+            )}
+          </select>
           <button
             onClick={() => setShowAddDialog(true)}
-            className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors"
+            className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded cursor-pointer hover:bg-[#5B4AD4] transition-colors"
           >
-            添加卡片
+            添加积木
           </button>
         </div>
       </div>
@@ -153,9 +190,9 @@ export default function DataBlocks() {
       <div className="flex-1 overflow-auto p-4">
         {cards.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-center">
-            <div className="text-4xl mb-3">📊</div>
-            <div className="text-base font-medium mb-1">暂无数据卡片</div>
-            <div className="text-xs text-secondary">点击"添加卡片"按钮添加第一个数据卡片</div>
+            <Database className="w-10 h-10 mb-3 text-[var(--color-text-secondary)]" />
+            <div className="text-base font-medium mb-1">暂无数据积木</div>
+            <div className="text-xs text-secondary">点击“添加积木”按钮添加第一个数据积木</div>
           </div>
         ) : (
           <DndContext
@@ -169,7 +206,7 @@ export default function DataBlocks() {
                   <SortableDataCard
                     key={card.id}
                     card={card}
-                    selectedAccount={null}
+                    selectedAccount={selectedAccountId || null}
                     onRefresh={() => handleRefreshCard(card.id)}
                     onDelete={() => handleDeleteCard(card.id)}
                   />
@@ -190,8 +227,8 @@ export default function DataBlocks() {
 
       <ConfirmDialog
         open={deleteCardId !== null}
-        title="删除卡片"
-        message="确定要删除这个卡片吗？此操作无法撤销。"
+        title="删除积木"
+        message="确定要删除这个积木吗？此操作无法撤销。"
         confirmText="删除"
         cancelText="取消"
         danger={true}

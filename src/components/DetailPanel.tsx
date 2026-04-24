@@ -43,7 +43,7 @@ const DETAIL_COPY: Record<View, Record<string, { title: string; description: str
   'data-blocks': {
     'db-trending': {
       title: 'Trending Topics',
-      description: '查看热点追踪卡片的布局说明与用途。',
+      description: '查看热点追踪积木的布局说明与用途。',
       bullets: ['适合展示趋势话题', '可继续接入 DataBlocks 页面数据', '当前为中心详情占位卡'],
     },
     'db-mentions': {

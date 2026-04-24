@@ -53,7 +53,7 @@ fn get_card_or_error(cards: &[Card], card_id: &str) -> Result<Card, String> {
     cards.iter()
         .find(|card| card.id == card_id)
         .cloned()
-        .ok_or_else(|| "卡片不存在".to_string())
+        .ok_or_else(|| "积木不存在".to_string())
 }
 
 fn normalize_positions(cards: &mut [Card]) {
@@ -86,7 +86,7 @@ pub async fn save_layout(layout: Vec<Card>) -> Result<(), String> {
     let mut ids = std::collections::HashSet::new();
     for card in &layout {
         if !ids.insert(card.id.clone()) {
-            return Err("布局中存在重复卡片".to_string());
+            return Err("布局中存在重复积木".to_string());
         }
     }
 
@@ -99,12 +99,12 @@ pub async fn save_layout(layout: Vec<Card>) -> Result<(), String> {
 #[tauri::command]
 pub async fn add_card(card_type: String, config: Option<Value>) -> Result<Card, String> {
     if card_type.trim().is_empty() {
-        return Err("卡片类型不能为空".to_string());
+        return Err("积木类型不能为空".to_string());
     }
 
     let mut cards = load_cards()?;
     if cards.iter().any(|card| card.card_type == card_type) {
-        return Err("该卡片类型已存在".to_string());
+        return Err("该积木类型已存在".to_string());
     }
 
     let next_card = Card {
@@ -126,7 +126,7 @@ pub async fn delete_card(card_id: String) -> Result<(), String> {
     let original_len = cards.len();
     cards.retain(|card| card.id != card_id);
     if cards.len() == original_len {
-        return Err("卡片不存在".to_string());
+        return Err("积木不存在".to_string());
     }
     normalize_positions(&mut cards);
     save_cards(&cards)
@@ -142,8 +142,34 @@ pub async fn get_card_data(
     let cards = load_cards()?;
     let card = get_card_or_error(&cards, &card_id)?;
     if card.card_type != card_type {
-        return Err("卡片类型不匹配".to_string());
+        return Err("积木类型不匹配".to_string());
     }
+
+    match card_type.as_str() {
+        "account_current_metrics" => get_account_current_metrics(account_id, state).await,
+        "followers_growth_trend" => get_followers_growth_trend(account_id, &card, state).await,
+        "account_activity_metrics" => get_account_activity_metrics(account_id, &card, state).await,
+        "account_overview" => get_account_overview(account_id, &card, state).await,
+        _ => Ok(json!({})),
+    }
+}
+
+#[tauri::command]
+pub async fn get_data_block_preview(
+    card_type: String,
+    account_id: Option<String>,
+    state: State<'_, TaskState>,
+) -> Result<Value, String> {
+    let card = Card {
+        id: "preview".to_string(),
+        card_type: card_type.clone(),
+        position: 0,
+        config: Some(match card_type.as_str() {
+            "followers_growth_trend" | "account_activity_metrics" | "account_overview" => json!({"hours": 24}),
+            _ => json!({}),
+        }),
+        last_updated: chrono::Utc::now().to_rfc3339(),
+    };
 
     match card_type.as_str() {
         "account_current_metrics" => get_account_current_metrics(account_id, state).await,
@@ -162,7 +188,7 @@ pub async fn refresh_card_data(card_id: String) -> Result<(), String> {
     let card = cards
         .iter_mut()
         .find(|item| item.id == card_id)
-        .ok_or_else(|| "卡片不存在".to_string())?;
+        .ok_or_else(|| "积木不存在".to_string())?;
     card.last_updated = chrono::Utc::now().to_rfc3339();
     save_cards(&cards)
 }

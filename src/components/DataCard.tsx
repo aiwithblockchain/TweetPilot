@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { RefreshCw, X } from 'lucide-react'
 import { dataBlocksService } from '@/services'
 import type { DataBlockCard } from '@/services/data-blocks'
 import {
@@ -18,6 +19,13 @@ interface DataCardProps {
   onDelete: () => void
 }
 
+function formatChartTime(value: unknown) {
+  if (typeof value !== 'string' || !value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function DataCard({ card, selectedAccount, onRefresh, onDelete }: DataCardProps) {
   const [data, setData] = useState<Record<string, any> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,6 +41,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
       setData(result as Record<string, any>)
     } catch (error) {
       console.error('Failed to load card data:', error)
+      setData(null)
     } finally {
       setLoading(false)
     }
@@ -58,7 +67,31 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
       account_activity_metrics: '账号活跃度',
       account_overview: '账号概览',
     }
-    return titles[card.type] || '数据卡片'
+    return titles[card.type] || '数据积木'
+  }
+
+  const getDeltaTextColor = (value: number) => {
+    if (value > 0) return 'text-green-600'
+    if (value < 0) return 'text-red-600'
+    return 'text-gray-500'
+  }
+
+  const getSignedValue = (value: number) => {
+    return `${value > 0 ? '+' : ''}${value}`
+  }
+
+  const getDisplayUpdatedAt = () => {
+    if (data?.snapshotTime && typeof data.snapshotTime === 'string') {
+      return data.snapshotTime
+    }
+
+    const trendPoints = Array.isArray(data?.data) ? data.data : []
+    const latestTrendPoint = trendPoints[trendPoints.length - 1]
+    if (latestTrendPoint?.time && typeof latestTrendPoint.time === 'string') {
+      return latestTrendPoint.time
+    }
+
+    return card.lastUpdated
   }
 
   const renderCardContent = () => {
@@ -114,8 +147,8 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-xs text-secondary">过去 {data.hours || 24} 小时</div>
-              <div className={`text-lg font-semibold ${(data.growth || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(data.growth || 0) >= 0 ? '+' : ''}{data.growth || 0}
+              <div className={`text-lg font-semibold ${getDeltaTextColor(data.growth || 0)}`}>
+                {getSignedValue(data.growth || 0)}
               </div>
             </div>
             {data.data && data.data.length > 0 ? (
@@ -127,12 +160,14 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
                       dataKey="time"
                       tick={{ fill: 'var(--color-text-secondary)', fontSize: 10 }}
                       stroke="var(--color-border)"
+                      tickFormatter={formatChartTime}
                     />
                     <YAxis
                       tick={{ fill: 'var(--color-text-secondary)', fontSize: 10 }}
                       stroke="var(--color-border)"
                     />
                     <Tooltip
+                      labelFormatter={formatChartTime}
                       contentStyle={{
                         backgroundColor: 'var(--color-surface)',
                         border: '1px solid var(--color-border)',
@@ -156,20 +191,20 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
             <div className="text-xs text-secondary mb-2">过去 {data.hours || 24} 小时变化</div>
             <div className="p-3 bg-[var(--color-bg)] rounded flex items-center justify-between">
               <div className="text-xs text-secondary">推文变化</div>
-              <div className={`text-lg font-semibold ${(data.tweetChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(data.tweetChange || 0) >= 0 ? '+' : ''}{data.tweetChange || 0}
+              <div className={`text-lg font-semibold ${getDeltaTextColor(data.tweetChange || 0)}`}>
+                {getSignedValue(data.tweetChange || 0)}
               </div>
             </div>
             <div className="p-3 bg-[var(--color-bg)] rounded flex items-center justify-between">
               <div className="text-xs text-secondary">点赞变化</div>
-              <div className={`text-lg font-semibold ${(data.favouriteChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(data.favouriteChange || 0) >= 0 ? '+' : ''}{data.favouriteChange || 0}
+              <div className={`text-lg font-semibold ${getDeltaTextColor(data.favouriteChange || 0)}`}>
+                {getSignedValue(data.favouriteChange || 0)}
               </div>
             </div>
             <div className="p-3 bg-[var(--color-bg)] rounded flex items-center justify-between">
               <div className="text-xs text-secondary">媒体变化</div>
-              <div className={`text-lg font-semibold ${(data.mediaChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {(data.mediaChange || 0) >= 0 ? '+' : ''}{data.mediaChange || 0}
+              <div className={`text-lg font-semibold ${getDeltaTextColor(data.mediaChange || 0)}`}>
+                {getSignedValue(data.mediaChange || 0)}
               </div>
             </div>
           </div>
@@ -183,29 +218,29 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
               <div className="p-3 bg-[var(--color-bg)] rounded">
                 <div className="text-xs text-secondary mb-1">粉丝</div>
                 <div className="text-xl font-semibold">{data.current?.followers || 0}</div>
-                <div className={`text-xs mt-1 ${(data.changes?.followers || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(data.changes?.followers || 0) >= 0 ? '+' : ''}{data.changes?.followers || 0}
+                <div className={`text-xs mt-1 ${getDeltaTextColor(data.changes?.followers || 0)}`}>
+                  {getSignedValue(data.changes?.followers || 0)}
                 </div>
               </div>
               <div className="p-3 bg-[var(--color-bg)] rounded">
                 <div className="text-xs text-secondary mb-1">关注</div>
                 <div className="text-xl font-semibold">{data.current?.following || 0}</div>
-                <div className={`text-xs mt-1 ${(data.changes?.following || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(data.changes?.following || 0) >= 0 ? '+' : ''}{data.changes?.following || 0}
+                <div className={`text-xs mt-1 ${getDeltaTextColor(data.changes?.following || 0)}`}>
+                  {getSignedValue(data.changes?.following || 0)}
                 </div>
               </div>
               <div className="p-3 bg-[var(--color-bg)] rounded">
                 <div className="text-xs text-secondary mb-1">推文</div>
                 <div className="text-xl font-semibold">{data.current?.tweets || 0}</div>
-                <div className={`text-xs mt-1 ${(data.changes?.tweets || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(data.changes?.tweets || 0) >= 0 ? '+' : ''}{data.changes?.tweets || 0}
+                <div className={`text-xs mt-1 ${getDeltaTextColor(data.changes?.tweets || 0)}`}>
+                  {getSignedValue(data.changes?.tweets || 0)}
                 </div>
               </div>
               <div className="p-3 bg-[var(--color-bg)] rounded">
                 <div className="text-xs text-secondary mb-1">点赞</div>
                 <div className="text-xl font-semibold">{data.current?.favourites || 0}</div>
-                <div className={`text-xs mt-1 ${(data.changes?.favourites || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {(data.changes?.favourites || 0) >= 0 ? '+' : ''}{data.changes?.favourites || 0}
+                <div className={`text-xs mt-1 ${getDeltaTextColor(data.changes?.favourites || 0)}`}>
+                  {getSignedValue(data.changes?.favourites || 0)}
                 </div>
               </div>
             </div>
@@ -215,7 +250,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
       default:
         return (
           <div className="flex items-center justify-center min-h-[200px]">
-            <div className="text-sm text-secondary">未知卡片类型</div>
+            <div className="text-sm text-secondary">未知积木类型</div>
           </div>
         )
     }
@@ -228,17 +263,17 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
         <div className="flex gap-1">
           <button
             onClick={onRefresh}
-            className="w-7 h-7 flex items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors"
+            className="w-7 h-7 flex cursor-pointer items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors"
             title="刷新"
           >
-            🔄
+            <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={onDelete}
-            className="w-7 h-7 flex items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors"
+            className="w-7 h-7 flex cursor-pointer items-center justify-center text-sm hover:bg-[var(--color-bg)] rounded transition-colors"
             title="删除"
           >
-            ×
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -246,7 +281,7 @@ export default function DataCard({ card, selectedAccount, onRefresh, onDelete }:
       <div className="p-3">{renderCardContent()}</div>
 
       <div className="px-3 py-2 border-t border-[var(--color-border)] text-xs text-secondary">
-        最后更新: {formatRelativeTime(card.lastUpdated)}
+        最后更新: {formatRelativeTime(getDisplayUpdatedAt())}
       </div>
     </div>
   )

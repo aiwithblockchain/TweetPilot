@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Check, X } from 'lucide-react'
 import type { DataBlockCard } from '@/services/data-blocks'
 
 interface AddCardDialogProps {
@@ -57,29 +58,30 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-          <h3 className="text-base font-semibold">添加数据卡片</h3>
+          <h3 className="text-base font-semibold">添加数据积木</h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-surface)] rounded transition-colors"
+            className="w-8 h-8 flex cursor-pointer items-center justify-center hover:bg-[var(--color-surface)] rounded transition-colors"
+            title="关闭"
           >
-            ×
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-auto p-4">
           {availableCardTypes.length === 0 ? (
             <div className="text-center py-8">
-              <div className="text-sm text-secondary">所有卡片类型都已添加</div>
+              <div className="text-sm text-secondary">所有积木类型都已添加</div>
             </div>
           ) : (
             <>
-              <p className="text-sm text-secondary mb-3">选择要添加的卡片类型：</p>
+              <p className="text-sm text-secondary mb-3">选择要添加的积木类型：</p>
               <div className="grid gap-3">
                 {availableCardTypes.map((type) => (
                   <button
                     key={type.id}
                     onClick={() => setSelectedType(type.id)}
-                    className={`p-4 text-left border rounded-lg transition-all ${
+                    className={`p-4 text-left border rounded-lg cursor-pointer transition-all ${
                       selectedType === type.id
                         ? 'border-[#6D5BF6] bg-[#6D5BF6]/5'
                         : 'border-[var(--color-border)] hover:border-[#6D5BF6] hover:bg-[var(--color-surface)]'
@@ -90,7 +92,11 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
                         <div className="text-sm font-semibold mb-1">{type.name}</div>
                         <div className="text-xs text-secondary">{type.description}</div>
                       </div>
-                      {selectedType === type.id && <span className="text-[#6D5BF6] ml-2">✓</span>}
+                      {selectedType === type.id && (
+                        <span className="text-[#6D5BF6] ml-2" aria-label="已选中">
+                          <Check className="w-4 h-4" />
+                        </span>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -102,14 +108,14 @@ export default function AddCardDialog({ onClose, onAddCard, existingCards }: Add
         <div className="flex justify-end gap-2 p-4 border-t border-[var(--color-border)]">
           <button
             onClick={onClose}
-            className="h-8 px-3 text-sm bg-transparent border border-[var(--color-border)] rounded hover:bg-[var(--color-surface)] transition-colors"
+            className="h-8 px-3 text-sm bg-transparent border border-[var(--color-border)] rounded cursor-pointer hover:bg-[var(--color-surface)] transition-colors"
           >
             取消
           </button>
           <button
             onClick={handleAdd}
             disabled={!selectedType || availableCardTypes.length === 0}
-            className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+            className="h-8 px-3 text-sm bg-[#6D5BF6] text-white rounded cursor-pointer hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
           >
             添加
           </button>

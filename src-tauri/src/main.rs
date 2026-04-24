@@ -166,6 +166,7 @@ fn main() {
             data_blocks::add_card,
             data_blocks::delete_card,
             data_blocks::get_card_data,
+            data_blocks::get_data_block_preview,
             data_blocks::refresh_card_data,
             // Preferences commands
             preferences::save_preferences,

@@ -69,6 +69,7 @@ export function LeftSidebar({
   onToggleTreeItem,
 }: LeftSidebarProps) {
   const shouldRenderTree = activeView === 'workspace' && treeItems
+  const shouldRenderGroupedList = activeView === 'accounts'
   const [collapsedGroups, setCollapsedGroups] = useState<Record<'managed' | 'unmanaged', boolean>>({
     managed: false,
     unmanaged: false,
@@ -164,7 +165,7 @@ export function LeftSidebar({
           )
         ) : items.length === 0 ? (
           <div className="px-2 py-3 text-xs text-[var(--color-text-secondary)] leading-5">{section.emptyMessage}</div>
-        ) : (
+        ) : shouldRenderGroupedList ? (
           <div className="space-y-3">
             {(['managed', 'unmanaged'] as const)
               .filter((group) => items.some((item) => (item.group ?? 'managed') === group))
@@ -225,6 +226,45 @@ export function LeftSidebar({
                   </div>
                 )
               })}
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {items.map((item) => {
+              const isSelected = selectedItemId === item.id
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectItem(item.id)}
+                  className={[
+                    'w-full text-left px-2.5 py-2 rounded-md border transition-colors',
+                    isSelected
+                      ? 'border-[#094771] bg-[#062F4A] text-[#FFFFFF] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]'
+                      : 'border-transparent text-[var(--color-text)] hover:bg-[var(--vscode-hover-bg)] hover:border-[var(--color-border)]',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm truncate">{item.label}</div>
+                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
+                        {item.description}
+                      </div>
+                    </div>
+                    {item.badge && (
+                      <span
+                        className={[
+                          'text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap mt-0.5',
+                          BADGE_TONES[item.badgeTone ?? 'default'],
+                        ].join(' ')}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

@@ -26,7 +26,7 @@ export function AddDataBlockMenu({ open, anchorTop = 76, anchorLeft = 176, onClo
             选择要添加的数据积木
           </div>
           <div className="text-[11px] text-[#A0A0A0] mt-2 leading-5">
-            这里不只是“加一个卡片”，而是在左侧工作流里新增一个可深入查看的数据积木。
+            在左侧工作流里新增一个可深入查看的数据积木。
           </div>
         </div>
 

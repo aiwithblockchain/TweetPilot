@@ -1,4 +1,5 @@
 import { Bot, Database, FolderOpen, UserRound, Zap } from 'lucide-react'
+import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import type { AccountSource } from '@/services/account'
 import type { AppInstance } from '@/types/layout'
 
@@ -60,12 +61,11 @@ export const INSTANCE_MOCKS: AppInstance[] = [
   },
 ]
 
-const DATA_BLOCK_ITEMS: SidebarItem[] = [
-  { id: 'account_current_metrics', label: '账号实时数据', description: '实时快照' },
-  { id: 'followers_growth_trend', label: '粉丝增长趋势', description: '增长曲线' },
-  { id: 'account_activity_metrics', label: '账号活跃度', description: '活跃度分析' },
-  { id: 'account_overview', label: '账号概览', description: '综合概览' },
-]
+const DATA_BLOCK_ITEMS: SidebarItem[] = DATA_BLOCK_CATALOG.map((item) => ({
+  id: item.id,
+  label: item.name,
+  description: item.summary,
+}))
 
 export const SIDEBAR_ITEMS: Record<View, SidebarItem[]> = {
   workspace: [

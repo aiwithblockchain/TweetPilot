@@ -7,13 +7,13 @@ vi.mock('@/lib/tauri-api', () => ({
 }))
 
 describe('dataBlocksTauriService', () => {
-  it('maps nullable card config from Tauri to undefined in the UI layer', async () => {
+  it('maps nullable block config from Tauri to undefined in the UI layer', async () => {
     const { dataBlocksTauriService } = await import('./tauri')
 
     tauriInvokeMock.mockResolvedValueOnce([
       {
         id: 'card_1',
-        type: 'latest_tweets',
+        type: 'account_current_metrics',
         position: 0,
         config: null,
         lastUpdated: '2026-04-16T12:00:00.000Z',
@@ -23,7 +23,7 @@ describe('dataBlocksTauriService', () => {
     await expect(dataBlocksTauriService.getLayout()).resolves.toEqual([
       {
         id: 'card_1',
-        type: 'latest_tweets',
+        type: 'account_current_metrics',
         position: 0,
         config: undefined,
         lastUpdated: '2026-04-16T12:00:00.000Z',
@@ -39,9 +39,9 @@ describe('dataBlocksTauriService', () => {
     await dataBlocksTauriService.saveLayout([
       {
         id: 'card_2',
-        type: 'task_execution_stats',
+        type: 'account_overview',
         position: 1,
-        config: { accountId: '@tweetpilot' },
+        config: { hours: 24 },
         lastUpdated: '2026-04-16T12:10:00.000Z',
       },
     ])
@@ -50,9 +50,9 @@ describe('dataBlocksTauriService', () => {
       layout: [
         {
           id: 'card_2',
-          type: 'task_execution_stats',
+          type: 'account_overview',
           position: 1,
-          config: { accountId: '@tweetpilot' },
+          config: { hours: 24 },
           lastUpdated: '2026-04-16T12:10:00.000Z',
         },
       ],

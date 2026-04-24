@@ -65,6 +65,13 @@ export const dataBlocksTauriService: DataBlocksService = {
     })
   },
 
+  async getBlockPreview(cardType, accountId) {
+    return tauriInvoke<DataBlockCardData>('get_data_block_preview', {
+      cardType,
+      accountId: accountId ?? null,
+    })
+  },
+
   async refreshCardData(cardId) {
     await tauriInvoke<void>('refresh_card_data', { cardId })
   },
