@@ -9,31 +9,29 @@ interface AssistantMessageProps {
 }
 
 export function AssistantMessage({ message }: AssistantMessageProps) {
-  const hasThinking = message.thinking && message.thinking.length > 0
-  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
-  const hasContent = message.content && message.content.length > 0
-  const isStreaming = message.isStreaming
+  const hasThinking = Boolean(message.thinking && message.thinking.length > 0)
+  const hasToolCalls = Boolean(message.toolCalls && message.toolCalls.length > 0)
+  const hasContent = Boolean(message.content && message.content.length > 0)
+  const isStreaming = Boolean(message.isStreaming)
+  const showFallback = isStreaming && !hasThinking && !hasToolCalls && !hasContent
 
   return (
     <div className="space-y-3">
-      {/* Thinking Block */}
       {hasThinking && (
         <ThinkingBlock
           thinking={message.thinking || ''}
-          isActive={(isStreaming && !hasContent) ?? false}
-          isComplete={message.thinkingComplete ?? false}
+          isActive={isStreaming && !hasContent}
+          isComplete={Boolean(message.thinkingComplete)}
         />
       )}
 
-      {/* Process Steps */}
       {hasToolCalls && (
         <ProcessSteps
           toolCalls={message.toolCalls || []}
-          isActive={isStreaming ?? false}
+          isActive={isStreaming}
         />
       )}
 
-      {/* Response Content */}
       {hasContent && (
         <div
           className="rounded-md border px-4 py-3"
@@ -80,10 +78,9 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
         </div>
       )}
 
-      {/* Streaming indicator when no content yet */}
-      {isStreaming && !hasContent && !hasThinking && !hasToolCalls && (
+      {showFallback && (
         <div className="flex items-center gap-2 text-xs px-3 py-2" style={{ color: 'var(--color-text-secondary)' }}>
-          <div className="flex gap-1">
+          <div className="flex gap-1" aria-hidden="true">
             <span className="inline-block w-1.5 h-1.5 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
             <span className="inline-block w-1.5 h-1.5 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
             <span className="inline-block w-1.5 h-1.5 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>

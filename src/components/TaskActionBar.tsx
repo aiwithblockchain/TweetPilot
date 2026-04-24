@@ -8,9 +8,10 @@ interface TaskActionBarProps {
   task: Task
   onChanged?: () => void
   onDeleted?: () => void
+  onEdit?: () => void
 }
 
-export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps) {
+export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskActionBarProps) {
   const [executing, setExecuting] = useState(false)
   const [result, setResult] = useState<ExecutionResult | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -85,12 +86,20 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
 
         {!showDeleteConfirm ? (
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onEdit?.()}
+              disabled={task.status === 'running'}
+              className="h-9 px-4 rounded border border-[#6D5BF6]/50 bg-[#6D5BF6]/12 text-[#CFC9FF] text-sm hover:bg-[#6D5BF6]/20 hover:border-[#6D5BF6] transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              编辑任务
+            </button>
             {task.type === 'immediate' ? (
               <button
                 type="button"
                 onClick={handleExecute}
                 disabled={actionLoading === 'execute' || task.status === 'running'}
-                className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+                className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {actionLoading === 'execute' ? '执行中...' : '立即执行'}
               </button>
@@ -100,7 +109,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
                   type="button"
                   onClick={handleExecute}
                   disabled={actionLoading === 'execute' || task.status === 'running'}
-                  className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+                  className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {actionLoading === 'execute' ? '测试中...' : '立即测试'}
                 </button>
@@ -109,7 +118,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
                     type="button"
                     onClick={handleResume}
                     disabled={actionLoading === 'resume'}
-                    className="h-9 px-4 rounded bg-[#007ACC] text-white text-sm hover:bg-[#1485D1] transition-colors disabled:opacity-50"
+                    className="h-9 px-4 rounded bg-[#007ACC] text-white text-sm hover:bg-[#1485D1] transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {actionLoading === 'resume' ? '恢复中...' : '恢复调度'}
                   </button>
@@ -118,7 +127,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
                     type="button"
                     onClick={handlePause}
                     disabled={actionLoading === 'pause'}
-                    className="h-9 px-4 rounded bg-[#D7BA7D]/15 border border-[#D7BA7D]/40 text-sm text-[#D7BA7D] hover:bg-[#D7BA7D]/25 transition-colors disabled:opacity-50"
+                    className="h-9 px-4 rounded bg-[#D7BA7D]/15 border border-[#D7BA7D]/40 text-sm text-[#D7BA7D] hover:bg-[#D7BA7D]/25 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {actionLoading === 'pause' ? '暂停中...' : '暂停调度'}
                   </button>
@@ -130,7 +139,7 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={task.status === 'running'}
-              className="h-9 px-4 rounded bg-[#F48771]/15 border border-[#F48771]/40 text-sm text-[#F48771] hover:bg-[#F48771]/25 transition-colors disabled:opacity-50"
+              className="h-9 px-4 rounded bg-[#F48771]/15 border border-[#F48771]/40 text-sm text-[#F48771] hover:bg-[#F48771]/25 transition-colors disabled:opacity-50 cursor-pointer"
             >
               删除任务
             </button>
@@ -142,14 +151,14 @@ export function TaskActionBar({ task, onChanged, onDeleted }: TaskActionBarProps
               type="button"
               onClick={handleDelete}
               disabled={actionLoading === 'delete'}
-              className="h-9 px-4 rounded bg-[#F48771] text-white text-sm hover:bg-[#E6705F] transition-colors disabled:opacity-50"
+              className="h-9 px-4 rounded bg-[#F48771] text-white text-sm hover:bg-[#E6705F] transition-colors disabled:opacity-50 cursor-pointer"
             >
               {actionLoading === 'delete' ? '删除中...' : '确认删除'}
             </button>
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(false)}
-              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors"
+              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors cursor-pointer"
             >
               取消
             </button>

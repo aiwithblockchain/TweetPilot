@@ -4,6 +4,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use crate::claurst_session::ClaurstSession;
 use crate::services::ai_config::{self, AiSettings};
+use crate::services::conversation_storage::LoadedSession;
 
 pub struct AiState {
     pub session: Arc<Mutex<Option<ClaurstSession>>>,
@@ -52,34 +53,36 @@ pub async fn send_ai_message(
     message: String,
     state: State<'_, AiState>,
     window: Window,
-) -> Result<String, String> {
+) -> Result<serde_json::Value, String> {
     let cancel_token = CancellationToken::new();
     let request_id = uuid::Uuid::new_v4().to_string();
 
-    // Set up cancellation token and request ID
+    // Set up cancellation token and request ID before starting the background task.
     *state.cancel_token.lock().await = Some(cancel_token.clone());
     *state.active_request_id.lock().await = Some(request_id.clone());
 
-    // Clone what we need for the background task
+    // Clone what we need for the background task.
     let request_id_clone = request_id.clone();
     let session_arc = state.session.clone();
     let cancel_token_arc = state.cancel_token.clone();
     let active_request_id_arc = state.active_request_id.clone();
 
-    // Spawn the message sending in background
+    // Spawn the message sending in background after request_id is already returned to the frontend.
     tokio::spawn(async move {
+        tokio::task::yield_now().await;
+
         let mut session_guard = session_arc.lock().await;
         if let Some(session) = session_guard.as_mut() {
             let _ = session.send_message(&message, &request_id_clone, window, cancel_token.clone()).await;
         }
 
-        // Clear state after completion
         *cancel_token_arc.lock().await = None;
         *active_request_id_arc.lock().await = None;
     });
 
-    // Return request_id immediately so frontend can start listening
-    Ok(request_id)
+    Ok(serde_json::json!({
+        "request_id": request_id,
+    }))
 }
 
 #[tauri::command]
@@ -144,44 +147,9 @@ pub async fn get_session_metadata(session_id: String) -> Result<crate::services:
 #[tauri::command]
 pub async fn load_ai_session(
     session_id: String,
-    state: State<'_, AiState>,
-) -> Result<Vec<crate::services::conversation_storage::StoredMessage>, String> {
+) -> Result<LoadedSession, String> {
     let storage = crate::services::conversation_storage::ConversationStorage::new()?;
-    let messages = storage.load_messages(&session_id)?;
-
-    // Get current working directory from existing session or use default
-    let working_dir = if let Some(session) = state.session.lock().await.as_ref() {
-        session.get_working_dir().to_path_buf()
-    } else {
-        return Err("No active session to get working directory".to_string());
-    };
-
-    // Load AI settings to recreate session
-    let settings = ai_config::load_config()
-        .map_err(|e| format!("Failed to load AI settings: {}", e))?;
-
-    let active_provider = settings.get_active_provider()
-        .ok_or("No active provider configured".to_string())?;
-
-    if active_provider.api_key.is_empty() {
-        return Err(format!("API key not configured for provider '{}'", active_provider.name));
-    }
-
-    // Recreate ClaurstSession with the loaded session_id
-    let session = ClaurstSession::new(
-        session_id.clone(),
-        working_dir,
-        active_provider.api_key.clone(),
-        active_provider.model.clone(),
-        active_provider.base_url.clone(),
-    ).map_err(|e| format!("Failed to recreate AI session: {}", e))?;
-
-    // Update the session state
-    *state.session.lock().await = Some(session);
-    *state.cancel_token.lock().await = None;
-    *state.active_request_id.lock().await = None;
-
-    Ok(messages)
+    storage.load_session(&session_id)
 }
 
 #[tauri::command]

@@ -19,11 +19,6 @@ impl TaskExecutor {
         let start_time = Instant::now();
         let start_time_str = chrono::Utc::now().to_rfc3339();
 
-        // Parse parameters
-        log::info!("[TaskExecutor] Parsing parameters: {}", task.parameters);
-        let parameters: serde_json::Value = serde_json::from_str(&task.parameters)
-            .map_err(|e| format!("Failed to parse parameters: {}", e))?;
-
         // Build command
         let script_path = if task.script_path.starts_with('/') {
             task.script_path.clone()
@@ -32,10 +27,18 @@ impl TaskExecutor {
         };
         log::info!("[TaskExecutor] Script path: {}", script_path);
 
+        let script_path_ref = std::path::Path::new(&script_path);
+        if !script_path_ref.exists() {
+            return Err(format!("Script not found: {}", script_path));
+        }
+        if !script_path_ref.is_file() {
+            return Err(format!("Script path is not a file: {}", script_path));
+        }
+
         let mut cmd = Command::new(&self.python_path);
         cmd.arg(&script_path);
 
-        log::info!("[TaskExecutor] Executing Python script without any arguments (as per design)");
+        log::info!("[TaskExecutor] Executing Python script using script_path only");
 
         // Set environment
         cmd.env("PYTHONPATH", format!("{}/.tweetpilot:~/.tweetpilot", workspace_root));

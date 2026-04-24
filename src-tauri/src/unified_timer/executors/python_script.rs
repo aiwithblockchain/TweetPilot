@@ -37,15 +37,6 @@ impl TimerExecutor for PythonScriptExecutor {
             .and_then(|v| v.as_str())
             .ok_or("Missing script_path in config")?;
 
-        let account_id = context.config.get("account_id")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing account_id in config")?;
-
-        let parameters = context.config.get("parameters")
-            .and_then(|v| v.as_object())
-            .cloned()
-            .unwrap_or_default();
-
         let timeout_secs = context.config.get("timeout")
             .and_then(|v| v.as_u64())
             .unwrap_or(300);
@@ -57,25 +48,16 @@ impl TimerExecutor for PythonScriptExecutor {
             format!("{}/{}", self.workspace_root, script_path)
         };
 
-        // 检查脚本是否存在
-        if !std::path::Path::new(&full_script_path).exists() {
+        let script_path_ref = std::path::Path::new(&full_script_path);
+        if !script_path_ref.exists() {
             return Err(format!("Script not found: {}", full_script_path));
+        }
+        if !script_path_ref.is_file() {
+            return Err(format!("Script path is not a file: {}", full_script_path));
         }
 
         let mut cmd = Command::new(&self.python_path);
         cmd.arg(&full_script_path);
-        cmd.arg("--account").arg(account_id);
-
-        // Add task parameters - 分开传递避免空格问题
-        for (key, value) in parameters {
-            let value_str = match value {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                _ => value.to_string(),
-            };
-            cmd.arg(format!("--{}", key)).arg(value_str);
-        }
 
         // Set environment - 正确处理 home 目录
         let home = dirs::home_dir()

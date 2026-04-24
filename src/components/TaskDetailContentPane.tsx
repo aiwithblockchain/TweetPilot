@@ -2,19 +2,28 @@ import { useEffect, useMemo, useState } from 'react'
 import { taskService } from '@/services'
 import { TaskActionBar } from './TaskActionBar'
 import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
+import { TaskCreatePane } from './TaskCreatePane'
 import type { Task, TaskDetail } from '@/services/task'
 
 interface TaskDetailContentPaneProps {
   taskId: string
   onDeleted?: () => void
+  onEditStateChange?: (state: {
+    taskId: string
+    taskName: string
+    isEditing: boolean
+    hasUnsavedChanges: boolean
+  }) => void
 }
 
-export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPaneProps) {
+export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: TaskDetailContentPaneProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [outputExpanded, setOutputExpanded] = useState(false)
   const [showAllHistory, setShowAllHistory] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const loadDetail = async () => {
     try {
@@ -34,11 +43,27 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
     void loadDetail()
   }, [taskId])
 
+  useEffect(() => {
+    setIsEditing(false)
+    setHasUnsavedChanges(false)
+  }, [taskId])
+
   const task = detail?.task
   const latestHistory = useMemo(() => {
     const history = detail?.history ?? []
     return showAllHistory ? history : history.slice(0, 5)
   }, [detail, showAllHistory])
+
+  useEffect(() => {
+    if (!task) return
+
+    onEditStateChange?.({
+      taskId: task.id,
+      taskName: task.name,
+      isEditing,
+      hasUnsavedChanges,
+    })
+  }, [task, isEditing, hasUnsavedChanges, onEditStateChange])
 
   if (loading) {
     return <CenteredMessage tone="neutral" message="正在加载任务详情..." />
@@ -46,6 +71,25 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
 
   if (error || !task || !detail) {
     return <CenteredMessage tone="error" message={error ?? '任务详情不存在'} />
+  }
+
+  if (isEditing) {
+    return (
+      <TaskCreatePane
+        mode="edit"
+        initialTask={task}
+        onCreated={() => {
+          setHasUnsavedChanges(false)
+          setIsEditing(false)
+          void loadDetail()
+        }}
+        onCancel={() => {
+          setHasUnsavedChanges(false)
+          setIsEditing(false)
+        }}
+        onDirtyChange={setHasUnsavedChanges}
+      />
+    )
   }
 
   return (
@@ -177,7 +221,9 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
         </div>
 
         <div className="space-y-5">
-          <TaskActionBar task={task} onChanged={() => void loadDetail()} onDeleted={onDeleted} />
+          <TaskActionBar task={task} onChanged={() => void loadDetail()} onDeleted={onDeleted} onEdit={() => {
+            setIsEditing(true)
+          }} />
 
           {task.lastExecution && (
             <SidePanel title="⏱ 最后执行">
@@ -229,7 +275,6 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(task.lastExecution!.error!)
-                          // Optional: show a toast notification
                         }}
                         className="text-[10px] px-2 py-1 rounded bg-red-900/30 text-[#F48771] hover:bg-[#6A2D2D] transition-colors"
                         title="复制错误信息"
@@ -258,7 +303,6 @@ export function TaskDetailContentPane({ taskId, onDeleted }: TaskDetailContentPa
     </div>
   )
 }
-
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] px-4 py-3 shadow-inner">

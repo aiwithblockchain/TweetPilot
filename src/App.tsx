@@ -11,6 +11,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { AddDataBlockMenu } from './components/AddDataBlockMenu'
 import ConfirmDialog from './components/ui/ConfirmDialog'
 import { ToastProvider } from './contexts/ToastContext'
+import { taskService } from './services'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import { settingsService } from './services'
 import type { AppSettings } from './services/settings'
@@ -100,6 +101,32 @@ function AppShell() {
     updateWorkspaceRenameValue,
   } = useAppLayoutState()
 
+  const [taskEditState, setTaskEditState] = useState<{
+    taskId: string
+    taskName: string
+    isEditing: boolean
+    hasUnsavedChanges: boolean
+  }>({
+    taskId: '',
+    taskName: '',
+    isEditing: false,
+    hasUnsavedChanges: false,
+  })
+
+  const [unsavedTaskSwitchDialog, setUnsavedTaskSwitchDialog] = useState<{
+    open: boolean
+    currentTaskId: string
+    currentTaskName: string
+    nextTaskId: string
+    nextTaskName: string
+  }>({
+    open: false,
+    currentTaskId: '',
+    currentTaskName: '',
+    nextTaskId: '',
+    nextTaskName: '',
+  })
+
   useEffect(() => {
     // Ensure cleanup of pending workspace path after entering main interface
     const pendingPath = sessionStorage.getItem('pending-workspace-path')
@@ -108,6 +135,90 @@ function AppShell() {
       sessionStorage.removeItem('pending-workspace-path')
     }
   }, [])
+
+  const closeUnsavedTaskSwitchDialog = () => {
+    setUnsavedTaskSwitchDialog((prev) => ({
+      ...prev,
+      open: false,
+    }))
+  }
+
+  const handleRequestTaskSwitch = async ({
+    currentTaskId,
+    currentTaskName,
+    nextTaskId,
+  }: {
+    currentTaskId: string
+    currentTaskName: string
+    nextTaskId: string
+  }) => {
+    if (!nextTaskId || nextTaskId === currentTaskId) {
+      return
+    }
+
+    try {
+      const detail = await taskService.getTaskDetail(nextTaskId)
+      setUnsavedTaskSwitchDialog({
+        open: true,
+        currentTaskId,
+        currentTaskName,
+        nextTaskId,
+        nextTaskName: detail.task.name,
+      })
+    } catch {
+      setUnsavedTaskSwitchDialog({
+        open: true,
+        currentTaskId,
+        currentTaskName,
+        nextTaskId,
+        nextTaskName: '目标任务',
+      })
+    }
+  }
+
+  const handleTaskEditStateChange = (state: {
+    taskId: string
+    taskName: string
+    isEditing: boolean
+    hasUnsavedChanges: boolean
+  }) => {
+    setTaskEditState(state)
+
+    if (
+      unsavedTaskSwitchDialog.open &&
+      unsavedTaskSwitchDialog.currentTaskId === state.taskId &&
+      !state.isEditing
+    ) {
+      closeUnsavedTaskSwitchDialog()
+    }
+  }
+
+  const guardedHandleSelectSidebarItem = (itemId: string) => {
+    if (activeView !== 'tasks') {
+      handleSelectSidebarItem(itemId)
+      return
+    }
+
+    if (unsavedTaskSwitchDialog.open) {
+      return
+    }
+
+    if (
+      taskEditState.isEditing &&
+      taskEditState.hasUnsavedChanges &&
+      taskEditState.taskId &&
+      taskEditState.taskId !== itemId
+    ) {
+      void handleRequestTaskSwitch({
+        currentTaskId: taskEditState.taskId,
+        currentTaskName: taskEditState.taskName,
+        nextTaskId: itemId,
+      })
+      return
+    }
+
+    handleSelectSidebarItem(itemId)
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
@@ -137,7 +248,7 @@ function AppShell() {
               workspaceRefreshPending={workspaceRefreshPending}
               workspaceRefreshError={workspaceRefreshError}
               onAction={handleSidebarAction}
-              onSelectItem={handleSelectSidebarItem}
+              onSelectItem={guardedHandleSelectSidebarItem}
               onToggleTreeItem={handleToggleWorkspaceItem}
               onWorkspaceInlineCreateChange={updateWorkspaceInlineCreateValue}
               onWorkspaceInlineCreateSubmit={submitWorkspaceInlineCreate}
@@ -174,7 +285,7 @@ function AppShell() {
               onAction: handleSidebarAction,
               onClose: () => setMobileSidebarOpen(false),
               onOpen: () => setMobileSidebarOpen(true),
-              onSelectItem: handleSelectSidebarItem,
+              onSelectItem: guardedHandleSelectSidebarItem,
               onToggleTreeItem: handleToggleWorkspaceItem,
               onWorkspaceInlineCreateChange: updateWorkspaceInlineCreateValue,
               onWorkspaceInlineCreateSubmit: submitWorkspaceInlineCreate,
@@ -205,6 +316,7 @@ function AppShell() {
               onWorkspaceDelete={() => void handleSidebarAction('delete-workspace-entry')}
               onTaskCreated={handleTaskCreated}
               onTaskDeleted={handleTaskDeleted}
+              onTaskEditStateChange={handleTaskEditStateChange}
             />
           </div>
         </div>
@@ -219,6 +331,22 @@ function AppShell() {
 
       <SettingsDialog open={settingsDialogOpen} onClose={closeSettingsDialog} initialSection={settingsInitialSection} />
       <AddDataBlockMenu open={dataBlockMenuOpen} onClose={closeDataBlockMenu} onSelect={handleAddDataBlock} />
+      <ConfirmDialog
+        open={unsavedTaskSwitchDialog.open}
+        title="放弃未保存的修改？"
+        message={`你正在编辑《${unsavedTaskSwitchDialog.currentTaskName || '当前任务'}》，是否放弃修改并切换到《${unsavedTaskSwitchDialog.nextTaskName || '目标任务'}》？`}
+        confirmText="放弃并切换"
+        cancelText="继续编辑"
+        danger
+        onConfirm={() => {
+          const nextTaskId = unsavedTaskSwitchDialog.nextTaskId
+          closeUnsavedTaskSwitchDialog()
+          if (nextTaskId) {
+            handleSelectSidebarItem(nextTaskId)
+          }
+        }}
+        onCancel={closeUnsavedTaskSwitchDialog}
+      />
       <ConfirmDialog
         open={workspaceDeleteState.open}
         title="确认删除"

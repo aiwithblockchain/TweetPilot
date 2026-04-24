@@ -554,7 +554,32 @@ pub fn publish<M: Serialize>(app: &AppHandle, message_id: &str, payload: M)
 - 任务详情收到 `task-executed` -> reload detail
 - 未来别的模块收到同一消息，也可以有不同处理方式
 
-### 约束 4：同一订阅方应避免重复注册同一 message_id
+### 约束 4：消息架构只负责收发，订阅方必须异步处理自己的逻辑
+这是本方案的硬约束。
+
+通知架构的职责到“把消息送达订阅方”为止，不负责等待订阅方把业务逻辑执行完。
+
+因此要求：
+- 消息发布动作只负责广播，不串行等待各订阅方业务完成
+- 订阅方收到消息后，必须自行异步处理后续逻辑
+- 某个订阅方执行自己的 reload / 同步 / 计算时，不得阻塞其他订阅方继续接收同一条消息
+- 不允许把“一个订阅方处理完成”作为“下一个订阅方开始接收”的前置条件
+
+可以把它理解成：
+
+```text
+消息架构负责投递
+订阅方各自并发/异步消费
+订阅方之间互不等待
+```
+
+落地要求：
+- 后端通知层不实现“按订阅方顺序串行执行回调”的语义
+- 前端监听回调中，如需执行耗时逻辑，应立即转入自己的异步流程，不要把消息通道当作串行任务队列
+- 第一版前端推荐模式仍然是：收到消息 -> 触发 `void load...()` / debounce reload
+- 如果未来引入后端内部订阅者，也必须遵守同样原则：收消息与处理业务解耦
+
+### 约束 5：同一订阅方应避免重复注册同一 message_id
 这是当前前端实现里非常容易踩坑的地方。
 
 例如 React 组件重复 mount / rerender 时，如果没有正确 cleanup，可能导致：
@@ -567,7 +592,7 @@ pub fn publish<M: Serialize>(app: &AppHandle, message_id: &str, payload: M)
 - 监听逻辑优先写在 `useEffect` 中
 - cleanup 中必须调用对应的 `unlisten`
 
-### 约束 5：消息发布失败不能影响主流程
+### 约束 6：消息发布失败不能影响主流程
 通知架构属于增强能力，不能反过来影响业务主链路。
 
 因此要求：
@@ -989,7 +1014,2892 @@ app: tauri::AppHandle
 
 ---
 
-## 九、接口级规范
+## 九、伪代码级规范
+
+本节把“接口级规范”继续下沉一层，直接约束到**伪代码执行顺序**。
+
+目标不是写成可直接编译的最终代码，而是把以下内容固定下来：
+- 每条发布链路的调用顺序
+- 每个发布点的前置条件
+- 每个订阅方的标准实现骨架
+- `AppHandle` 在上下文与定时器系统中的传递方式
+- 哪些位置可以发布，哪些位置不能发布
+
+要求：
+- 伪代码必须尽量贴近当前代码结构
+- 先约束顺序，再约束抽象
+- 第一版不引入额外总线层，不引入复杂注册中心
+
+---
+
+### 9.1 `app_events.rs` 伪代码规范
+
+文件：`src-tauri/src/app_events.rs`
+
+#### 目标
+提供一个唯一的“消息发布层”，屏蔽业务代码中的裸 `app.emit(...)`。
+
+#### 伪代码骨架
+
+```rust
+use chrono::Utc;
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
+
+pub const TASK_CREATED: &str = "task-created";
+pub const TASK_UPDATED: &str = "task-updated";
+pub const TASK_DELETED: &str = "task-deleted";
+pub const TASK_PAUSED: &str = "task-paused";
+pub const TASK_RESUMED: &str = "task-resumed";
+pub const TASK_EXECUTED: &str = "task-executed";
+pub const ACCOUNTS_CHANGED: &str = "accounts-changed";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskChangedPayload {
+    pub task_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskExecutedPayload {
+    pub task_id: String,
+    pub status: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsChangedPayload {
+    pub timestamp: String,
+}
+
+pub fn publish<M: Serialize>(app: &AppHandle, message_id: &str, payload: M) {
+    if let Err(error) = app.emit(message_id, payload) {
+        // 只记录日志，不中断业务主流程
+        eprintln!("failed to publish {message_id}: {error}");
+    }
+}
+
+pub fn publish_task_created(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_CREATED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_updated(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_UPDATED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_deleted(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_DELETED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_paused(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_PAUSED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_resumed(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_RESUMED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_executed(app: &AppHandle, task_id: &str, status: &str) {
+    publish(app, TASK_EXECUTED, TaskExecutedPayload {
+        task_id: task_id.to_string(),
+        status: status.to_string(),
+        timestamp: Utc::now().to_rfc3339(),
+    });
+}
+
+pub fn publish_accounts_changed(app: &AppHandle) {
+    publish(app, ACCOUNTS_CHANGED, AccountsChangedPayload {
+        timestamp: Utc::now().to_rfc3339(),
+    });
+}
+```
+
+#### 强约束
+1. 业务模块不得直接写裸 `app.emit(...)`
+2. `publish()` 失败时只能记录日志，不能 `panic`
+3. `publish_task_executed()` 的 `status` 只允许 `success` / `failed`
+4. 第一版不要在这里塞业务判断和数据库逻辑
+
+---
+
+### 9.2 `AppHandle` 传递链路伪代码规范
+
+#### 目标
+保证三条路径都能拿到统一发布能力：
+1. 手动任务命令路径
+2. 定时器执行路径
+3. 账号同步执行器路径
+
+#### 约束链路
+
+```text
+Tauri command / app runtime
+  -> AppHandle
+  -> WorkspaceContext
+  -> UnifiedTimerManager
+  -> EventLoop / executors
+  -> app_events::publish_*(...)
+```
+
+#### `WorkspaceContext` 伪代码
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<std::sync::Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+    pub app_handle: tauri::AppHandle,
+}
+
+impl WorkspaceContext {
+    pub fn new(
+        workspace_path: String,
+        app_handle: tauri::AppHandle,
+    ) -> Result<Self, String> {
+        let db = /* create db */;
+        let executor = Arc::new(TaskExecutor::new());
+        let timer_manager = UnifiedTimerManager::new(Some(app_handle.clone()));
+
+        Ok(Self {
+            db,
+            executor,
+            timer_manager,
+            workspace_path,
+            app_handle,
+        })
+    }
+}
+```
+
+#### `set_current_workspace()` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn set_current_workspace(
+    path: String,
+    app: tauri::AppHandle,
+    task_state: tauri::State<'_, TaskState>,
+) -> Result<(), String> {
+    validate_path(&path)?;
+    ensure_workspace_initialized(&path).await?;
+
+    {
+        let mut guard = task_state.workspace_context.lock().await;
+        let old = guard.take();
+        drop(guard);
+
+        if let Some(old_ctx) = old {
+            old_ctx.shutdown().await?;
+        }
+    }
+
+    let new_ctx = WorkspaceContext::new(path.clone(), app.clone())?;
+    new_ctx.start_timers().await?;
+
+    {
+        let mut guard = task_state.workspace_context.lock().await;
+        *guard = Some(new_ctx);
+    }
+
+    persist_current_workspace(path)?;
+    Ok(())
+}
+```
+
+#### 强约束
+1. `AppHandle` 必须进入 `WorkspaceContext`
+2. `UnifiedTimerManager` 必须在创建时拿到 `AppHandle`
+3. 定时器执行路径不得依赖“临时现取全局 app”这种隐式方式
+4. 后续所有发布动作都应可从上下文对象稳定拿到 `app_handle`
+
+---
+
+### 9.3 任务命令发布链路伪代码规范
+
+文件：`src-tauri/src/task_commands.rs`
+
+#### 统一原则
+每个命令都遵循：
+
+```text
+读取上下文
+-> 执行业务修改
+-> 完成数据库 / timer 收尾
+-> 发布消息
+-> 返回结果
+```
+
+不能反过来写成：
+
+```text
+发布消息
+-> 再去写数据库 / 改 timer
+```
+
+#### `create_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn create_task(
+    request: CreateTaskRequest,
+    state: State<'_, TaskState>,
+) -> Result<TaskConfig, String> {
+    let ctx = state.require_workspace_context()?;
+
+    let task = ctx.db.lock()?.create_task(request.clone())?;
+
+    if task.task_type == "scheduled" && task.enabled {
+        let timer = build_task_timer(&task, &ctx.workspace_path)?;
+        ctx.timer_manager.register_timer(timer).await?;
+    }
+
+    app_events::publish_task_created(&ctx.app_handle, &task.id);
+
+    Ok(task)
+}
+```
+
+#### `update_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn update_task(
+    request: UpdateTaskRequest,
+    state: State<'_, TaskState>,
+) -> Result<TaskConfig, String> {
+    let ctx = state.require_workspace_context()?;
+
+    let existing = ctx.db.lock()?.get_task(&request.id)?;
+
+    unregister_task_timers(&ctx.timer_manager, &existing.id).await?;
+
+    let updated = ctx.db.lock()?.update_task(request)?;
+
+    if updated.task_type == "scheduled" && updated.enabled && updated.status != "paused" {
+        let timer = build_task_timer(&updated, &ctx.workspace_path)?;
+        ctx.timer_manager.register_timer(timer).await?;
+    }
+
+    app_events::publish_task_updated(&ctx.app_handle, &updated.id);
+
+    Ok(updated)
+}
+```
+
+#### `delete_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn delete_task(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let ctx = state.require_workspace_context()?;
+
+    unregister_task_timers(&ctx.timer_manager, &task_id).await?;
+    ctx.db.lock()?.delete_task(&task_id)?;
+
+    app_events::publish_task_deleted(&ctx.app_handle, &task_id);
+
+    Ok(())
+}
+```
+
+#### `pause_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn pause_task(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let ctx = state.require_workspace_context()?;
+
+    ctx.db.lock()?.update_task_status(&task_id, "paused")?;
+    unregister_task_timers(&ctx.timer_manager, &task_id).await?;
+
+    app_events::publish_task_paused(&ctx.app_handle, &task_id);
+
+    Ok(())
+}
+```
+
+#### `resume_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn resume_task(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let ctx = state.require_workspace_context()?;
+
+    let task = ctx.db.lock()?.get_task(&task_id)?;
+    ctx.db.lock()?.update_task_status(&task_id, "idle")?;
+
+    if task.task_type == "scheduled" && task.enabled {
+        let timer = build_task_timer(&task, &ctx.workspace_path)?;
+        ctx.timer_manager.register_timer(timer).await?;
+    }
+
+    app_events::publish_task_resumed(&ctx.app_handle, &task_id);
+
+    Ok(())
+}
+```
+
+#### `execute_task` 伪代码
+
+```rust
+#[tauri::command]
+pub async fn execute_task(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<ExecutionResult, String> {
+    let ctx = state.require_workspace_context()?;
+
+    let task = ctx.db.lock()?.get_task(&task_id)?;
+    ensure_not_running(&task)?;
+
+    ctx.db.lock()?.update_task_status(&task_id, "running")?;
+
+    let result = ctx.executor.execute_task(&task, &ctx.workspace_path).await;
+
+    match result {
+        Ok(exec_result) => {
+            ctx.db.lock()?.save_execution(&exec_result)?;
+            ctx.db.lock()?.update_task_status(&task_id, "idle")?;
+            try_update_schedule_metadata(&ctx, &task, &exec_result).await?;
+
+            app_events::publish_task_executed(&ctx.app_handle, &task_id, "success");
+            Ok(exec_result)
+        }
+        Err(error) => {
+            ctx.db.lock()?.update_task_status(&task_id, "failed")?;
+
+            app_events::publish_task_executed(&ctx.app_handle, &task_id, "failed");
+            Err(error)
+        }
+    }
+}
+```
+
+#### 强约束
+1. 所有 `publish_task_*` 都必须放在数据库状态稳定之后
+2. 如果 timer 注册失败，则不能提前发布成功类消息
+3. `execute_task` 的成功消息必须在 execution 保存与状态恢复后发布
+4. `execute_task` 的失败消息必须在状态改成 `failed` 后发布
+
+---
+
+### 9.4 定时器执行发布链路伪代码规范
+
+文件：`src-tauri/src/unified_timer/event_loop.rs`
+
+#### 目标
+统一规范定时任务执行完成后的 `task-executed` 发布点。
+
+#### 禁止做法
+不要在：
+- `PythonScriptExecutor::execute()`
+- `PythonScriptExecutor::post_execution()`
+
+里直接发布 `task-executed`。
+
+原因：这些位置都不是“整条执行链已经稳定收尾”的最终点。
+
+#### `EventLoop::execute_timer()` 伪代码
+
+```rust
+async fn execute_timer(&self, timer: Timer) -> Result<(), String> {
+    let executor = self.registry.get_executor(&timer.executor_type).await?;
+
+    self.registry.mark_running(&timer.id).await?;
+
+    let execution_result = executor.execute(timer.execution_context()).await;
+
+    let mut updated_timer = timer.clone();
+    updated_timer = build_next_timer_state(updated_timer, &execution_result)?;
+
+    executor.post_execution(&updated_timer).await?;
+    self.registry.update_timer(updated_timer.clone()).await?;
+
+    if is_task_timer(&updated_timer.id) {
+        if let Some(task_id) = parse_task_id(&updated_timer.id) {
+            let status = if execution_result.is_ok() { "success" } else { "failed" };
+
+            if let Some(app_handle) = &self.app_handle {
+                app_events::publish_task_executed(app_handle, &task_id, status);
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+#### 强约束
+1. `publish_task_executed()` 只能在 `registry.update_timer()` 之后触发
+2. 必须先完成 `post_execution()`
+3. 必须从 timer id 中稳定解析出 task id 后才能发布
+4. 若 `app_handle` 缺失，则允许跳过发布，但不能影响定时器主流程
+
+---
+
+### 9.5 账号同步发布链路伪代码规范
+
+文件：`src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs`
+
+#### 目标
+把 `accounts-changed` 发布点固定在“一轮同步真正结束之后”。
+
+#### 禁止做法
+不要在 `process_user_info()` 内逐账号发布 `accounts-changed`。
+
+因为该函数只代表：
+- 单个账号处理完成
+- 不是整轮同步稳定完成
+
+#### `execute()` 伪代码
+
+```rust
+async fn execute(&self, context: ExecutionContext) -> Result<ExecutionResult, String> {
+    let users = load_online_users(&context).await?;
+
+    for user in users {
+        self.process_user_info(&user).await?;
+    }
+
+    if let Some(app_handle) = &self.app_handle {
+        app_events::publish_accounts_changed(app_handle);
+    }
+
+    Ok(build_sync_result())
+}
+```
+
+#### `process_user_info()` 伪代码
+
+```rust
+async fn process_user_info(&self, user: &UserInfo) -> Result<(), String> {
+    upsert_account(user)?;
+
+    if should_insert_snapshot(user)? {
+        insert_account_snapshot(user)?;
+    }
+
+    // 这里不能发布 accounts-changed
+    Ok(())
+}
+```
+
+#### 强约束
+1. 一轮同步最多发布一次 `accounts-changed`
+2. 发布点必须在全部账号处理完成后
+3. `process_user_info()` 里保留纯数据处理职责，不承担通知职责
+
+---
+
+### 9.6 前端任务详情订阅伪代码规范
+
+文件：`src/components/TaskDetailContentPane.tsx`
+
+#### 目标
+当前详情页只响应与“当前 taskId”有关的消息。
+
+#### 伪代码
+
+```ts
+useEffect(() => {
+  if (!taskId) return
+
+  let disposed = false
+  const unlistenFns: Array<() => void> = []
+
+  const bind = async () => {
+    const messageIds = [
+      'task-executed',
+      'task-updated',
+      'task-paused',
+      'task-resumed',
+      'task-deleted',
+    ] as const
+
+    for (const messageId of messageIds) {
+      const unlisten = await listen<TaskChangedPayload | TaskExecutedPayload>(messageId, (event) => {
+        const payload = event.payload
+
+        if (!payload || payload.taskId !== taskId) {
+          return
+        }
+
+        if (messageId === 'task-deleted') {
+          onDeleted?.()
+          return
+        }
+
+        void loadDetail()
+      })
+
+      if (disposed) {
+        unlisten()
+      } else {
+        unlistenFns.push(unlisten)
+      }
+    }
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    for (const fn of unlistenFns) {
+      fn()
+    }
+  }
+}, [taskId, loadDetail, onDeleted])
+```
+
+#### 强约束
+1. 必须先判断 `payload.taskId === 当前 taskId`
+2. `task-deleted` 不再 reload detail，而是退出详情态
+3. cleanup 必须释放全部 `unlisten`
+4. 第一版统一 reload detail，不做局部 patch
+5. 监听回调本身不得承载串行阻塞逻辑；收到消息后应立即进入自己的异步流程，例如 `void loadDetail()`
+
+---
+
+### 9.7 前端任务列表订阅伪代码规范
+
+文件：`src/hooks/useTasksSidebarItems.ts`
+
+#### 目标
+任务列表可以订阅多个消息，但把高频刷新合并成一次请求。
+
+#### 伪代码
+
+```ts
+useEffect(() => {
+  let disposed = false
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null
+  const unlistenFns: Array<() => void> = []
+
+  const scheduleReload = () => {
+    if (reloadTimer) {
+      clearTimeout(reloadTimer)
+    }
+
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null
+      void loadTasks()
+    }, 300)
+  }
+
+  const bind = async () => {
+    const messageIds = [
+      'task-created',
+      'task-updated',
+      'task-deleted',
+      'task-paused',
+      'task-resumed',
+      'task-executed',
+    ] as const
+
+    for (const messageId of messageIds) {
+      const unlisten = await listen(messageId, () => {
+        scheduleReload()
+      })
+
+      if (disposed) {
+        unlisten()
+      } else {
+        unlistenFns.push(unlisten)
+      }
+    }
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+
+    if (reloadTimer) {
+      clearTimeout(reloadTimer)
+    }
+
+    for (const fn of unlistenFns) {
+      fn()
+    }
+  }
+}, [loadTasks])
+```
+
+#### 强约束
+1. 任务列表不按 `taskId` 过滤，统一合并 reload
+2. 必须清理 timeout 和全部 `unlisten`
+3. 第一版 debounce / merge 窗口固定为 300ms 即可，不做复杂调度
+4. 监听回调中只负责调度 reload，不直接做耗时串行工作，避免影响同一批消息的后续消费
+
+---
+
+### 9.8 账号列表与账号详情订阅伪代码规范
+
+文件：
+- `src/hooks/useAppLayoutState.ts`
+- `src/components/AccountDetailPane.tsx`
+
+#### 账号列表订阅伪代码
+
+```ts
+useEffect(() => {
+  let unlisten: null | (() => void) = null
+  let disposed = false
+
+  const bind = async () => {
+    const fn = await listen<AccountsChangedPayload>('accounts-changed', () => {
+      void reloadAccounts()
+    })
+
+    if (disposed) {
+      fn()
+      return
+    }
+
+    unlisten = fn
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    unlisten?.()
+  }
+}, [reloadAccounts])
+```
+
+#### 账号详情订阅伪代码
+
+```ts
+useEffect(() => {
+  if (!selectedAccountId) return
+
+  let unlisten: null | (() => void) = null
+  let disposed = false
+
+  const bind = async () => {
+    const fn = await listen<AccountsChangedPayload>('accounts-changed', () => {
+      void reloadAccountDetail(selectedAccountId)
+    })
+
+    if (disposed) {
+      fn()
+      return
+    }
+
+    unlisten = fn
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    unlisten?.()
+  }
+}, [selectedAccountId, reloadAccountDetail])
+```
+
+#### 强约束
+1. 第一版账号模块统一只监听 `accounts-changed`
+2. 不做逐账号消息拆分
+3. 账号详情收到消息后直接 reload 当前选中账号详情
+4. 收到消息后立即进入各自异步 reload，不在监听回调里串行处理复杂业务
+
+---
+
+### 9.9 发布时序总表（伪代码级）
+
+```text
+create_task:
+  db.create_task
+  -> register_timer_if_needed
+  -> publish_task_created
+  -> return
+
+update_task:
+  unregister_old_timers
+  -> db.update_task
+  -> register_new_timer_if_needed
+  -> publish_task_updated
+  -> return
+
+delete_task:
+  unregister_task_timers
+  -> db.delete_task
+  -> publish_task_deleted
+  -> return
+
+pause_task:
+  db.update_status(paused)
+  -> unregister_task_timers
+  -> publish_task_paused
+  -> return
+
+resume_task:
+  db.update_status(idle)
+  -> register_timer_if_needed
+  -> publish_task_resumed
+  -> return
+
+execute_task (manual):
+  db.update_status(running)
+  -> executor.execute_task
+  -> save_execution / set failed
+  -> update final status
+  -> publish_task_executed
+  -> return
+
+execute_timer (scheduled):
+  executor.execute
+  -> build_next_timer_state
+  -> post_execution
+  -> registry.update_timer
+  -> publish_task_executed
+  -> return
+
+localbridge sync:
+  for each user -> process_user_info
+  -> publish_accounts_changed
+  -> return
+```
+
+#### 最终约束
+1. 所有通知都是“收尾后发布”，不是“处理中发布”
+2. 所有订阅都是“生命周期内注册，cleanup 时释放”
+3. 第一版统一以“收到消息后 reload”为主，不做复杂增量同步
+4. 如果以后要升级成更复杂总线，也必须保持这里定义的 message_id 和发布语义稳定
+
+---
+
+## 十、接口级规范
+
+## 十一、当前代码映射表（AI 施工必读）
+
+本节不是再讲“应该怎么设计”，而是把**当前代码真实状态**和**目标修改点**逐条对齐。
+
+目标：
+- 让 AI 知道当前代码已经长什么样
+- 让 AI 明确哪些地方是“新增”，哪些地方是“改签名”，哪些地方只是“插入调用”
+- 避免 AI 按文档脑补不存在的结构
+
+---
+
+### 11.1 `src-tauri/src/task_commands.rs`
+
+#### 当前状态
+
+`WorkspaceContext` 当前定义为：
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+}
+```
+
+`WorkspaceContext::new()` 当前签名：
+
+```rust
+pub fn new(workspace_path: String) -> Result<Self, String>
+```
+
+`execute_task()` 已存在，并且当前顺序基本是：
+
+```text
+get task
+-> update_task_status(running)
+-> executor.execute_task(...)
+-> 成功时 save_execution + update_task_status(idle)
+-> 失败时 update_task_status(failed)
+-> 返回
+```
+
+任务相关命令当前都已存在：
+- `create_task`
+- `update_task`
+- `delete_task`
+- `pause_task`
+- `resume_task`
+- `execute_task`
+
+#### 目标状态
+
+需要把 `WorkspaceContext` 改为：
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+    pub app_handle: tauri::AppHandle,
+}
+```
+
+并把构造函数改为：
+
+```rust
+pub fn new(workspace_path: String, app_handle: tauri::AppHandle) -> Result<Self, String>
+```
+
+#### AI 施工说明
+1. 这是**改已有结构**，不是新增平行结构
+2. 不要新建第二个 workspace context 类型
+3. 所有任务命令都继续从 `ctx.app_handle` 发布消息，不要在每个命令里额外单独查全局 app
+
+---
+
+### 11.2 `src-tauri/src/unified_timer/mod.rs`
+
+#### 当前状态
+
+`UnifiedTimerManager` 当前构造函数：
+
+```rust
+pub fn new() -> Self
+```
+
+内部当前这样创建事件循环：
+
+```rust
+let event_loop = Arc::new(EventLoop::new(registry.clone()));
+```
+
+#### 目标状态
+
+改为显式接收 `AppHandle`：
+
+```rust
+pub fn new(app_handle: Option<tauri::AppHandle>) -> Self
+```
+
+并在内部传给 `EventLoop::new(...)`。
+
+#### AI 施工说明
+1. 第一版保留 `Option<AppHandle>` 是为了兼容初始化路径
+2. 不是所有路径都必须强制 `Some(app_handle)`，但 workspace 正常创建路径应传入 `Some`
+3. 不要在 `UnifiedTimerManager` 里加入额外事件业务逻辑，它只负责把能力传下去
+
+---
+
+### 11.3 `src-tauri/src/unified_timer/event_loop.rs`
+
+#### 当前状态
+
+`EventLoop` 当前字段：
+
+```rust
+pub struct EventLoop {
+    registry: Arc<Mutex<TimerRegistry>>,
+    running: Arc<RwLock<bool>>,
+    executors: Arc<RwLock<HashMap<String, Arc<dyn TimerExecutor>>>>,
+    wakeup: Arc<Notify>,
+}
+```
+
+`EventLoop::new()` 当前签名：
+
+```rust
+pub fn new(registry: Arc<Mutex<TimerRegistry>>) -> Self
+```
+
+`execute_timer()` 当前顺序：
+
+```text
+executor.execute(context)
+-> 成功时更新 updated_timer
+-> executor.post_execution(&updated_timer)
+-> registry.update_timer(updated_timer)
+```
+
+失败分支当前会：
+
+```text
+calculate_next_execution(now)
+-> registry.update_timer(updated_timer)
+```
+
+#### 目标状态
+
+需要增加：
+
+```rust
+app_handle: Option<tauri::AppHandle>
+```
+
+并把构造函数改为：
+
+```rust
+pub fn new(
+    registry: Arc<Mutex<TimerRegistry>>,
+    app_handle: Option<tauri::AppHandle>,
+) -> Self
+```
+
+#### AI 施工说明
+1. `task-executed` 的定时器发布点就在这个文件，不在 `python_script.rs`
+2. 发布时机必须在 `post_execution()` 与 `registry.update_timer(...)` 之后
+3. 只对 `task-<id>` 形式的 timer 发布 `task-executed`
+4. 不要把所有 timer 都当任务 timer
+
+---
+
+### 11.4 `src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs`
+
+#### 当前状态
+
+当前已有明确 TODO：
+
+```rust
+// 3. TODO: Notify UI about data changes
+log::debug!("[process_user_info] UI notification not yet implemented");
+```
+
+`LocalBridgeSyncExecutor` 当前字段：
+
+```rust
+pub struct LocalBridgeSyncExecutor {
+    last_user_info_query: Mutex<HashMap<String, DateTime<Utc>>>,
+    account_binding_cache: Arc<Mutex<HashMap<String, AccountBindingSnapshot>>>,
+    unmanaged_online_accounts: Arc<Mutex<HashMap<String, UnmanagedAccountRecord>>>,
+    db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+}
+```
+
+构造函数当前签名：
+
+```rust
+pub fn new(db: Arc<Mutex<crate::task_database::TaskDatabase>>) -> Self
+```
+
+`execute()` 当前会：
+
+```text
+get instances
+-> 并发 spawn process_user_info(...)
+-> join handles
+-> prune_unmanaged_online_accounts(...)
+-> return ExecutionResult
+```
+
+#### 目标状态
+
+增加：
+
+```rust
+app_handle: Option<tauri::AppHandle>
+```
+
+构造函数改为：
+
+```rust
+pub fn new(
+    db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+    app_handle: Option<tauri::AppHandle>,
+) -> Self
+```
+
+#### AI 施工说明
+1. `accounts-changed` 只在 `execute()` 尾部发布一次
+2. `process_user_info()` 仍然只处理单账号数据，不负责发消息
+3. 这里不是按账号粒度通知，而是按“整轮同步完成”通知
+
+---
+
+### 11.5 `src-tauri/src/commands/workspace.rs`
+
+#### 当前状态
+
+`set_current_workspace()` 当前签名：
+
+```rust
+pub async fn set_current_workspace(
+    path: String,
+    task_state: tauri::State<'_, crate::task_commands::TaskState>,
+) -> Result<(), String>
+```
+
+当前创建新 context 的代码是：
+
+```rust
+let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone())?;
+```
+
+旧 workspace 清理时当前会：
+
+```rust
+old_ctx.timer_manager.stop().await;
+```
+
+#### 目标状态
+
+函数签名改为接收 `AppHandle`：
+
+```rust
+pub async fn set_current_workspace(
+    path: String,
+    app: tauri::AppHandle,
+    task_state: tauri::State<'_, crate::task_commands::TaskState>,
+) -> Result<(), String>
+```
+
+新 context 的创建改为：
+
+```rust
+let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone(), app.clone())?;
+```
+
+#### AI 施工说明
+1. 这是整个通知架构接通的关键入口
+2. 如果这里不传 `AppHandle`，后续 timer / sync 路径就拿不到发布能力
+3. 改完后要检查所有前端 invoke 参数是否仍兼容 Tauri command 签名
+
+---
+
+### 11.6 `src/components/TaskDetailContentPane.tsx`
+
+#### 当前状态
+
+当前只有：
+
+```ts
+useEffect(() => {
+  void loadDetail()
+}, [taskId])
+```
+
+也就是说当前详情只在：
+- 初次加载
+- `taskId` 变化
+
+时刷新，没有任何事件订阅。
+
+#### 目标状态
+
+新增一个 `useEffect`：
+- 监听 `task-executed`
+- 监听 `task-updated`
+- 监听 `task-paused`
+- 监听 `task-resumed`
+- 监听 `task-deleted`
+
+并按 `payload.taskId === taskId` 过滤。
+
+#### AI 施工说明
+1. 不要替换已有 `loadDetail()`，而是在其基础上加监听
+2. `task-deleted` 命中当前 task 时，调用 `onDeleted?.()`
+3. 其他事件命中当前 task 时，调用 `loadDetail()`
+
+---
+
+### 11.7 `src/hooks/useTasksSidebarItems.ts`
+
+#### 当前状态
+
+当前只有一次初始加载：
+
+```ts
+useEffect(() => {
+  void loadTasks()
+}, [])
+```
+
+没有消息订阅，也没有合并刷新逻辑。
+
+#### 目标状态
+
+新增任务事件订阅：
+- `task-created`
+- `task-updated`
+- `task-deleted`
+- `task-paused`
+- `task-resumed`
+- `task-executed`
+
+收到后合并触发 `loadTasks()`。
+
+#### AI 施工说明
+1. 这里统一 reload list，不需要按 taskId 过滤
+2. 第一版只做简单 300ms merge/debounce
+3. 必须在 cleanup 中同时释放 `unlisten` 和 `timeout`
+
+---
+
+### 11.8 `src/hooks/useAppLayoutState.ts`
+
+#### 当前状态
+
+当前账号列表数据由：
+- `getManagedAccounts`
+- `getUnmanagedOnlineAccounts`
+
+拉取生成，但刷新仍主要依赖主动 reload 流程，而不是事件订阅。
+
+#### 目标状态
+
+新增对 `accounts-changed` 的订阅，收到后触发账号列表 reload。
+
+#### AI 施工说明
+1. 只补事件驱动刷新，不要重写现有账号列表建模逻辑
+2. 保持 `buildAccountSidebarItems(...)` 和现有 state 组织不变
+3. 文档目标是“补通知”，不是重构账号页状态管理
+
+---
+
+### 11.9 `src/components/AccountDetailPane.tsx`
+
+#### 当前状态
+
+当前详情页只有基于 `item?.id` 的加载：
+
+```ts
+useEffect(() => {
+  void run()
+}, [item?.id])
+```
+
+没有监听 `accounts-changed`。
+
+#### 目标状态
+
+新增一个 effect：
+- 当有选中账号时，监听 `accounts-changed`
+- 收到后 reload 当前详情
+
+#### AI 施工说明
+1. 第一版不区分是哪个账号变化，统一 reload 当前选中详情即可
+2. 不要在这里引入更细粒度账号事件模型
+
+---
+
+## 十二、逐函数改造点清单（可直接照着改）
+
+本节是给 AI 直接施工用的“插入点说明”。
+
+格式约定：
+- **位置**：文件 + 函数
+- **现状**：当前代码执行到哪里
+- **改法**：新增什么
+- **插入点**：放在哪一段之后
+- **验证**：改完如何判断正确
+
+---
+
+### 12.1 新增 `src-tauri/src/app_events.rs`
+
+#### 改法
+新增文件，包含：
+- message_id 常量
+- payload struct
+- `publish()`
+- `publish_task_created()` 等 helper
+
+#### 验证
+1. 编译通过
+2. 其他文件可以正常 `use crate::app_events`
+3. 没有业务文件继续直接散落裸 `app.emit("task-executed", ...)`
+
+---
+
+### 12.2 `task_commands.rs -> WorkspaceContext`
+
+#### 改法
+把：
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+}
+```
+
+改为：
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+    pub app_handle: tauri::AppHandle,
+}
+```
+
+并同步修改 `WorkspaceContext::new(...)`。
+
+#### 插入点
+直接修改原结构与原构造函数，不新增平替版本。
+
+#### 验证
+1. `task_commands.rs` 编译通过
+2. 所有创建 `WorkspaceContext` 的调用方都被修正
+
+---
+
+### 12.3 `workspace.rs -> set_current_workspace()`
+
+#### 现状
+当前创建 context 的位置是：
+
+```rust
+let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone())?;
+```
+
+#### 改法
+把函数签名改为接收 `app: tauri::AppHandle`，并改成：
+
+```rust
+let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone(), app.clone())?;
+```
+
+#### 插入点
+就在当前创建 new context 的那一行直接替换。
+
+#### 验证
+1. 切换工作区仍然成功
+2. 旧 timer 仍会被 stop
+3. 新 workspace 定时器仍能正常启动
+
+---
+
+### 12.4 `unified_timer/mod.rs -> UnifiedTimerManager::new()`
+
+#### 现状
+当前：
+
+```rust
+pub fn new() -> Self
+```
+
+#### 改法
+改成：
+
+```rust
+pub fn new(app_handle: Option<tauri::AppHandle>) -> Self
+```
+
+并把 `app_handle` 传给 `EventLoop::new(...)`。
+
+#### 插入点
+直接改原构造函数。
+
+#### 验证
+1. `WorkspaceContext::new(...)` 调用可编译
+2. `EventLoop` 内可以访问 `app_handle`
+
+---
+
+### 12.5 `event_loop.rs -> EventLoop::new()`
+
+#### 现状
+当前：
+
+```rust
+pub fn new(registry: Arc<Mutex<TimerRegistry>>) -> Self
+```
+
+#### 改法
+改为：
+
+```rust
+pub fn new(
+    registry: Arc<Mutex<TimerRegistry>>,
+    app_handle: Option<tauri::AppHandle>,
+) -> Self
+```
+
+并增加字段：
+
+```rust
+app_handle: Option<tauri::AppHandle>
+```
+
+#### 插入点
+直接修改结构体和构造函数。
+
+#### 验证
+1. 事件循环仍能正常 start / stop
+2. timer 执行逻辑不受影响
+
+---
+
+### 12.6 `task_commands.rs -> create_task()`
+
+#### 现状
+当前顺序：
+
+```text
+db.create_task
+-> 若是 scheduled 则 register_timer
+-> return task
+```
+
+#### 改法
+在 timer 注册完成后、返回前新增：
+
+```rust
+app_events::publish_task_created(&ctx.app_handle, &task.id);
+```
+
+#### 插入点
+放在：
+- scheduled task 的 timer 注册逻辑结束后
+- `Ok(task)` 之前
+
+#### 验证
+1. 创建即时任务后能收到 `task-created`
+2. 创建定时任务且 timer 注册成功后能收到 `task-created`
+3. 若 timer 注册失败，不应提前发成功消息
+
+---
+
+### 12.7 `task_commands.rs -> update_task()`
+
+#### 现状
+当前顺序：
+
+```text
+db.update_task
+-> clear_task_timers
+-> 重新装载全部 scheduled task timers
+-> return
+```
+
+#### 改法
+在全部 timer 重建完成后新增：
+
+```rust
+app_events::publish_task_updated(&ctx.app_handle, &task_id);
+```
+
+#### 插入点
+放在最后一个 timer register 完成之后、`Ok(())` 之前。
+
+#### 验证
+1. 更新任务后能收到 `task-updated`
+2. 定时器重建失败时不应发成功类消息
+
+---
+
+### 12.8 `task_commands.rs -> delete_task()`
+
+#### 现状
+当前顺序：
+
+```text
+db.delete_task
+-> unregister task timer
+-> return
+```
+
+#### 建议改法
+顺序调整为：
+
+```text
+unregister task timer
+-> db.delete_task
+-> publish_task_deleted
+-> return
+```
+
+并新增：
+
+```rust
+app_events::publish_task_deleted(&ctx.app_handle, &task_id);
+```
+
+#### 插入点
+放在删除与 timer 注销都完成之后、`Ok(())` 之前。
+
+#### 验证
+1. 删除任务后列表自动刷新
+2. 当前打开该任务详情时能退出详情页
+
+---
+
+### 12.9 `task_commands.rs -> pause_task()`
+
+#### 现状
+当前顺序：
+
+```text
+update_task_status(paused)
+-> unregister task timer
+-> return
+```
+
+#### 改法
+在 timer 注销后新增：
+
+```rust
+app_events::publish_task_paused(&ctx.app_handle, &task_id);
+```
+
+#### 插入点
+放在 `unregister` 完成之后、`Ok(())` 之前。
+
+#### 验证
+1. 暂停任务后列表 / 详情自动刷新
+2. timer 被移除
+
+---
+
+### 12.10 `task_commands.rs -> resume_task()`
+
+#### 现状
+当前顺序：
+
+```text
+update_task_status(idle)
+-> get_task
+-> 若是 scheduled 则 register_timer
+-> return
+```
+
+#### 改法
+在 timer 重建完成后新增：
+
+```rust
+app_events::publish_task_resumed(&ctx.app_handle, &task_id);
+```
+
+#### 插入点
+放在可能的 timer 注册逻辑之后、`Ok(())` 之前。
+
+#### 验证
+1. 恢复任务后列表 / 详情自动刷新
+2. scheduled task 的 timer 被恢复
+
+---
+
+### 12.11 `task_commands.rs -> execute_task()`
+
+#### 现状
+成功分支当前会：
+
+```text
+save_execution
+-> update_task_status(idle)
+-> scheduled success 时 update_next_execution_time
+-> return Ok(exec_result)
+```
+
+失败分支当前会：
+
+```text
+update_task_status(failed)
+-> return Err(e)
+```
+
+#### 改法
+成功分支在返回前新增：
+
+```rust
+app_events::publish_task_executed(&ctx.app_handle, &task_id, "success");
+```
+
+失败分支在返回前新增：
+
+```rust
+app_events::publish_task_executed(&ctx.app_handle, &task_id, "failed");
+```
+
+#### 插入点
+- 成功：`update_task_status(idle)` 与后续调度时间更新完成之后
+- 失败：`update_task_status(failed)` 之后
+
+#### 验证
+1. 手动执行成功时详情自动刷新
+2. 手动执行失败时详情也自动刷新
+3. 发布失败不能影响命令返回
+
+---
+
+### 12.12 `localbridge_sync_executor.rs -> LocalBridgeSyncExecutor::new()`
+
+#### 改法
+新增 `app_handle: Option<tauri::AppHandle>` 字段，并改构造函数签名。
+
+#### 插入点
+直接修改原 struct 与原 `new(...)`。
+
+#### 验证
+1. `WorkspaceContext::start_timers()` 中注册 `LocalBridgeSyncExecutor` 时可传入 app handle
+2. 账号同步执行器仍能正常运行
+
+---
+
+### 12.13 `localbridge_sync_executor.rs -> execute()`
+
+#### 现状
+当前流程：
+
+```text
+get instances
+-> spawn process_user_info
+-> join all handles
+-> prune_unmanaged_online_accounts
+-> return ExecutionResult
+```
+
+#### 改法
+在 `prune_unmanaged_online_accounts(...)` 之后、返回前新增：
+
+```rust
+if let Some(app_handle) = &self.app_handle {
+    app_events::publish_accounts_changed(app_handle);
+}
+```
+
+#### 插入点
+放在整轮同步完成之后，只发一次。
+
+#### 验证
+1. 一轮同步后收到一次 `accounts-changed`
+2. 不是每个账号都收到一次通知
+
+---
+
+### 12.14 `localbridge_sync_executor.rs -> process_user_info()`
+
+#### 现状
+当前尾部有 TODO 注释。
+
+#### 改法
+不要在这里发事件；只需要把文档中的 TODO 变为“由 `execute()` 统一发布”。
+
+#### 插入点
+无需在本函数中加 `publish_accounts_changed`。
+
+#### 验证
+全局搜索确认这里没有发布账号通知。
+
+---
+
+### 12.15 `event_loop.rs -> execute_timer()`
+
+#### 现状
+成功分支当前在：
+
+```rust
+executor.post_execution(&updated_timer).await
+let mut reg = registry.lock().await;
+reg.update_timer(updated_timer);
+```
+
+之后直接结束。
+
+#### 改法
+在 `reg.update_timer(updated_timer)` 完成后，增加：
+
+```rust
+if updated_timer.id.starts_with("task-") {
+    if let Some(task_id) = updated_timer.id.strip_prefix("task-") {
+        if let Some(app_handle) = &self.app_handle {
+            app_events::publish_task_executed(app_handle, task_id, "success");
+        }
+    }
+}
+```
+
+失败分支也在 `reg.update_timer(updated_timer)` 后增加同类逻辑，但状态为 `failed`。
+
+#### AI 施工注意
+当前 `execute_timer()` 是静态函数风格：
+
+```rust
+async fn execute_timer(...)
+```
+
+如果要访问 `self.app_handle`，需要把它改成可访问实例字段的形式。可选方式：
+1. 改为实例方法
+2. 或把 `app_handle` 显式作为参数继续往里传
+
+**推荐方式：改为实例方法。**
+
+#### 验证
+1. 定时任务执行成功后能收到 `task-executed(success)`
+2. 定时任务执行失败后能收到 `task-executed(failed)`
+3. 非任务 timer 不会错误发任务消息
+
+---
+
+### 12.16 `TaskDetailContentPane.tsx`
+
+#### 改法
+新增一个 `useEffect` 订阅：
+- `task-executed`
+- `task-updated`
+- `task-paused`
+- `task-resumed`
+- `task-deleted`
+
+#### 插入点
+放在现有：
+
+```ts
+useEffect(() => {
+  void loadDetail()
+}, [taskId])
+```
+
+之后最合适，保持“先定义 loadDetail，再定义订阅 effect”。
+
+#### 验证
+1. 手动执行任务时当前详情自动刷新
+2. 定时执行任务时当前详情自动刷新
+3. 删除当前任务时退出详情而不是报错卡死
+4. 重复进入页面不会重复处理同一消息
+
+---
+
+### 12.17 `useTasksSidebarItems.ts`
+
+#### 改法
+新增一个 effect：
+- 注册多个 `listen(...)`
+- 使用一个 300ms timeout 合并 `loadTasks()`
+
+#### 插入点
+放在当前初始加载 effect 之后。
+
+#### 验证
+1. 创建 / 更新 / 删除 / 暂停 / 恢复 / 执行任务时列表都会刷新
+2. 短时间连续事件不会导致多次无意义请求
+3. 卸载 hook 后不会继续响应消息
+
+---
+
+### 12.18 `useAppLayoutState.ts`
+
+#### 改法
+在账号列表相关 reload 能力已存在的基础上，新增：
+- 监听 `accounts-changed`
+- 收到后 reload managed/unmanaged accounts
+
+#### 插入点
+放在账号列表数据加载相关 effect 附近，不要分散到无关区域。
+
+#### 验证
+1. 一轮同步结束后左侧账号列表自动更新
+2. 不影响现有手动刷新行为
+
+---
+
+### 12.19 `AccountDetailPane.tsx`
+
+#### 改法
+新增 effect：
+- 当 `item?.id` 存在时监听 `accounts-changed`
+- 收到后执行 `reloadDetail()`
+
+#### 插入点
+放在现有详情加载 effect 后。
+
+#### 验证
+1. 同步完成后当前账号详情自动刷新
+2. 切换账号时旧监听会正确释放
+
+---
+
+## 十三、分阶段实施与验证清单（适合 AI 分步执行）
+
+### Phase 1：建立通用发布层
+
+#### 目标
+先把后端“能发消息”这件事建立起来，但暂时不接前端订阅。
+
+#### 步骤
+1. 新增 `src-tauri/src/app_events.rs`
+2. 在后端模块入口注册 `mod app_events;`
+3. 编译通过
+
+#### 验证
+- Rust 编译通过
+- `app_events` 可被 `task_commands.rs` 正常引用
+
+#### 通过标准
+说明通知底座已经可用。
+
+---
+
+### Phase 2：接通手动任务命令发布链路
+
+#### 目标
+先完成最直接、最容易验证的任务命令通知。
+
+#### 步骤
+1. 给 `WorkspaceContext` 增加 `app_handle`
+2. 修改 `WorkspaceContext::new(...)`
+3. 修改 `set_current_workspace(...)` 传入 `AppHandle`
+4. 在 `create_task / update_task / delete_task / pause_task / resume_task / execute_task` 中接入 `publish_*`
+
+#### 验证
+- 创建任务后能收到 `task-created`
+- 更新任务后能收到 `task-updated`
+- 删除任务后能收到 `task-deleted`
+- 手动执行成功/失败都能收到 `task-executed`
+
+#### 通过标准
+说明“命令型发布链路”已经接通。
+
+---
+
+### Phase 3：接通定时器执行发布链路
+
+#### 目标
+让后台定时任务执行完成后也能发出统一消息。
+
+#### 步骤
+1. 修改 `UnifiedTimerManager::new(...)`
+2. 修改 `EventLoop` 结构与构造函数
+3. 让 `execute_timer()` 能访问 `app_handle`
+4. 在定时器收尾完成后发布 `task-executed`
+
+#### 验证
+- 创建一个短间隔 scheduled task
+- 等待其自动执行
+- 前端能收到 `task-executed`
+
+#### 通过标准
+说明“后台自动执行链路”已经接通。
+
+---
+
+### Phase 4：接通账号同步发布链路
+
+#### 目标
+让账号同步结束后能统一通知 UI。
+
+#### 步骤
+1. 给 `LocalBridgeSyncExecutor` 增加 `app_handle`
+2. 修改其构造函数
+3. 在 `execute()` 尾部发布一次 `accounts-changed`
+4. 确认 `process_user_info()` 不发布通知
+
+#### 验证
+- 触发一次 LocalBridge sync
+- 只收到一次 `accounts-changed`
+
+#### 通过标准
+说明账号模块也接入了同一套架构。
+
+---
+
+### Phase 5：接通前端任务订阅
+
+#### 目标
+让任务页真正对后端事件产生可见响应。
+
+#### 步骤
+1. 在 `TaskDetailContentPane.tsx` 新增监听
+2. 在 `useTasksSidebarItems.ts` 新增监听与合并刷新
+
+#### 验证
+- 当前详情页在任务变更后自动刷新
+- 左侧任务列表在任务变更后自动刷新
+- 没有重复订阅导致的一次事件多次处理
+
+#### 通过标准
+说明任务模块实现端到端闭环。
+
+---
+
+### Phase 6：接通前端账号订阅
+
+#### 目标
+让账号列表与账号详情对同步事件自动响应。
+
+#### 步骤
+1. 在 `useAppLayoutState.ts` 监听 `accounts-changed`
+2. 在 `AccountDetailPane.tsx` 监听 `accounts-changed`
+
+#### 验证
+- 同步后左侧账号列表自动更新
+- 当前账号详情自动刷新
+
+#### 通过标准
+说明账号模块实现端到端闭环。
+
+---
+
+## 十四、AI 施工边界与禁止事项
+
+### 14.1 本次任务允许改动的范围
+- `src-tauri/src/app_events.rs`（新增）
+- `src-tauri/src/task_commands.rs`
+- `src-tauri/src/commands/workspace.rs`
+- `src-tauri/src/unified_timer/mod.rs`
+- `src-tauri/src/unified_timer/event_loop.rs`
+- `src-tauri/src/unified_timer/executors/localbridge_sync_executor.rs`
+- `src/components/TaskDetailContentPane.tsx`
+- `src/hooks/useTasksSidebarItems.ts`
+- `src/hooks/useAppLayoutState.ts`
+- `src/components/AccountDetailPane.tsx`
+
+### 14.2 本次任务不要做的事
+1. 不要顺手重构任务系统
+2. 不要顺手重构账号页状态管理
+3. 不要把第一版升级成复杂后端内消息总线
+4. 不要把前端从 reload 改成复杂增量 patch
+5. 不要扩展更多业务消息 ID，先只做文档已定义的这些
+
+### 14.3 如果 AI 施工时遇到歧义，优先级按以下顺序判断
+1. 以“当前代码真实结构”为准
+2. 以“收尾后发布”为准
+3. 以“最小改动接入”为准
+4. 以“先打通链路，再谈抽象”为准
+
+---
+
+## 十五、接口级规范
+
+## 十六、可直接编码模板版（AI 施工最终参考）
+
+本节提供**接近可直接落地的代码模板**。
+
+定位：
+- 不是要 100% 保证复制即编译
+- 而是把 AI 最容易犹豫的部分直接模板化
+- 让实施过程从“理解设计”进一步收敛到“按模板改代码”
+
+使用原则：
+1. 先以本节模板为主
+2. 再以“当前代码映射表”和“逐函数改造点清单”校正
+3. 若模板与当前代码细节冲突，以当前代码真实签名为准
+
+---
+
+### 16.1 `src-tauri/src/app_events.rs` 完整初稿模板
+
+```rust
+use chrono::Utc;
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
+
+pub const TASK_CREATED: &str = "task-created";
+pub const TASK_UPDATED: &str = "task-updated";
+pub const TASK_DELETED: &str = "task-deleted";
+pub const TASK_PAUSED: &str = "task-paused";
+pub const TASK_RESUMED: &str = "task-resumed";
+pub const TASK_EXECUTED: &str = "task-executed";
+pub const ACCOUNTS_CHANGED: &str = "accounts-changed";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskChangedPayload {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskExecutedPayload {
+    pub task_id: String,
+    pub status: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsChangedPayload {
+    pub timestamp: String,
+}
+
+pub fn publish<M: Serialize>(app: &AppHandle, message_id: &str, payload: M) {
+    if let Err(error) = app.emit(message_id, payload) {
+        log::warn!("[app_events] Failed to publish {}: {}", message_id, error);
+    }
+}
+
+pub fn publish_task_created(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_CREATED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_updated(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_UPDATED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_deleted(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_DELETED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_paused(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_PAUSED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_resumed(app: &AppHandle, task_id: &str) {
+    publish(app, TASK_RESUMED, TaskChangedPayload {
+        task_id: task_id.to_string(),
+    });
+}
+
+pub fn publish_task_executed(app: &AppHandle, task_id: &str, status: &str) {
+    publish(app, TASK_EXECUTED, TaskExecutedPayload {
+        task_id: task_id.to_string(),
+        status: status.to_string(),
+        timestamp: Utc::now().to_rfc3339(),
+    });
+}
+
+pub fn publish_accounts_changed(app: &AppHandle) {
+    publish(app, ACCOUNTS_CHANGED, AccountsChangedPayload {
+        timestamp: Utc::now().to_rfc3339(),
+    });
+}
+```
+
+#### 建议配套改动
+在后端模块入口增加：
+
+```rust
+mod app_events;
+```
+
+---
+
+### 16.2 `task_commands.rs` import 模板
+
+在现有 import 基础上，建议新增：
+
+```rust
+use crate::app_events;
+use tauri::{AppHandle, State};
+```
+
+如果当前文件已经有：
+
+```rust
+use tauri::State;
+```
+
+则改成：
+
+```rust
+use tauri::{AppHandle, State};
+```
+
+---
+
+### 16.3 `WorkspaceContext` 目标代码模板
+
+```rust
+pub struct WorkspaceContext {
+    pub db: Arc<Mutex<TaskDatabase>>,
+    pub executor: Arc<TaskExecutor>,
+    pub timer_manager: UnifiedTimerManager,
+    pub workspace_path: String,
+    pub app_handle: AppHandle,
+}
+
+impl WorkspaceContext {
+    pub fn new(workspace_path: String, app_handle: AppHandle) -> Result<Self, String> {
+        log::info!("[WorkspaceContext] Creating new workspace context for: {}", workspace_path);
+
+        let db_path = std::path::Path::new(&workspace_path)
+            .join(".tweetpilot/tweetpilot.db");
+
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        let db = TaskDatabase::new(db_path).map_err(|e| e.to_string())?;
+
+        log::info!("[WorkspaceContext] Recalculating next execution times after database initialization...");
+        db.recalculate_missed_executions().map_err(|e| {
+            log::error!("[WorkspaceContext] Failed to recalculate missed executions: {}", e);
+            e.to_string()
+        })?;
+
+        let executor = Arc::new(TaskExecutor::new());
+        let timer_manager = UnifiedTimerManager::new(Some(app_handle.clone()));
+
+        Ok(Self {
+            db: Arc::new(Mutex::new(db)),
+            executor,
+            timer_manager,
+            workspace_path,
+            app_handle,
+        })
+    }
+}
+```
+
+---
+
+### 16.4 `WorkspaceContext::start_timers()` 关键修改模板
+
+当前注册 executor 的地方，建议改为：
+
+```rust
+self.timer_manager.register_executor(
+    "localbridge_sync".to_string(),
+    Arc::new(LocalBridgeSyncExecutor::new(
+        self.db.clone(),
+        Some(self.app_handle.clone()),
+    )),
+).await;
+
+self.timer_manager.register_executor(
+    "python_script".to_string(),
+    Arc::new(PythonScriptExecutor::new(
+        self.workspace_path.clone(),
+        self.db.clone(),
+    )),
+).await;
+```
+
+#### 说明
+- `PythonScriptExecutor` 第一版不需要注入 `app_handle`
+- 定时任务通知从 `EventLoop` 发，不从 python executor 发
+
+---
+
+### 16.5 `set_current_workspace()` 目标代码模板
+
+```rust
+#[tauri::command]
+pub async fn set_current_workspace(
+    path: String,
+    app: tauri::AppHandle,
+    task_state: tauri::State<'_, crate::task_commands::TaskState>,
+) -> Result<(), String> {
+    log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
+
+    if path.trim().is_empty() {
+        return Err("工作目录不能为空".to_string());
+    }
+
+    let workspace_path = std::path::Path::new(&path);
+    let marker_file = workspace_path.join(".tweetpilot.json");
+
+    if !marker_file.exists() {
+        initialize_workspace(path.clone()).await?;
+    }
+
+    {
+        let mut workspace_ctx = task_state.get_context().await;
+        if let Some(old_ctx) = workspace_ctx.take() {
+            old_ctx.timer_manager.stop().await;
+            drop(old_ctx);
+        }
+    }
+
+    let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone(), app.clone())?;
+    new_ctx.start_timers().await?;
+
+    {
+        let mut workspace_ctx = task_state.get_context().await;
+        *workspace_ctx = Some(new_ctx);
+    }
+
+    persist_current_workspace(path)
+}
+```
+
+---
+
+### 16.6 `UnifiedTimerManager` 目标代码模板
+
+```rust
+pub struct UnifiedTimerManager {
+    pub registry: Arc<Mutex<TimerRegistry>>,
+    event_loop: Arc<EventLoop>,
+}
+
+impl UnifiedTimerManager {
+    pub fn new(app_handle: Option<tauri::AppHandle>) -> Self {
+        let registry = Arc::new(Mutex::new(TimerRegistry::new()));
+        let event_loop = Arc::new(EventLoop::new(registry.clone(), app_handle));
+
+        Self {
+            registry,
+            event_loop,
+        }
+    }
+}
+```
+
+---
+
+### 16.7 `EventLoop` 结构与构造函数模板
+
+```rust
+pub struct EventLoop {
+    registry: Arc<Mutex<TimerRegistry>>,
+    running: Arc<RwLock<bool>>,
+    executors: Arc<RwLock<HashMap<String, Arc<dyn TimerExecutor>>>>,
+    wakeup: Arc<Notify>,
+    app_handle: Option<tauri::AppHandle>,
+}
+
+impl EventLoop {
+    pub fn new(
+        registry: Arc<Mutex<TimerRegistry>>,
+        app_handle: Option<tauri::AppHandle>,
+    ) -> Self {
+        let mut executors: HashMap<String, Arc<dyn TimerExecutor>> = HashMap::new();
+        executors.insert("dummy".to_string(), Arc::new(DummyExecutor));
+
+        Self {
+            registry,
+            running: Arc::new(RwLock::new(false)),
+            executors: Arc::new(RwLock::new(executors)),
+            wakeup: Arc::new(Notify::new()),
+            app_handle,
+        }
+    }
+}
+```
+
+---
+
+### 16.8 `EventLoop::start()` 改造模板
+
+因为当前 `execute_timer()` 是静态风格，推荐改成实例方法。
+
+#### 推荐改法骨架
+
+```rust
+pub async fn start(&self) {
+    let mut running = self.running.write().await;
+    if *running {
+        return;
+    }
+    *running = true;
+    drop(running);
+
+    let this = Arc::new(Self {
+        registry: self.registry.clone(),
+        running: self.running.clone(),
+        executors: self.executors.clone(),
+        wakeup: self.wakeup.clone(),
+        app_handle: self.app_handle.clone(),
+    });
+
+    tokio::spawn(async move {
+        loop {
+            let is_running = *this.running.read().await;
+            if !is_running {
+                break;
+            }
+
+            let next_timer = {
+                let mut reg = this.registry.lock().await;
+                reg.pop_next()
+            };
+
+            match next_timer {
+                Some(timer) => {
+                    let now = chrono::Utc::now();
+
+                    if let Some(next_time) = timer.next_execution {
+                        if next_time <= now {
+                            this.execute_timer(timer).await;
+                        } else {
+                            let duration = (next_time - now).to_std().unwrap_or(tokio::time::Duration::from_secs(1));
+                            let sleep_duration = duration.min(tokio::time::Duration::from_secs(60));
+
+                            tokio::select! {
+                                _ = tokio::time::sleep(sleep_duration) => {}
+                                _ = this.wakeup.notified() => {}
+                            }
+
+                            let mut reg = this.registry.lock().await;
+                            reg.update_timer(timer);
+                        }
+                    }
+                }
+                None => {
+                    tokio::select! {
+                        _ = tokio::time::sleep(tokio::time::Duration::from_secs(60)) => {}
+                        _ = this.wakeup.notified() => {}
+                    }
+                }
+            }
+        }
+    });
+}
+```
+
+#### 实施提醒
+如果不想在这一版里重组 `start()` 太多，也可以退而求其次：
+- 保持 `execute_timer(...)` 为静态函数
+- 额外把 `app_handle: Option<AppHandle>` 作为参数继续传进去
+
+但从文档约束和后续可维护性看，**实例方法更优先**。
+
+---
+
+### 16.9 `EventLoop::execute_timer()` 目标代码模板
+
+```rust
+async fn execute_timer(&self, timer: Timer) {
+    log::info!("[EventLoop] Starting execution of timer: {} ({})", timer.id, timer.name);
+
+    let executor = {
+        let executors = self.executors.read().await;
+        executors.get(&timer.executor).cloned()
+    };
+
+    let Some(executor) = executor else {
+        log::error!("[EventLoop] Executor '{}' not found for timer {}", timer.executor, timer.id);
+        return;
+    };
+
+    let context = ExecutionContext {
+        timer_id: timer.id.clone(),
+        config: timer.executor_config.clone(),
+    };
+
+    match executor.execute(context).await {
+        Ok(result) => {
+            let mut updated_timer = timer.clone();
+            updated_timer.last_execution = Some(result.end_time);
+            updated_timer.next_execution = updated_timer.calculate_next_execution(result.end_time);
+
+            if let Err(error) = executor.post_execution(&updated_timer).await {
+                log::warn!("[EventLoop] Post-execution callback failed for timer {}: {}", timer.id, error);
+            }
+
+            {
+                let mut reg = self.registry.lock().await;
+                reg.update_timer(updated_timer.clone());
+            }
+
+            if updated_timer.id.starts_with("task-") {
+                if let Some(task_id) = updated_timer.id.strip_prefix("task-") {
+                    if let Some(app_handle) = &self.app_handle {
+                        crate::app_events::publish_task_executed(app_handle, task_id, "success");
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            log::error!("[EventLoop] Timer {} execution failed: {}", timer.id, error);
+
+            let mut updated_timer = timer.clone();
+            updated_timer.next_execution = updated_timer.calculate_next_execution(chrono::Utc::now());
+
+            {
+                let mut reg = self.registry.lock().await;
+                reg.update_timer(updated_timer.clone());
+            }
+
+            if updated_timer.id.starts_with("task-") {
+                if let Some(task_id) = updated_timer.id.strip_prefix("task-") {
+                    if let Some(app_handle) = &self.app_handle {
+                        crate::app_events::publish_task_executed(app_handle, task_id, "failed");
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+### 16.10 `LocalBridgeSyncExecutor` 结构模板
+
+```rust
+pub struct LocalBridgeSyncExecutor {
+    last_user_info_query: Mutex<HashMap<String, DateTime<Utc>>>,
+    account_binding_cache: Arc<Mutex<HashMap<String, AccountBindingSnapshot>>>,
+    unmanaged_online_accounts: Arc<Mutex<HashMap<String, UnmanagedAccountRecord>>>,
+    db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+    app_handle: Option<tauri::AppHandle>,
+}
+
+impl LocalBridgeSyncExecutor {
+    pub fn new(
+        db: Arc<Mutex<crate::task_database::TaskDatabase>>,
+        app_handle: Option<tauri::AppHandle>,
+    ) -> Self {
+        let account_binding_cache = {
+            let db_guard = db.lock().unwrap();
+            let managed_accounts = db_guard.get_managed_accounts().unwrap_or_default();
+            let mut cache = HashMap::new();
+            for account in managed_accounts {
+                if let (Some(instance_id), Some(extension_name)) = (account.instance_id, account.extension_name) {
+                    cache.insert(
+                        account.twitter_id,
+                        AccountBindingSnapshot {
+                            instance_id,
+                            extension_name,
+                        },
+                    );
+                }
+            }
+            Arc::new(Mutex::new(cache))
+        };
+
+        Self {
+            last_user_info_query: Mutex::new(HashMap::new()),
+            account_binding_cache,
+            unmanaged_online_accounts: Arc::new(Mutex::new(HashMap::new())),
+            db,
+            app_handle,
+        }
+    }
+}
+```
+
+---
+
+### 16.11 `LocalBridgeSyncExecutor::execute()` 尾部模板
+
+在当前 `join handles` 和 `prune_unmanaged_online_accounts(...)` 之后，加：
+
+```rust
+self.prune_unmanaged_online_accounts(&online_instance_ids);
+
+if let Some(app_handle) = &self.app_handle {
+    crate::app_events::publish_accounts_changed(app_handle);
+}
+
+let unmanaged_count = self.unmanaged_online_accounts.lock().unwrap().len();
+log::info!(
+    "[LocalBridgeSyncExecutor] Sync round summary: instances={}, online_instance_ids={}, resolved_instance_ids={}, unmanaged_online_accounts={}",
+    instances.len(),
+    online_instance_ids.len(),
+    resolved_instance_ids.len(),
+    unmanaged_count
+);
+```
+
+#### 关键约束
+- 发布点放在整轮同步完成后
+- 不放进 `process_user_info()`
+
+---
+
+### 16.12 `create_task()` 模板片段
+
+```rust
+#[tauri::command]
+pub async fn create_task(
+    config: TaskConfigInput,
+    state: State<'_, TaskState>,
+) -> Result<crate::task_database::Task, String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let task = ctx.db.lock().unwrap().create_task(config).map_err(|e| e.to_string())?;
+
+    if task.enabled && task.task_type == "scheduled" {
+        match WorkspaceContext::build_task_timer(&task) {
+            Ok(Some(timer)) => {
+                ctx.timer_manager.register_timer(timer).await?;
+            }
+            Ok(None) => {
+                log::warn!("[create_task] Failed to build timer for task: {}", task.name);
+            }
+            Err(e) => {
+                log::error!("[create_task] Error building timer for task {}: {}", task.name, e);
+            }
+        }
+    }
+
+    app_events::publish_task_created(&ctx.app_handle, &task.id);
+    Ok(task)
+}
+```
+
+---
+
+### 16.13 `update_task()` 模板片段
+
+```rust
+#[tauri::command]
+pub async fn update_task(
+    task_id: String,
+    config: TaskConfigInput,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    ctx.db.lock().unwrap().update_task(&task_id, config).map_err(|e| e.to_string())?;
+
+    ctx.timer_manager.clear_task_timers().await;
+
+    let tasks = ctx.db.lock().unwrap().get_all_tasks().map_err(|e| e.to_string())?;
+    for task in tasks {
+        if !task.enabled || task.task_type != "scheduled" {
+            continue;
+        }
+
+        match WorkspaceContext::build_task_timer(&task) {
+            Ok(Some(timer)) => {
+                ctx.timer_manager.register_timer(timer).await?;
+            }
+            Ok(None) => {
+                log::warn!("[update_task] Failed to build timer for task: {}", task.name);
+            }
+            Err(e) => {
+                log::error!("[update_task] Error building timer for task {}: {}", task.name, e);
+            }
+        }
+    }
+
+    app_events::publish_task_updated(&ctx.app_handle, &task_id);
+    Ok(())
+}
+```
+
+---
+
+### 16.14 `delete_task()` 模板片段
+
+```rust
+#[tauri::command]
+pub async fn delete_task(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    {
+        let mut registry = ctx.timer_manager.registry.lock().await;
+        let _ = registry.unregister(&format!("task-{}", task_id));
+    }
+
+    ctx.db.lock().unwrap().delete_task(&task_id).map_err(|e| e.to_string())?;
+
+    app_events::publish_task_deleted(&ctx.app_handle, &task_id);
+    Ok(())
+}
+```
+
+---
+
+### 16.15 `pause_task()` / `resume_task()` 模板片段
+
+```rust
+app_events::publish_task_paused(&ctx.app_handle, &task_id);
+```
+
+```rust
+app_events::publish_task_resumed(&ctx.app_handle, &task_id);
+```
+
+插入位置分别是：
+- `pause_task()` 中 timer 注销之后
+- `resume_task()` 中 timer 恢复之后
+
+---
+
+### 16.16 `execute_task()` 模板片段
+
+```rust
+match result {
+    Ok(exec_result) => {
+        ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
+        ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
+
+        if task.task_type == "scheduled" && exec_result.status == "success" {
+            if let Ok(updated_task) = ctx.db.lock().unwrap().get_task(&task_id) {
+                if let Err(error) = ctx.db.lock().unwrap().update_next_execution_time(&task_id, &updated_task) {
+                    log::error!("[execute_task] Failed to update next execution time: {}", error);
+                }
+            }
+        }
+
+        app_events::publish_task_executed(&ctx.app_handle, &task_id, "success");
+        Ok(exec_result)
+    }
+    Err(e) => {
+        ctx.db.lock().unwrap().update_task_status(&task_id, "failed").map_err(|e2| e2.to_string())?;
+        app_events::publish_task_executed(&ctx.app_handle, &task_id, "failed");
+        Err(e)
+    }
+}
+```
+
+---
+
+### 16.17 前端共享事件类型模板
+
+建议在前端某个共享类型文件中定义：
+
+```ts
+export interface TaskChangedPayload {
+  taskId: string
+}
+
+export interface TaskExecutedPayload {
+  taskId: string
+  status: 'success' | 'failed'
+  timestamp: string
+}
+
+export interface AccountsChangedPayload {
+  timestamp: string
+}
+```
+
+如果第一版不想新增共享文件，也可以先在使用处局部定义。
+
+---
+
+### 16.18 `TaskDetailContentPane.tsx` import 模板
+
+```ts
+import { listen } from '@tauri-apps/api/event'
+```
+
+如果采用局部类型定义，可在文件顶部补：
+
+```ts
+type TaskChangedPayload = {
+  taskId: string
+}
+
+type TaskExecutedPayload = {
+  taskId: string
+  status: 'success' | 'failed'
+  timestamp: string
+}
+```
+
+---
+
+### 16.19 `TaskDetailContentPane.tsx` 监听模板
+
+```ts
+useEffect(() => {
+  if (!taskId) return
+
+  let disposed = false
+  const unlistenFns: Array<() => void> = []
+
+  const bind = async () => {
+    const messageIds = [
+      'task-executed',
+      'task-updated',
+      'task-paused',
+      'task-resumed',
+      'task-deleted',
+    ] as const
+
+    for (const messageId of messageIds) {
+      const unlisten = await listen<TaskChangedPayload | TaskExecutedPayload>(messageId, (event) => {
+        const payload = event.payload
+        if (!payload || payload.taskId !== taskId) {
+          return
+        }
+
+        if (messageId === 'task-deleted') {
+          onDeleted?.()
+          return
+        }
+
+        void loadDetail()
+      })
+
+      if (disposed) {
+        unlisten()
+      } else {
+        unlistenFns.push(unlisten)
+      }
+    }
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    for (const fn of unlistenFns) {
+      fn()
+    }
+  }
+}, [taskId, onDeleted])
+```
+
+#### 实施提醒
+如果 ESLint / hooks 依赖规则要求把 `loadDetail` 放进依赖，需要先用 `useCallback` 包装 `loadDetail`。
+
+---
+
+### 16.20 `useTasksSidebarItems.ts` import 与监听模板
+
+#### import
+
+```ts
+import { listen } from '@tauri-apps/api/event'
+```
+
+#### 监听 effect
+
+```ts
+useEffect(() => {
+  let disposed = false
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null
+  const unlistenFns: Array<() => void> = []
+
+  const scheduleReload = () => {
+    if (reloadTimer) {
+      clearTimeout(reloadTimer)
+    }
+
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null
+      void loadTasks()
+    }, 300)
+  }
+
+  const bind = async () => {
+    const messageIds = [
+      'task-created',
+      'task-updated',
+      'task-deleted',
+      'task-paused',
+      'task-resumed',
+      'task-executed',
+    ] as const
+
+    for (const messageId of messageIds) {
+      const unlisten = await listen(messageId, () => {
+        scheduleReload()
+      })
+
+      if (disposed) {
+        unlisten()
+      } else {
+        unlistenFns.push(unlisten)
+      }
+    }
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+
+    if (reloadTimer) {
+      clearTimeout(reloadTimer)
+    }
+
+    for (const fn of unlistenFns) {
+      fn()
+    }
+  }
+}, [])
+```
+
+#### 实施提醒
+如果你希望减少闭包漂移，可先把 `loadTasks` 包成 `useCallback`，再把依赖从 `[]` 改成 `[loadTasks]`。
+
+---
+
+### 16.21 `AccountDetailPane.tsx` 监听模板
+
+#### import
+
+```ts
+import { listen } from '@tauri-apps/api/event'
+```
+
+#### 局部类型
+
+```ts
+type AccountsChangedPayload = {
+  timestamp: string
+}
+```
+
+#### effect 模板
+
+```ts
+useEffect(() => {
+  if (!item?.id) return
+
+  let disposed = false
+  let unlisten: null | (() => void) = null
+
+  const bind = async () => {
+    const fn = await listen<AccountsChangedPayload>('accounts-changed', () => {
+      void reloadDetail()
+    })
+
+    if (disposed) {
+      fn()
+      return
+    }
+
+    unlisten = fn
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    unlisten?.()
+  }
+}, [item?.id])
+```
+
+---
+
+### 16.22 `useAppLayoutState.ts` 监听模板
+
+#### import
+
+```ts
+import { listen } from '@tauri-apps/api/event'
+```
+
+#### 建议前提
+先确认当前文件里已经有一个稳定的账号 reload 方法，例如：
+
+```ts
+const reloadAccounts = async () => {
+  const [managed, unmanaged] = await Promise.all([
+    getManagedAccounts(),
+    getUnmanagedOnlineAccounts(),
+  ])
+
+  setManagedAccounts(managed)
+  setUnmanagedAccounts(unmanaged)
+  setAccountItems(buildAccountSidebarItems(managed, unmanaged))
+}
+```
+
+如果已有同类函数，就复用，不要新造第二套。
+
+#### effect 模板
+
+```ts
+useEffect(() => {
+  let disposed = false
+  let unlisten: null | (() => void) = null
+
+  const bind = async () => {
+    const fn = await listen<AccountsChangedPayload>('accounts-changed', () => {
+      void reloadAccounts()
+    })
+
+    if (disposed) {
+      fn()
+      return
+    }
+
+    unlisten = fn
+  }
+
+  void bind()
+
+  return () => {
+    disposed = true
+    unlisten?.()
+  }
+}, [])
+```
+
+---
+
+### 16.23 AI 直接编码时的最小执行顺序
+
+如果让 AI 真正按这份文档直接开工，建议严格按这个顺序：
+
+1. 新增 `app_events.rs`
+2. 改 `WorkspaceContext` + `set_current_workspace()`
+3. 改 `UnifiedTimerManager` + `EventLoop`
+4. 改 `create/update/delete/pause/resume/execute_task`
+5. 改 `LocalBridgeSyncExecutor`
+6. 改前端任务订阅
+7. 改前端账号订阅
+8. 最后整体测试
+
+#### 原因
+这是当前依赖链最短、返工最少的顺序：
+- 先有发布层
+- 再有 app handle 传递链
+- 再接业务发布点
+- 最后接前端消费
+
+---
+
+### 16.24 AI 编码完成后的验收清单
+
+#### 后端
+- [ ] 存在 `src-tauri/src/app_events.rs`
+- [ ] 没有散落的任务类裸 `app.emit(...)`
+- [ ] `WorkspaceContext` 已持有 `app_handle`
+- [ ] `UnifiedTimerManager::new()` 已接收 `Option<AppHandle>`
+- [ ] `EventLoop` 已能访问 `app_handle`
+- [ ] `LocalBridgeSyncExecutor` 已能访问 `app_handle`
+
+#### 手动任务路径
+- [ ] `create_task` 会发布 `task-created`
+- [ ] `update_task` 会发布 `task-updated`
+- [ ] `delete_task` 会发布 `task-deleted`
+- [ ] `pause_task` 会发布 `task-paused`
+- [ ] `resume_task` 会发布 `task-resumed`
+- [ ] `execute_task` 会发布 `task-executed`
+
+#### 定时器路径
+- [ ] scheduled task 自动执行后会发布 `task-executed`
+- [ ] 非 task timer 不会误发任务消息
+
+#### 账号同步路径
+- [ ] 一轮同步后只发布一次 `accounts-changed`
+- [ ] `process_user_info()` 不发布通知
+
+#### 前端
+- [ ] 任务详情已监听任务消息
+- [ ] 任务列表已监听任务消息
+- [ ] 账号列表已监听 `accounts-changed`
+- [ ] 账号详情已监听 `accounts-changed`
+- [ ] 所有监听都有 cleanup
+
+#### 非阻塞约束
+- [ ] 消息架构只负责消息收发，不负责串行等待订阅方完成业务处理
+- [ ] 任一订阅方的处理逻辑不会阻塞其他订阅方继续接收同一条消息
+- [ ] 前端监听回调采用 `void load...()` / debounce 等异步调度模式，而不是在回调里执行长时间串行逻辑
+- [ ] 如果未来增加后端内部订阅者，也遵守“收消息”和“处理业务”解耦
+
+---
+
+## 十七、接口级规范
 
 本节定义通用后台通知架构在第一版中的“接口级约定”。
 

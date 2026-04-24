@@ -1,15 +1,71 @@
 import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { taskService, getManagedAccountsForTaskSelection, type ManagedAccountForTask } from '@/services'
-import type { TaskType } from '@/services'
+import type { Task, TaskConfigInput, TaskType } from '@/services'
 import { ScriptSelector } from './ScriptSelector'
 import { ParameterEditor } from './ParameterEditor'
 
-interface TaskCreatePaneProps {
-  onCreated?: (taskId?: string) => void
+function buildTaskFormState(task?: Task) {
+  const scheduleType = task?.scheduleType || 'interval'
+  const base = {
+    name: task?.name || '',
+    description: task?.description || '',
+    taskType: (task?.type || 'immediate') as TaskType,
+    scheduleType: scheduleType as 'interval' | 'cron',
+    scriptPath: task?.scriptPath || '',
+    parameters: ((task?.parameters || {}) as Record<string, string>),
+    accountId: task?.accountId || '',
+    intervalValue: 2,
+    intervalUnit: 'hours' as 'minutes' | 'hours' | 'days',
+    cronFields: { second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' },
+  }
+
+  if (!task || task.type !== 'scheduled') {
+    return base
+  }
+
+  if (task.scheduleType === 'interval' && task.intervalSeconds) {
+    const seconds = task.intervalSeconds
+    if (seconds % 86400 === 0) {
+      base.intervalValue = seconds / 86400
+      base.intervalUnit = 'days'
+    } else if (seconds % 3600 === 0) {
+      base.intervalValue = seconds / 3600
+      base.intervalUnit = 'hours'
+    } else {
+      base.intervalValue = Math.max(1, Math.floor(seconds / 60))
+      base.intervalUnit = 'minutes'
+    }
+  }
+
+  if (task.scheduleType === 'cron' && task.schedule) {
+    const parts = task.schedule.trim().split(/\s+/)
+    if (parts.length === 6) {
+      const utcHour = parseInt(parts[2], 10)
+      const localHour = Number.isNaN(utcHour) ? parts[2] : String((utcHour + 8) % 24)
+      base.cronFields = {
+        second: parts[0],
+        minute: parts[1],
+        hour: localHour,
+        day: parts[3],
+        month: parts[4],
+        weekday: parts[5],
+      }
+    }
+  }
+
+  return base
 }
 
-export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
+interface TaskCreatePaneProps {
+  mode?: 'create' | 'edit'
+  initialTask?: Task
+  onCreated?: (taskId?: string) => void
+  onCancel?: () => void
+  onDirtyChange?: (dirty: boolean) => void
+}
+
+export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCancel, onDirtyChange }: TaskCreatePaneProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('immediate')
@@ -25,6 +81,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [baselineSnapshot, setBaselineSnapshot] = useState('')
 
   useEffect(() => {
     getManagedAccountsForTaskSelection()
@@ -36,6 +93,24 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       .finally(() => setAccountsLoading(false))
   }, [])
 
+  useEffect(() => {
+    const nextState = buildTaskFormState(initialTask)
+
+    setName(nextState.name)
+    setDescription(nextState.description)
+    setTaskType(nextState.taskType)
+    setScheduleType(nextState.scheduleType)
+    setScriptPath(nextState.scriptPath)
+    setParameters(nextState.parameters)
+    setAccountId(nextState.accountId)
+    setIntervalValue(nextState.intervalValue)
+    setIntervalUnit(nextState.intervalUnit)
+    setCronFields(nextState.cronFields)
+    setError(null)
+    setSuccessMessage(null)
+    setBaselineSnapshot(JSON.stringify(nextState))
+  }, [initialTask])
+
   const cronExpression = useMemo(() => {
     return `${cronFields.second} ${cronFields.minute} ${cronFields.hour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
   }, [cronFields])
@@ -43,10 +118,8 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
   const cronDescription = useMemo(() => {
     const { minute, hour, day, month, weekday } = cronFields
 
-    // 简单的人类可读描述生成
     const parts: string[] = []
 
-    // 时间部分
     if (hour === '*' && minute === '*') {
       parts.push('每分钟')
     } else if (hour === '*') {
@@ -57,7 +130,6 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
       parts.push(`${hour}:${minute.padStart(2, '0')}`)
     }
 
-    // 日期部分
     if (weekday !== '*' && day === '*') {
       const weekdays = ['日', '一', '二', '三', '四', '五', '六']
       parts.push(`每周${weekdays[parseInt(weekday)] || weekday}`)
@@ -76,6 +148,28 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     if (!scriptPath) return '未选择脚本'
     return scriptPath.split('/').pop() || scriptPath
   }, [scriptPath])
+
+  const formSnapshot = useMemo(
+    () => JSON.stringify({
+      name,
+      description,
+      taskType,
+      scheduleType,
+      scriptPath,
+      parameters,
+      accountId,
+      intervalValue,
+      intervalUnit,
+      cronFields,
+    }),
+    [name, description, taskType, scheduleType, scriptPath, parameters, accountId, intervalValue, intervalUnit, cronFields],
+  )
+
+  const isDirty = formSnapshot !== baselineSnapshot
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
 
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.twitterId === accountId),
@@ -100,7 +194,6 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
         if (parts.length !== 6) {
           return 'Cron 表达式必须包含 6 个字段（秒 分 时 日 月 周）'
         }
-        // 简单验证每个字段不为空
         if (parts.some(p => !p || p.trim() === '')) {
           return 'Cron 表达式的每个字段都不能为空'
         }
@@ -113,19 +206,47 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     setName('')
     setDescription('')
     setTaskType('immediate')
+    setScheduleType('interval')
     setScriptPath('')
     setParameters({})
     setIntervalValue(1)
     setIntervalUnit('hours')
+    setCronFields({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
+    setAccountId('')
   }
 
   const getCronFromTemplate = (): string => {
-    // Convert local time to UTC for cron expression
-    // Backend interprets cron in UTC, so we need to convert
     const localHour = parseInt(cronFields.hour)
-    const utcHour = (localHour - 8 + 24) % 24 // CST is UTC+8
+    const utcHour = (localHour - 8 + 24) % 24
     return `${cronFields.second} ${cronFields.minute} ${utcHour} ${cronFields.day} ${cronFields.month} ${cronFields.weekday}`
   }
+
+  const getIntervalSeconds = () => {
+    switch (intervalUnit) {
+      case 'minutes':
+        return intervalValue * 60
+      case 'hours':
+        return intervalValue * 3600
+      case 'days':
+        return intervalValue * 86400
+    }
+  }
+
+  const buildPayload = (): TaskConfigInput => ({
+    name: name.trim(),
+    description: description.trim() || undefined,
+    taskType,
+    scriptPath: scriptPath.trim(),
+    scheduleType: taskType === 'scheduled' ? scheduleType : undefined,
+    schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronFromTemplate() : undefined,
+    intervalSeconds: taskType === 'scheduled' && scheduleType === 'interval' ? getIntervalSeconds() : undefined,
+    parameters,
+    accountId: accountId || undefined,
+    timeout: initialTask?.timeout,
+    retryCount: initialTask?.retryCount,
+    retryDelay: initialTask?.retryDelay,
+    tags: initialTask?.tags,
+  })
 
   const handleSubmit = async () => {
     const validationError = validateForm()
@@ -139,40 +260,29 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
     setError(null)
     setSuccessMessage(null)
 
-    const getIntervalSeconds = () => {
-      switch (intervalUnit) {
-        case 'minutes':
-          return intervalValue * 60
-        case 'hours':
-          return intervalValue * 3600
-        case 'days':
-          return intervalValue * 86400
-      }
-    }
-
-    const payload = {
-      name: name.trim(),
-      description: description.trim() || undefined,
-      taskType,
-      scriptPath: scriptPath.trim(),
-      scheduleType: taskType === 'scheduled' ? scheduleType : undefined,
-      schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronFromTemplate() : undefined,
-      intervalSeconds: taskType === 'scheduled' && scheduleType === 'interval' ? getIntervalSeconds() : undefined,
-      parameters: Object.keys(parameters).length > 0 ? parameters : undefined,
-      accountId: accountId || undefined,
-    }
+    const payload = buildPayload()
 
     try {
-      const createdTask = await taskService.createTask(payload)
-      setSuccessMessage(taskType === 'scheduled' ? '定时任务创建成功，已加入任务列表。' : '即时任务创建成功，已加入任务列表。')
-      resetForm()
-      onCreated?.(createdTask.id)
+      if (mode === 'edit' && initialTask) {
+        await taskService.updateTask(initialTask.id, payload)
+        setSuccessMessage('任务更新成功。')
+        setBaselineSnapshot(formSnapshot)
+        onDirtyChange?.(false)
+        onCreated?.(initialTask.id)
+      } else {
+        const createdTask = await taskService.createTask(payload)
+        setSuccessMessage(taskType === 'scheduled' ? '定时任务创建成功，已加入任务列表。' : '即时任务创建成功，已加入任务列表。')
+        resetForm()
+        onCreated?.(createdTask.id)
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      setError(err instanceof Error ? err.message : mode === 'edit' ? '更新失败' : '创建失败')
     } finally {
       setCreating(false)
     }
   }
+
+  const isEditMode = mode === 'edit'
 
   return (
     <div className="p-6 space-y-5">
@@ -182,11 +292,13 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] text-[var(--color-text)]">
                 <Sparkles className="w-3.5 h-3.5" />
-                新建任务
+                {isEditMode ? '编辑任务' : '新建任务'}
               </div>
-              <h2 className="text-2xl font-semibold text-white mt-4">任务创建工作台</h2>
+              <h2 className="text-2xl font-semibold text-white mt-4">{isEditMode ? '任务编辑工作台' : '任务创建工作台'}</h2>
               <p className="text-sm text-[#D4D4D4] mt-2 leading-6 max-w-2xl">
-                保留之前的即时任务 / 定时任务能力，但把它放进新的主显示区工作流，让创建体验更完整也更稳定。
+                {isEditMode
+                  ? '修改任务脚本路径与现有配置，保存后立即执行和后续调度都会使用新配置。'
+                  : '保留之前的即时任务 / 定时任务能力，但把它放进新的主显示区工作流，让创建体验更完整也更稳定。'}
               </p>
             </div>
             <div className="hidden md:flex w-20 h-20 rounded-2xl border border-white/10 bg-black/20 items-center justify-center shadow-inner">
@@ -243,7 +355,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
               ))}
             </select>
             <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
-              如果脚本需要 Twitter 账号信息，会通过环境变量 TWITTER_ACCOUNT 传递
+              账号信息当前仅随任务配置一起保存，脚本执行链路暂不通过环境变量注入。
             </div>
           </Field>
 
@@ -267,7 +379,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
             />
           </Field>
 
-          <Field label="脚本参数（可选）">
+          <Field label="任务参数（可选）">
             <ParameterEditor value={parameters} onChange={setParameters} />
           </Field>
 
@@ -279,7 +391,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                     type="button"
                     onClick={() => setScheduleType('interval')}
                     className={[
-                      'rounded-xl border p-4 text-left transition-colors',
+                      'rounded-xl border p-4 text-left transition-colors cursor-pointer',
                       scheduleType === 'interval' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
                     ].join(' ')}
                   >
@@ -290,7 +402,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
                     type="button"
                     onClick={() => setScheduleType('cron')}
                     className={[
-                      'rounded-xl border p-4 text-left transition-colors',
+                      'rounded-xl border p-4 text-left transition-colors cursor-pointer',
                       scheduleType === 'cron' ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
                     ].join(' ')}
                   >
@@ -372,19 +484,19 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           <div className="flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => onCreated?.()}
+              onClick={() => (onCancel || onCreated)?.()}
               disabled={creating}
-              className="h-10 px-5 rounded border border-[#3A3A3A] bg-[var(--color-bg)] text-[var(--color-text)] text-sm hover:border-[#4A4A4A] hover:bg-[var(--color-border)] transition-colors disabled:opacity-50"
+              className="h-10 px-5 rounded border border-[#3A3A3A] bg-[var(--color-bg)] text-[var(--color-text)] text-sm hover:border-[#4A4A4A] hover:bg-[var(--color-border)] transition-colors disabled:opacity-50 cursor-pointer"
             >
-              取消创建
+              {isEditMode ? '取消编辑' : '取消创建'}
             </button>
             <button
               type="button"
               onClick={handleSubmit}
               disabled={creating}
-              className="h-10 px-5 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50"
+              className="h-10 px-5 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 cursor-pointer"
             >
-              {creating ? '创建中...' : '创建任务'}
+              {creating ? (isEditMode ? '保存中...' : '创建中...') : (isEditMode ? '保存修改' : '创建任务')}
             </button>
           </div>
         </section>
@@ -399,7 +511,7 @@ export function TaskCreatePane({ onCreated }: TaskCreatePaneProps) {
           <SidePanel title="使用说明">
             <div className="space-y-2 text-sm text-[var(--color-text)] leading-7">
               <p>选择一个 Python 脚本文件，系统会自动执行并捕获输出。</p>
-              <p>脚本可以通过环境变量获取账号信息：TWITTER_ACCOUNT、TWEET_ID、TWEET_TEXT。</p>
+              <p>当前版本执行链路只按数据库中的脚本路径启动脚本，不消费任务参数。</p>
               <p>即时任务适合手动触发，定时任务适合周期性自动执行。</p>
             </div>
           </SidePanel>
@@ -424,7 +536,7 @@ function ModeCard({ active, title, description, icon, onClick }: { active: boole
       type="button"
       onClick={onClick}
       className={[
-        'rounded-xl border p-4 text-left transition-colors',
+        'rounded-xl border p-4 text-left transition-colors cursor-pointer',
         active ? 'border-[#6D5BF6] bg-[#6D5BF6]/10' : 'border-[var(--color-border)] bg-[var(--color-input)] hover:border-[#6D5BF6]/50',
       ].join(' ')}
     >

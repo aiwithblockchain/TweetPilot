@@ -75,6 +75,7 @@ export interface TaskConfigInput {
   timeout?: number
   retryCount?: number
   retryDelay?: number
+  accountId?: string
   accountScreenName?: string
   parameters?: Record<string, any>
   tags?: string[]

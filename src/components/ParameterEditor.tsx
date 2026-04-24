@@ -38,7 +38,7 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
               <button
                 type="button"
                 onClick={() => handleRemove(key)}
-                className="p-1 rounded hover:bg-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[#F48771] transition-colors"
+                className="p-1 rounded hover:bg-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[#F48771] transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -68,7 +68,7 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
           type="button"
           onClick={handleAdd}
           disabled={!newKey.trim()}
-          className="h-9 px-3 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] disabled:opacity-50 transition-colors flex items-center gap-1"
+          className="h-9 px-3 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] disabled:opacity-50 transition-colors flex items-center gap-1 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           添加
@@ -76,7 +76,7 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
       </div>
 
       <div className="text-xs text-[var(--color-text-secondary)]">
-        参数会以 --key=value 格式传递给 Python 脚本
+        参数当前仅用于存储，执行链路暂不消费，后续会单独设计使用方式
       </div>
     </div>
   )

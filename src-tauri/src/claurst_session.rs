@@ -6,7 +6,7 @@ use claurst_tools::{
     BashTool, GlobTool, GrepTool,
 };
 use claurst_api::{AnthropicClient, client::ClientConfig, AnthropicStreamEvent};
-use crate::services::conversation_storage::{ConversationStorage, StoredMessage};
+use crate::services::conversation_storage::{ConversationStorage, StoredMessage, StoredToolCall};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -151,15 +151,21 @@ impl ClaurstSession {
         window: Window,
         cancel_token: CancellationToken,
     ) -> anyhow::Result<String> {
+        let now = chrono::Utc::now().timestamp();
         self.messages.push(Message::user(message.to_string()));
         log::info!("User message added, total messages: {}", self.messages.len());
 
         if let Err(e) = self.storage.save_message(
             &self.session_id,
             StoredMessage {
+                id: Some(format!("user-{}", now)),
                 role: "user".to_string(),
                 content: message.to_string(),
-                timestamp: chrono::Utc::now().timestamp(),
+                timestamp: now,
+                thinking: None,
+                thinking_complete: None,
+                tool_calls: None,
+                status: None,
             },
         ) {
             log::warn!("Failed to save user message to storage: {}", e);
@@ -168,6 +174,12 @@ impl ClaurstSession {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let event_window = window.clone();
         let request_id_owned = request_id.to_string();
+        let thinking_buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
+        let tool_calls = Arc::new(tokio::sync::Mutex::new(Vec::<StoredToolCall>::new()));
+        let status_text = Arc::new(tokio::sync::Mutex::new(None::<String>));
+        let thinking_buffer_for_events = Arc::clone(&thinking_buffer);
+        let tool_calls_for_events = Arc::clone(&tool_calls);
+        let status_text_for_events = Arc::clone(&status_text);
 
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
@@ -183,6 +195,7 @@ impl ClaurstSession {
                                     }));
                                 }
                                 ContentDelta::ThinkingDelta { thinking } => {
+                                    thinking_buffer_for_events.lock().await.push_str(&thinking);
                                     let _ = event_window.emit("thinking-chunk", serde_json::json!({
                                         "request_id": request_id_owned.clone(),
                                         "chunk": thinking,
@@ -194,6 +207,18 @@ impl ClaurstSession {
                     }
                     QueryEvent::ToolStart { tool_name, .. } => {
                         let description = format!("Using {}", tool_name);
+                        let timestamp_ms = chrono::Utc::now().timestamp_millis();
+                        tool_calls_for_events.lock().await.push(StoredToolCall {
+                            id: format!("{}-{}", tool_name, timestamp_ms),
+                            tool: tool_name.clone(),
+                            action: description.clone(),
+                            input: None,
+                            output: None,
+                            status: "running".to_string(),
+                            duration: None,
+                            start_time: timestamp_ms,
+                            end_time: None,
+                        });
                         let _ = event_window.emit("tool-call-start", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "tool": tool_name,
@@ -201,6 +226,15 @@ impl ClaurstSession {
                         }));
                     }
                     QueryEvent::ToolEnd { tool_name, result, is_error, .. } => {
+                        let end_time = chrono::Utc::now().timestamp_millis();
+                        let mut tool_calls_guard = tool_calls_for_events.lock().await;
+                        if let Some(tool_call) = tool_calls_guard.iter_mut().rev().find(|tc| tc.tool == tool_name && tc.status == "running") {
+                            tool_call.status = if is_error { "error".to_string() } else { "success".to_string() };
+                            tool_call.output = Some(result.clone());
+                            tool_call.end_time = Some(end_time);
+                            tool_call.duration = Some((end_time - tool_call.start_time) as f64 / 1000.0);
+                        }
+                        drop(tool_calls_guard);
                         let _ = event_window.emit("tool-call-end", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "tool": tool_name,
@@ -214,6 +248,7 @@ impl ClaurstSession {
                         } else {
                             "thinking"
                         };
+                        *status_text_for_events.lock().await = Some(status.clone());
                         let _ = event_window.emit("ai-status", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "phase": phase,
@@ -271,12 +306,28 @@ impl ClaurstSession {
             }
         };
 
+        let final_timestamp = chrono::Utc::now().timestamp();
+        let final_thinking = {
+            let thinking = thinking_buffer.lock().await.clone();
+            if thinking.is_empty() { None } else { Some(thinking) }
+        };
+        let final_tool_calls = {
+            let tool_calls = tool_calls.lock().await.clone();
+            if tool_calls.is_empty() { None } else { Some(tool_calls) }
+        };
+        let final_status = status_text.lock().await.clone().or_else(|| Some("completed".to_string()));
+
         if let Err(e) = self.storage.save_message(
             &self.session_id,
             StoredMessage {
+                id: Some(format!("assistant-{}", final_timestamp)),
                 role: "assistant".to_string(),
                 content: final_text.clone(),
-                timestamp: chrono::Utc::now().timestamp(),
+                timestamp: final_timestamp,
+                thinking: final_thinking,
+                thinking_complete: Some(true),
+                tool_calls: final_tool_calls,
+                status: final_status,
             },
         ) {
             log::warn!("Failed to save assistant message to storage: {}", e);

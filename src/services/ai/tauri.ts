@@ -10,10 +10,32 @@ export interface Message {
   isStreaming?: boolean
 }
 
+export interface StoredToolCall {
+  id: string
+  tool: string
+  action: string
+  input?: string | null
+  output?: string | null
+  status: string
+  duration?: number | null
+  start_time: number
+  end_time?: number | null
+}
+
 export interface StoredMessage {
+  id?: string | null
   role: string
   content: string
   timestamp: number
+  thinking?: string | null
+  thinking_complete?: boolean | null
+  tool_calls?: StoredToolCall[] | null
+  status?: string | null
+}
+
+export interface LoadedSession {
+  session: SessionMetadata
+  messages: StoredMessage[]
 }
 
 export interface SessionMetadata {
@@ -23,6 +45,7 @@ export interface SessionMetadata {
   updated_at: number
   message_count: number
   workspace: string
+  schema_version?: number | null
 }
 
 export const aiService = {
@@ -30,7 +53,7 @@ export const aiService = {
     return invoke('init_ai_session', { workingDir })
   },
 
-  async sendMessage(message: string): Promise<string> {
+  async sendMessage(message: string): Promise<{ request_id: string }> {
     return invoke('send_ai_message', { message })
   },
 
@@ -82,7 +105,7 @@ export const aiService = {
     return invoke('get_session_metadata', { sessionId })
   },
 
-  async loadSession(sessionId: string): Promise<StoredMessage[]> {
+  async loadSession(sessionId: string): Promise<LoadedSession> {
     return invoke('load_ai_session', { sessionId })
   },
 

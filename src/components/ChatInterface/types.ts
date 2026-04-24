@@ -21,3 +21,15 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   status?: string
 }
+
+export interface PersistedToolCall {
+  id: string
+  tool: string
+  action: string
+  input?: string
+  output?: string
+  status: string
+  duration?: number
+  start_time: number
+  end_time?: number
+}

@@ -7,9 +7,15 @@ interface TaskDetailPaneProps {
   mode?: 'detail' | 'create'
   onCreated?: (taskId?: string) => void
   onDeleted?: () => void
+  onEditStateChange?: (state: {
+    taskId: string
+    taskName: string
+    isEditing: boolean
+    hasUnsavedChanges: boolean
+  }) => void
 }
 
-export function TaskDetailPane({ item, mode = 'detail', onCreated, onDeleted }: TaskDetailPaneProps) {
+export function TaskDetailPane({ item, mode = 'detail', onCreated, onDeleted, onEditStateChange }: TaskDetailPaneProps) {
   if (mode === 'create') {
     return <TaskCreatePane onCreated={onCreated} />
   }
@@ -18,7 +24,13 @@ export function TaskDetailPane({ item, mode = 'detail', onCreated, onDeleted }: 
     return <EmptyState title="任务" description="请先在左侧选择一个任务，或点击左上角 + 号新建任务。" />
   }
 
-  return <TaskDetailContentPane taskId={item.id} onDeleted={onDeleted} />
+  return (
+    <TaskDetailContentPane
+      taskId={item.id}
+      onDeleted={onDeleted}
+      onEditStateChange={onEditStateChange}
+    />
+  )
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {

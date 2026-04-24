@@ -3,10 +3,37 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredToolCall {
+    pub id: String,
+    pub tool: String,
+    pub action: String,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub duration: Option<f64>,
+    pub start_time: i64,
+    #[serde(default)]
+    pub end_time: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {
+    #[serde(default)]
+    pub id: Option<String>,
     pub role: String,
     pub content: String,
     pub timestamp: i64,
+    #[serde(default)]
+    pub thinking: Option<String>,
+    #[serde(default)]
+    pub thinking_complete: Option<bool>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<StoredToolCall>>,
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,7 +43,16 @@ pub struct SessionMetadata {
     pub created_at: i64,
     pub updated_at: i64,
     pub message_count: usize,
+    #[serde(default)]
     pub workspace: String,
+    #[serde(default)]
+    pub schema_version: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadedSession {
+    pub session: SessionMetadata,
+    pub messages: Vec<StoredMessage>,
 }
 
 pub struct ConversationStorage {
@@ -67,6 +103,13 @@ impl ConversationStorage {
             .collect()
     }
 
+    pub fn load_session(&self, session_id: &str) -> Result<LoadedSession, String> {
+        let messages = self.load_messages(session_id)?;
+        let session = self.get_session_metadata(session_id)?;
+
+        Ok(LoadedSession { session, messages })
+    }
+
     pub fn clear_messages(&self, session_id: &str) -> Result<(), String> {
         let file_path = self.base_dir.join(format!("{}.jsonl", session_id));
         if file_path.exists() {
@@ -110,6 +153,7 @@ impl ConversationStorage {
                 updated_at: 0,
                 message_count: 0,
                 workspace: String::new(),
+                schema_version: Some(2),
             });
         }
 
@@ -128,6 +172,7 @@ impl ConversationStorage {
             updated_at,
             message_count,
             workspace: String::new(),
+            schema_version: Some(2),
         })
     }
 
@@ -148,5 +193,86 @@ impl ConversationStorage {
         } else {
             chars.iter().take(MAX_LEN).collect::<String>() + "..."
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConversationStorage, StoredMessage};
+    use std::fs;
+    use uuid::Uuid;
+
+    fn with_test_home<T>(name: &str, test: impl FnOnce(ConversationStorage, String) -> T) -> T {
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-conversation-storage-{}-{}",
+            name,
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&temp_root).expect("create temp home");
+        let previous_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", &temp_root);
+
+        let storage = ConversationStorage::new().expect("create storage");
+        let session_id = format!("session-{}", Uuid::new_v4());
+        let result = test(storage, session_id.clone());
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        let _ = fs::remove_dir_all(&temp_root);
+        result
+    }
+
+    #[test]
+    fn load_session_returns_metadata_and_messages_without_active_session() {
+        with_test_home("load-session", |storage, session_id| {
+            storage
+                .save_message(
+                    &session_id,
+                    StoredMessage {
+                        role: "user".to_string(),
+                        content: "你好，帮我总结一下这个目录".to_string(),
+                        timestamp: 1_710_000_000,
+                    },
+                )
+                .expect("save user message");
+
+            storage
+                .save_message(
+                    &session_id,
+                    StoredMessage {
+                        role: "assistant".to_string(),
+                        content: "这是一个测试目录摘要".to_string(),
+                        timestamp: 1_710_000_100,
+                    },
+                )
+                .expect("save assistant message");
+
+            let loaded = storage.load_session(&session_id).expect("load session");
+
+            assert_eq!(loaded.session.id, session_id);
+            assert_eq!(loaded.session.message_count, 2);
+            assert_eq!(loaded.session.created_at, 1_710_000_000);
+            assert_eq!(loaded.session.updated_at, 1_710_000_100);
+            assert_eq!(loaded.session.workspace, "");
+            assert_eq!(loaded.messages.len(), 2);
+            assert_eq!(loaded.messages[0].role, "user");
+            assert_eq!(loaded.messages[1].role, "assistant");
+        });
+    }
+
+    #[test]
+    fn load_session_returns_empty_payload_for_missing_history() {
+        with_test_home("missing-session", |storage, session_id| {
+            let loaded = storage.load_session(&session_id).expect("load missing session");
+
+            assert_eq!(loaded.session.id, session_id);
+            assert_eq!(loaded.session.title, "新会话");
+            assert_eq!(loaded.session.message_count, 0);
+            assert!(loaded.messages.is_empty());
+        });
     }
 }

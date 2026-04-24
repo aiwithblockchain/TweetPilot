@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ToolCallCard } from './ToolCallCard'
 import type { ToolCall } from './types'
 
@@ -9,6 +9,12 @@ interface ProcessStepsProps {
 
 export function ProcessSteps({ toolCalls, isActive }: ProcessStepsProps) {
   const [expanded, setExpanded] = useState(isActive)
+
+  useEffect(() => {
+    if (isActive) {
+      setExpanded(true)
+    }
+  }, [isActive])
 
   if (toolCalls.length === 0) return null
 

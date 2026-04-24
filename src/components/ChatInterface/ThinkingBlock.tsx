@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface ThinkingBlockProps {
   thinking: string
@@ -6,8 +6,14 @@ interface ThinkingBlockProps {
   isComplete: boolean
 }
 
-export function ThinkingBlock({ thinking, isActive }: ThinkingBlockProps) {
+export function ThinkingBlock({ thinking, isActive, isComplete }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(isActive)
+
+  useEffect(() => {
+    if (isActive) {
+      setExpanded(true)
+    }
+  }, [isActive])
 
   if (!thinking) return null
 
@@ -28,13 +34,15 @@ export function ThinkingBlock({ thinking, isActive }: ThinkingBlockProps) {
         <div className="flex items-center gap-2">
           <span className="text-xs">🧠</span>
           <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>Thinking</span>
-          {isActive && (
+          {isActive ? (
             <div className="flex gap-0.5">
               <span className="inline-block w-1 h-1 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
               <span className="inline-block w-1 h-1 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
               <span className="inline-block w-1 h-1 bg-[#569CD6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
             </div>
-          )}
+          ) : isComplete ? (
+            <span className="text-xs" style={{ color: '#4EC9B0' }}>Completed</span>
+          ) : null}
         </div>
         <span className="text-xs transform transition-transform" style={{ color: 'var(--color-text-secondary)', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
           ▶

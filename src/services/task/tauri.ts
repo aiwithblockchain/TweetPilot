@@ -20,6 +20,10 @@ interface TauriTaskConfigInput {
   interval_seconds?: number
   parameters?: Record<string, string>
   account_id: string
+  timeout?: number
+  retry_count?: number
+  retry_delay?: number
+  tags?: string[]
 }
 
 interface TauriTask {
@@ -28,7 +32,7 @@ interface TauriTask {
   description?: string
   type: TaskType
   scriptPath: string
-  parameters?: Record<string, string>
+  parameters?: Record<string, string> | string
   status: TaskStatus
   lastExecution?: ExecutionResult
   lastExecutionStatus?: 'success' | 'failure'
@@ -44,6 +48,10 @@ interface TauriTask {
   enabled?: boolean
   createdAt?: string
   updatedAt?: string
+  timeout?: number
+  retryCount?: number
+  retryDelay?: number
+  tags?: string[]
   statistics?: {
     totalExecutions: number
     successCount: number
@@ -76,6 +84,33 @@ interface TauriTaskExecutionRecord {
   exitCode?: number
 }
 
+function normalizeTaskParameters(parameters: unknown): Record<string, string> {
+  if (!parameters) return {}
+
+  const toStringRecord = (value: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [key, entryValue == null ? '' : String(entryValue)]),
+    )
+
+  if (typeof parameters === 'string') {
+    try {
+      const parsed = JSON.parse(parameters) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return toStringRecord(parsed as Record<string, unknown>)
+      }
+      return {}
+    } catch {
+      return {}
+    }
+  }
+
+  if (typeof parameters === 'object' && !Array.isArray(parameters)) {
+    return toStringRecord(parameters as Record<string, unknown>)
+  }
+
+  return {}
+}
+
 function mapTask(task: TauriTask): Task {
   return {
     id: task.id,
@@ -83,7 +118,7 @@ function mapTask(task: TauriTask): Task {
     description: task.description,
     type: task.type,
     scriptPath: task.scriptPath,
-    parameters: task.parameters || {},
+    parameters: normalizeTaskParameters(task.parameters),
     status: task.status,
     lastExecution: task.lastExecution,
     lastExecutionStatus: task.lastExecutionStatus,
@@ -106,6 +141,10 @@ function mapTask(task: TauriTask): Task {
     enabled: task.enabled ?? true,
     createdAt: task.createdAt || new Date().toISOString(),
     updatedAt: task.updatedAt || new Date().toISOString(),
+    timeout: (task as TauriTask & { timeout?: number }).timeout,
+    retryCount: (task as TauriTask & { retryCount?: number }).retryCount,
+    retryDelay: (task as TauriTask & { retryDelay?: number }).retryDelay,
+    tags: (task as TauriTask & { tags?: string[] }).tags,
   }
 }
 
@@ -127,7 +166,11 @@ function toTauriTaskConfig(config: Partial<TaskConfigInput>): Partial<TauriTaskC
     schedule_type: config.scheduleType,
     interval_seconds: config.intervalSeconds,
     parameters: config.parameters,
-    account_id: config.accountScreenName || '',
+    account_id: config.accountId || '',
+    timeout: config.timeout,
+    retry_count: config.retryCount,
+    retry_delay: config.retryDelay,
+    tags: config.tags,
   }
 }
 

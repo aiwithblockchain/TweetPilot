@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { ToolCall } from './types'
 
-const TOOL_ICONS: Record<string, string> = {
-  Read: '📄',
-  Edit: '✏️',
-  Write: '📝',
-  Bash: '⚡',
-  Glob: '🔍',
-  Grep: '🔎',
+const TOOL_LABELS: Record<string, string> = {
+  Read: 'Read',
+  Edit: 'Edit',
+  Write: 'Write',
+  Bash: 'Bash',
+  Glob: 'Glob',
+  Grep: 'Grep',
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -22,9 +22,9 @@ interface ToolCallCardProps {
 
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const [outputExpanded, setOutputExpanded] = useState(false)
-  const icon = TOOL_ICONS[toolCall.tool] || '🔧'
+  const label = TOOL_LABELS[toolCall.tool] || toolCall.tool || 'Tool'
   const statusColor = TOOL_COLORS[toolCall.status]
-  const hasOutput = toolCall.output && toolCall.output.length > 0
+  const hasOutput = Boolean(toolCall.output && toolCall.output.length > 0)
 
   return (
     <div
@@ -37,10 +37,18 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
         <div className="flex items-center gap-2">
-          <span className="text-sm">{icon}</span>
-          <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{toolCall.tool}</span>
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border"
+            style={{
+              color: statusColor,
+              borderColor: statusColor,
+              backgroundColor: 'transparent',
+            }}
+          >
+            {label}
+          </span>
           {toolCall.status === 'running' && (
-            <div className="flex gap-0.5">
+            <div className="flex gap-0.5" aria-hidden="true">
               <span className="inline-block w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: statusColor, animationDelay: '0ms' }}></span>
               <span className="inline-block w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: statusColor, animationDelay: '150ms' }}></span>
               <span className="inline-block w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: statusColor, animationDelay: '300ms' }}></span>
@@ -51,8 +59,8 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
           {toolCall.duration !== undefined && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{toolCall.duration.toFixed(1)}s</span>
           )}
-          {toolCall.status === 'success' && <span className="text-xs" style={{ color: statusColor }}>✓</span>}
-          {toolCall.status === 'error' && <span className="text-xs" style={{ color: statusColor }}>✗</span>}
+          {toolCall.status === 'success' && <span className="text-xs" style={{ color: statusColor }}>Completed</span>}
+          {toolCall.status === 'error' && <span className="text-xs" style={{ color: statusColor }}>Failed</span>}
         </div>
       </div>
 

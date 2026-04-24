@@ -142,8 +142,6 @@ impl WorkspaceContext {
             executor: "python_script".to_string(),
             executor_config: serde_json::json!({
                 "script_path": task.script_path,
-                "account_id": task.account_id,
-                "parameters": serde_json::from_str::<serde_json::Value>(&task.parameters).unwrap_or(serde_json::json!({})),
                 "timeout": task.timeout.unwrap_or(300),
             }),
         }))
