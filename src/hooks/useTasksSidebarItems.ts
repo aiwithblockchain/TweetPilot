@@ -95,7 +95,8 @@ export function useTasksSidebarItems() {
       ] as const
 
       for (const messageId of messageIds) {
-        const unlisten = await listen(messageId, () => {
+        const unlisten = await listen(messageId, (event) => {
+          console.log('[useTasksSidebarItems] Received event:', messageId, event.payload)
           scheduleReload()
         })
 

@@ -159,8 +159,11 @@ impl EventLoop {
                                 // Now put the timer back to queue
                                 {
                                     let mut reg = registry.lock().await;
-                                    reg.update_timer(timer.clone());
-                                    log::info!("[EventLoop] Timer {} put back to queue after {}", timer.id, sleep_result);
+                                    if let Err(e) = reg.update_timer(timer.clone()) {
+                                        log::warn!("[EventLoop] Failed to update timer {} after sleep: {} (may have been unregistered)", timer.id, e);
+                                    } else {
+                                        log::info!("[EventLoop] Timer {} put back to queue after {}", timer.id, sleep_result);
+                                    }
                                 }
                             }
                         } else {
@@ -227,7 +230,10 @@ impl EventLoop {
                     }
 
                     let mut reg = registry.lock().await;
-                    reg.update_timer(updated_timer.clone());
+                    if let Err(e) = reg.update_timer(updated_timer.clone()) {
+                        log::warn!("[EventLoop] Failed to update timer {} after successful execution: {} (may have been unregistered)", timer.id, e);
+                        return; // Don't call post_execution if timer was unregistered
+                    }
                     drop(reg);
 
                     // Call post_execution hook to sync database state
@@ -258,7 +264,10 @@ impl EventLoop {
                     }
 
                     let mut reg = registry.lock().await;
-                    reg.update_timer(updated_timer.clone());
+                    if let Err(e) = reg.update_timer(updated_timer.clone()) {
+                        log::warn!("[EventLoop] Failed to update timer {} after failed execution: {} (may have been unregistered)", timer.id, e);
+                        return; // Don't call post_execution if timer was unregistered
+                    }
                     drop(reg);
 
                     // Call post_execution hook to sync database state

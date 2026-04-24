@@ -68,8 +68,13 @@ impl TimerRegistry {
         timer
     }
 
-    pub fn update_timer(&mut self, timer: Timer) {
+    pub fn update_timer(&mut self, timer: Timer) -> Result<(), String> {
         log::info!("[Registry] Updating timer: {} ({})", timer.id, timer.name);
+
+        if !self.timers.contains_key(&timer.id) {
+            log::warn!("[Registry] Timer {} not found in registry, skipping update (may have been unregistered)", timer.id);
+            return Err(format!("Timer {} not found", timer.id));
+        }
 
         self.timers.insert(timer.id.clone(), timer.clone());
 
@@ -77,6 +82,8 @@ impl TimerRegistry {
         log::info!("[Registry] Rebuilding queue for timer {}", timer.id);
         self.rebuild_queue();
         log::info!("[Registry] Queue rebuilt. New size: {}", self.queue.len());
+
+        Ok(())
     }
 
     pub fn list_all(&self) -> Vec<Timer> {

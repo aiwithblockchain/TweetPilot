@@ -31,8 +31,13 @@ pub struct AccountsChangedPayload {
 }
 
 pub fn publish<M: Serialize + Clone>(app: &AppHandle, message_id: &str, payload: M) {
-    if let Err(error) = app.emit(message_id, payload) {
-        log::warn!("[app_events] Failed to publish {}: {}", message_id, error);
+    match app.emit(message_id, payload) {
+        Ok(_) => {
+            log::info!("[app_events] Published event: {}", message_id);
+        }
+        Err(error) => {
+            log::warn!("[app_events] Failed to publish {}: {}", message_id, error);
+        }
     }
 }
 

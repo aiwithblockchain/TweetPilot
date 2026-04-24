@@ -5,6 +5,8 @@ use crate::task_executor::TaskExecutor;
 use crate::unified_timer::{UnifiedTimerManager, Timer, TimerType, PythonScriptExecutor, LocalBridgeSyncExecutor};
 
 use std::sync::Arc;
+use std::str::FromStr;
+use cron::Schedule;
 
 // WorkspaceContext encapsulates all workspace-specific resources
 pub struct WorkspaceContext {
@@ -434,8 +436,40 @@ pub async fn resume_task(
     ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
 
     // Re-register the timer for this task
-    let task = ctx.db.lock().unwrap().get_task(&task_id).map_err(|e| e.to_string())?;
+    let mut task = ctx.db.lock().unwrap().get_task(&task_id).map_err(|e| e.to_string())?;
     if task.enabled && task.task_type == "scheduled" {
+        // Recalculate next_execution_time from now to avoid immediate execution
+        let now = chrono::Utc::now();
+        task.next_execution_time = match task.schedule_type.as_str() {
+            "interval" => {
+                if let Some(interval_secs) = task.interval_seconds {
+                    Some((now + chrono::Duration::seconds(interval_secs as i64)).to_rfc3339())
+                } else {
+                    None
+                }
+            }
+            "cron" => {
+                if let Some(ref schedule) = task.schedule {
+                    use cron::Schedule;
+                    use std::str::FromStr;
+                    if let Ok(cron_schedule) = Schedule::from_str(schedule) {
+                        cron_schedule.after(&now).next().map(|dt| dt.to_rfc3339())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        // Update next_execution_time in database
+        if let Some(ref next_time) = task.next_execution_time {
+            ctx.db.lock().unwrap().update_next_execution_time(&task_id, &task).map_err(|e| e.to_string())?;
+            log::info!("[resume_task] Updated next_execution_time to: {}", next_time);
+        }
+
         match WorkspaceContext::build_task_timer(&task) {
             Ok(Some(timer)) => {
                 ctx.timer_manager.register_timer(timer).await?;
