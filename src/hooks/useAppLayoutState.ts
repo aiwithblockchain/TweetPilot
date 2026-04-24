@@ -537,9 +537,9 @@ export function useAppLayoutState() {
     })
   }
 
-  const closeWorkspaceDeleteDialog = () => {
+  const closeWorkspaceDeleteDialog = (force = false) => {
     setWorkspaceDeleteState((prev) => {
-      if (prev.pending) return prev
+      if (prev.pending && !force) return prev
       return {
         open: false,
         path: null,
@@ -681,7 +681,7 @@ export function useAppLayoutState() {
     try {
       await workspaceService.deleteEntry(workspaceDeleteState.path)
       await refreshWorkspaceTree({ preserveSelectionPath: fallbackPath })
-      closeWorkspaceDeleteDialog()
+      closeWorkspaceDeleteDialog(true)
       toast.success('删除成功')
     } catch (error) {
       const message = getWorkspaceCreateErrorMessage(error, '删除失败')

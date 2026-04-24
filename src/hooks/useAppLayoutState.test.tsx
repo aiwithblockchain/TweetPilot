@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     listDirectory: vi.fn(),
     createFile: vi.fn(),
     createFolder: vi.fn(),
+    deleteEntry: vi.fn(),
     getFolderSummary: vi.fn(),
     readFile: vi.fn(),
   },
@@ -96,6 +97,9 @@ function HookHarness() {
       <button type="button" onClick={() => void state.submitWorkspaceInlineCreate()}>
         提交创建
       </button>
+      <button type="button" onClick={() => void state.confirmWorkspaceDelete()}>
+        确认删除
+      </button>
 
       <div data-testid="rename-active">{String(state.workspaceRenameState.active)}</div>
       <div data-testid="rename-path">{state.workspaceRenameState.path ?? ''}</div>
@@ -146,6 +150,7 @@ describe('useAppLayoutState workspace explorer flow', () => {
       kind: 'directory',
       hasChildren: false,
     })
+    mocks.workspaceService.deleteEntry = vi.fn().mockResolvedValue(undefined)
     mocks.workspaceService.getFolderSummary.mockResolvedValue({
       path: '/workspace',
       name: 'workspace',
@@ -250,6 +255,35 @@ describe('useAppLayoutState workspace explorer flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('delete-open').textContent).toBe('true')
       expect(screen.getByTestId('delete-path').textContent).toBe('/workspace/src')
+    })
+  })
+
+  it('closes delete state after successful deletion', async () => {
+    renderHarness()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tree-items').textContent).toContain('/workspace/src')
+    })
+
+    fireEvent.click(screen.getByText('选择目录'))
+    fireEvent.click(screen.getByText('删除项目'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('delete-open').textContent).toBe('true')
+    })
+
+    mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
+      if (path === '/workspace') return []
+      if (path === '/workspace/src') return []
+      return []
+    })
+
+    fireEvent.click(screen.getByText('确认删除'))
+
+    await waitFor(() => {
+      expect(mocks.workspaceService.deleteEntry).toHaveBeenCalledWith('/workspace/src')
+      expect(screen.getByTestId('delete-open').textContent).toBe('false')
+      expect(screen.getByTestId('selected-id').textContent).toBe('/workspace')
     })
   })
 
