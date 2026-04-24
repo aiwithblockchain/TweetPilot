@@ -58,10 +58,14 @@
 当前脚本执行链路已支持：
 
 - 通过 `python3` 执行脚本
-- 注入 `account_id` 与任务参数
+- 手动执行与定时执行统一按数据库中的 `script_path` 解析并启动脚本
+- 不再向脚本注入 `account_id` 或任务参数
 - 捕获 `stdout` / `stderr` / `exit code`
 - 基于 timeout 的超时控制
 - 执行结果落库与基础统计
+- 执行前校验脚本是否存在且为文件
+
+补充说明：本轮关于任务脚本路径修复、编辑能力补齐与参数边界收敛的交付结果，已归档于 `docs/archive/task-execution-path-args-implementation-record.md`。
 
 ---
 
