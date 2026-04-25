@@ -1,5 +1,6 @@
-// Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use tauri::Manager;
 
 mod app_events;
 mod commands;
@@ -41,6 +42,10 @@ fn main() {
         .manage(task_state)
         .manage(ai_state)
         .setup(move |app| {
+            if let Err(error) = services::resource_installer::ensure_bundled_home_installed(&app.path().resource_dir()?) {
+                log::error!("Failed to install bundled TweetPilot home resources: {}", error);
+            }
+
             // Create native menu
             #[cfg(target_os = "macos")]
             {

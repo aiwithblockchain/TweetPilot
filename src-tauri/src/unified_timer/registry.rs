@@ -122,7 +122,7 @@ mod tests {
         };
 
         assert!(registry.register(timer).is_ok());
-        assert!(registry.get("test-1").is_some());
+        assert!(registry.list_all().iter().any(|timer| timer.id == "test-1"));
     }
 
     #[test]
@@ -163,6 +163,6 @@ mod tests {
 
         registry.register(timer).unwrap();
         assert!(registry.unregister("test-1").is_ok());
-        assert!(registry.get("test-1").is_none());
+        assert!(!registry.list_all().iter().any(|timer| timer.id == "test-1"));
     }
 }

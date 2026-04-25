@@ -199,10 +199,12 @@ impl ConversationStorage {
 #[cfg(test)]
 mod tests {
     use super::{ConversationStorage, StoredMessage};
+    use crate::services::test_home_guard::home_test_lock;
     use std::fs;
     use uuid::Uuid;
 
     fn with_test_home<T>(name: &str, test: impl FnOnce(ConversationStorage, String) -> T) -> T {
+        let _guard = home_test_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_root = std::env::temp_dir().join(format!(
             "tweetpilot-conversation-storage-{}-{}",
             name,
@@ -233,9 +235,14 @@ mod tests {
                 .save_message(
                     &session_id,
                     StoredMessage {
+                        id: None,
                         role: "user".to_string(),
                         content: "你好，帮我总结一下这个目录".to_string(),
                         timestamp: 1_710_000_000,
+                        thinking: None,
+                        thinking_complete: None,
+                        tool_calls: None,
+                        status: None,
                     },
                 )
                 .expect("save user message");
@@ -244,9 +251,14 @@ mod tests {
                 .save_message(
                     &session_id,
                     StoredMessage {
+                        id: None,
                         role: "assistant".to_string(),
                         content: "这是一个测试目录摘要".to_string(),
                         timestamp: 1_710_000_100,
+                        thinking: None,
+                        thinking_complete: None,
+                        tool_calls: None,
+                        status: None,
                     },
                 )
                 .expect("save assistant message");

@@ -54,6 +54,7 @@ impl ClaurstSession {
         api_key: String,
         model: String,
         base_url: Option<String>,
+        system_prompt: Option<String>,
     ) -> anyhow::Result<Self> {
         let api_base = base_url.unwrap_or_else(|| "https://api.anthropic.com".to_string());
         log::info!("Initializing Claurst session {} with api_base: {}, model: {}", session_id, api_base, model);
@@ -77,6 +78,7 @@ impl ClaurstSession {
 
         let mut query_config = QueryConfig::from_config(&config);
         query_config.model = model;
+        query_config.system_prompt = system_prompt;
         query_config.thinking_budget = Some(DEFAULT_THINKING_BUDGET);
 
         let tools: Vec<Box<dyn Tool>> = vec![

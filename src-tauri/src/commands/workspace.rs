@@ -7,6 +7,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const WORKSPACE_CONFIG_FILE: &str = "config.json";
 const RECENT_WORKSPACES_FILE: &str = "recent-workspaces.json";
+const WORKSPACE_APP_DIR: &str = ".tweetpilot";
+const WORKSPACE_MARKER_FILE: &str = ".tweetpilot.json";
+const PRODUCT_FILE_NAME: &str = "product.md";
+const CONTENT_RULES_FILE_NAME: &str = "content_rules.md";
 const MAX_TEXT_FILE_BYTES: usize = 512 * 1024;
 const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
 const SUPPORTED_TEXT_EXTENSIONS: &[&str] = &[
@@ -105,6 +109,29 @@ fn persist_current_workspace(path: String) -> Result<(), String> {
     config.current_workspace = Some(path.clone());
     save_workspace_config(&config)?;
     update_recent_workspaces(&path)
+}
+
+fn ensure_workspace_support_files(workspace_path: &Path) -> Result<(), String> {
+    let config_dir = workspace_path.join(WORKSPACE_APP_DIR);
+    std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建工作目录配置目录失败: {}", e))?;
+
+    let logs_dir = config_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
+
+    let product_file = config_dir.join(PRODUCT_FILE_NAME);
+    if !product_file.exists() {
+        std::fs::write(&product_file, "").map_err(|e| format!("创建 product.md 失败: {}", e))?;
+        log::info!("[workspace] Created missing workspace file: {}", product_file.display());
+    }
+
+    let content_rules_file = config_dir.join(CONTENT_RULES_FILE_NAME);
+    if !content_rules_file.exists() {
+        std::fs::write(&content_rules_file, "")
+            .map_err(|e| format!("创建 content_rules.md 失败: {}", e))?;
+        log::info!("[workspace] Created missing workspace file: {}", content_rules_file.display());
+    }
+
+    Ok(())
 }
 
 fn clear_current_workspace() -> Result<(), String> {
@@ -434,11 +461,13 @@ pub async fn set_current_workspace(
     }
 
     let workspace_path = Path::new(&path);
-    let marker_file = workspace_path.join(".tweetpilot.json");
+    let marker_file = workspace_path.join(WORKSPACE_MARKER_FILE);
 
     if !marker_file.exists() {
         log::info!("[set_current_workspace] Marker file not found, initializing workspace");
         initialize_workspace(path.clone()).await?;
+    } else {
+        ensure_workspace_support_files(workspace_path)?;
     }
 
     // Step 1: Stop old workspace timers and release context (if exists)
@@ -474,7 +503,7 @@ pub async fn set_current_workspace(
 #[tauri::command]
 pub async fn check_workspace_initialized(path: String) -> Result<bool, String> {
     let workspace_path = Path::new(&path);
-    let marker_file = workspace_path.join(".tweetpilot.json");
+    let marker_file = workspace_path.join(WORKSPACE_MARKER_FILE);
     Ok(marker_file.exists())
 }
 
@@ -483,18 +512,13 @@ pub async fn initialize_workspace(path: String) -> Result<(), String> {
     let workspace_path = Path::new(&path);
 
     // Create .tweetpilot.json marker file
-    let marker_file = workspace_path.join(".tweetpilot.json");
-    std::fs::write(&marker_file, "{}").map_err(|e| e.to_string())?;
+    let marker_file = workspace_path.join(WORKSPACE_MARKER_FILE);
+    if !marker_file.exists() {
+        std::fs::write(&marker_file, "{}").map_err(|e| e.to_string())?;
+        log::info!("[workspace] Created workspace marker: {}", marker_file.display());
+    }
 
-    // Create .tweetpilot/ directory
-    let config_dir = workspace_path.join(".tweetpilot");
-    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
-
-    // Create logs/ subdirectory
-    let logs_dir = config_dir.join("logs");
-    std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
-
-    Ok(())
+    ensure_workspace_support_files(workspace_path)
 }
 
 #[tauri::command]
@@ -802,4 +826,57 @@ pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{initialize_workspace, CONTENT_RULES_FILE_NAME, PRODUCT_FILE_NAME, WORKSPACE_APP_DIR, WORKSPACE_MARKER_FILE};
+    use crate::services::test_home_guard::home_test_lock;
+    use std::fs;
+    use uuid::Uuid;
+
+    fn with_test_dirs<T>(name: &str, test: impl FnOnce(std::path::PathBuf, std::path::PathBuf) -> T) -> T {
+        let _guard = home_test_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-workspace-tests-{}-{}",
+            name,
+            Uuid::new_v4()
+        ));
+        let home_dir = temp_root.join("home");
+        let workspace_dir = temp_root.join("workspace");
+        fs::create_dir_all(&home_dir).expect("create temp home");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+
+        let previous_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", &home_dir);
+
+        let result = test(home_dir, workspace_dir.clone());
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        let _ = fs::remove_dir_all(&temp_root);
+        result
+    }
+
+    #[test]
+    fn initialize_workspace_creates_support_files() {
+        with_test_dirs("initialize-support-files", |_home_dir, workspace_dir| {
+            tauri::async_runtime::block_on(async {
+                initialize_workspace(workspace_dir.to_string_lossy().to_string())
+                    .await
+                    .expect("initialize workspace");
+            });
+
+            let marker_file = workspace_dir.join(WORKSPACE_MARKER_FILE);
+            let config_dir = workspace_dir.join(WORKSPACE_APP_DIR);
+            assert!(marker_file.exists());
+            assert!(config_dir.join("logs").exists());
+            assert!(config_dir.join(PRODUCT_FILE_NAME).exists());
+            assert!(config_dir.join(CONTENT_RULES_FILE_NAME).exists());
+        });
+    }
 }
