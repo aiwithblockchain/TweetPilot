@@ -106,6 +106,8 @@ impl ClaurstSession {
             config,
             managed_agent_config: None,
             completion_notifier: None,
+            pending_permissions: None,
+            permission_manager: None,
         };
 
         let storage = ConversationStorage::new()
