@@ -2,7 +2,120 @@
 
 **面向对象：AI 助手**
 
-本文档帮助你快速理解 ClawBot 目录结构，并在编写 X/Twitter 相关 Python 脚本时正确复用已有能力。
+本文档帮助你在用户明确选择 Python 时，正确理解 ClawBot 的定位、复用方式和运行约定。
+
+---
+
+## 先记住 4 个边界
+
+1. **LocalBridge 是能力源**
+2. **ClawBot 是 Python 复用层**
+3. **ClawBot 不是唯一入口**
+4. **最新 REST API 文档的权威来源是 `GET /api/v1/x/docs`**
+
+这意味着：
+
+- 如果用户选择 Python，优先复用 ClawBot 是合理的
+- 但如果用户明确不想依赖 ClawBot，就不应强行要求使用 ClawBot
+- 非 Python 场景下，ClawBot 不是主文档来源
+- 本 README 不是 LocalBridge 正式 REST API 文档的替代品
+
+---
+
+## 什么时候应该先读本 README
+
+当用户要求以下任一场景时，应先读本 README：
+
+- 用 Python 访问 X / Twitter
+- 用 Python 编写自动化脚本
+- 用 Python 读写时间线、推文、用户资料、媒体能力
+- 希望优先复用 TweetPilot 已有 Python 能力
+
+如果用户明确表示：
+
+- 不想依赖 ClawBot
+- 想自己从头写 Python 请求逻辑
+- 想直接基于 REST API 编码
+
+那么此时不应把本 README 当成唯一前置文档，而应先获取：
+
+- `GET /api/v1/x/docs`
+
+---
+
+## Python 场景下的默认策略
+
+### 路径 A：优先复用 ClawBot
+
+这是默认推荐路径。
+
+执行顺序应为：
+
+1. 阅读本 README
+2. 确认现有能力是否已覆盖需求
+3. 若已覆盖，优先直接复用
+4. 避免重复手写已经存在的 REST API 封装
+
+推荐导入方式：
+
+```python
+from clawbot import ClawBotClient
+
+client = ClawBotClient()
+```
+
+### 路径 B：用户明确不要 ClawBot
+
+如果用户明确说不要依赖 ClawBot，则正确做法是：
+
+1. 通过 LocalBridge 文档接口获取最新 REST API 文档
+2. 按用户要求用原生 Python 编写请求逻辑
+3. 可将 ClawBot 视为参考实现，但不是强制依赖
+
+---
+
+## 运行方式（重要）
+
+生成到用户工作目录的 Python 脚本，默认应按**用户工作目录脚本**来理解，而不是要求用户先进入 ClawBot 资源目录。
+
+也就是说：
+
+- 不要要求用户先 `cd ~/.tweetpilot/clawbot`
+- 不要把脚本设计成“只有在 ClawBot 资源目录里运行才可用”
+- 脚本中继续使用统一导入：
+
+```python
+from clawbot import ClawBotClient
+```
+
+ClawBot 的源码资源位于：
+
+- `~/.tweetpilot/clawbot/`
+
+真正的 Python 包入口位于：
+
+- `~/.tweetpilot/clawbot/clawbot/__init__.py`
+
+因此，这个导入成立的前提通常是：
+
+1. **通过 TweetPilot 内部执行器 / 定时任务运行**  
+   TweetPilot 会为 Python 进程注入正确的 `PYTHONPATH`，让工作目录下的脚本也能导入 `clawbot`。
+
+2. **用户脱离 TweetPilot，直接用系统 Python 运行脚本**  
+   则需要显式把 `~/.tweetpilot/clawbot` 加入 `PYTHONPATH`，或在脚本中加入等价的 `sys.path` 处理。
+
+例如：
+
+```bash
+PYTHONPATH="$HOME/.tweetpilot/clawbot" python3 scripts/example.py
+```
+
+所以在为用户编写脚本时：
+
+- 默认假设脚本保存在用户工作目录中；
+- 不要要求先切换到 `~/.tweetpilot/clawbot`；
+- 优先保持 `from clawbot import ClawBotClient` 这一统一导入方式；
+- 若用户明确要求脱离 TweetPilot 独立运行，再补充对应环境说明。
 
 ---
 
@@ -43,30 +156,30 @@ tweets = client.x.search.search_tweets("AI", count=10)
 clawbot/
 ├── README.md              # 本文档
 ├── requirements.txt       # Python 依赖
-├── clawbot/              # 核心库（优先使用）
-│   ├── client.py         # 主入口 ClawBotClient
-│   ├── config.py         # 配置（API 地址、超时）
-│   ├── services/         # 业务服务层（优先调用）
-│   ├── domain/           # 数据模型
-│   ├── transport/        # 底层 API 调用
-│   ├── upload/           # 媒体上传
-│   └── workflows/        # 多步骤工作流
-├── examples/             # 示例脚本（快速参考）
-└── openclaw.py           # AI 自动回复演示
+├── clawbot/               # 核心库（优先使用）
+│   ├── client.py          # 主入口 ClawBotClient
+│   ├── config.py          # 配置（API 地址、超时）
+│   ├── services/          # 业务服务层（优先调用）
+│   ├── domain/            # 数据模型
+│   ├── transport/         # 底层 API 调用
+│   ├── upload/            # 媒体上传
+│   └── workflows/         # 多步骤工作流
+├── examples/              # 示例脚本（快速参考）
+└── openclaw.py            # AI 自动回复演示
 ```
 
 ---
 
 ## 按任务类型选择模块
 
-### 1. 读取 X/Twitter 数据
+### 1. 读取 X / Twitter 数据
 
 **使用模块：**
 - `client.x.status` - 登录状态、标签页
 - `client.x.timeline` - 时间线
 - `client.x.tweets` - 推文详情、回复
 - `client.x.users` - 用户资料
-- `client.x.search` - 搜索推文/用户
+- `client.x.search` - 搜索推文 / 用户
 - `client.x.tabs` - 标签页控制
 
 **常用方法：**
@@ -98,7 +211,7 @@ client.x.tabs.navigate("notifications", tab_id)
 client.x.tabs.close(tab_id)
 ```
 
-### 2. 写入 X/Twitter 操作
+### 2. 写入 X / Twitter 操作
 
 **使用模块：**
 - `client.x.actions` - 发推、回复、点赞、转推等
@@ -131,7 +244,7 @@ client.x.actions.delete_tweet(tweet_id)
 ### 3. 媒体上传与发布
 
 **使用模块：**
-- `client.media` - 上传图片/视频并发推
+- `client.media` - 上传图片 / 视频并发推
 
 **常用方法：**
 
@@ -205,12 +318,15 @@ print(result.content)
 2. **从高层 API 开始** - 优先使用 `services/` 层，避免直接调用 `transport/`
 3. **参考示例代码** - 查看 `examples/` 目录快速了解用法
 4. **组合现有接口** - 大多数需求可通过组合现有方法实现
+5. **把 README 理解为 Python 复用指南** - 而不是 LocalBridge 正式 REST API 文档
 
 ### ❌ 不应该做的
 
 1. **不要重复实现已有功能** - 发推、点赞、搜索等基础操作都已实现
-2. **不要直接操作底层 API** - 除非 `services/` 层确实不支持
-3. **不要忽略错误处理** - 使用 `clawbot.errors` 中的异常类型
+2. **不要把 ClawBot 写成唯一入口** - 用户可以选择直接写 REST API
+3. **不要把本 README 当成非 Python 场景主文档**
+4. **不要直接操作底层 API** - 除非 `services/` 层确实不支持
+5. **不要忽略错误处理** - 使用 `clawbot.errors` 中的异常类型
 
 ---
 
@@ -224,7 +340,7 @@ print(result.content)
 | `write_api_examples.py` | 发推、点赞、转推等写操作 |
 | `tweet_details_and_search_example.py` | 推文详情和搜索功能 |
 | `status_and_metadata_example.py` | 状态检查和元数据读取 |
-| `publish_example.py` | 发布推文（带/不带媒体） |
+| `publish_example.py` | 发布推文（带 / 不带媒体） |
 | `reply_with_media.py` | 带媒体回复推文 |
 | `workflow_example.py` | 多步骤工作流示例 |
 | `ai_workflow.py` | AI 平台交互示例 |
@@ -336,7 +452,7 @@ except ApiRequestError as e:
 - Python 3.10+
 - LocalBridge 运行在 `http://127.0.0.1:10088`
 - TweetCat 浏览器扩展已安装并连接
-- X/Twitter 账号已登录
+- X / Twitter 账号已登录
 
 安装依赖：
 
@@ -348,12 +464,12 @@ pip install -r requirements.txt
 
 ## 总结
 
-**编写新脚本时的思路：**
+**编写 Python 脚本时的思路：**
 
-1. 明确任务类型（读/写/媒体/AI）
-2. 查看本文档对应章节找到相关模块
-3. 参考 `examples/` 中的示例代码
-4. 使用 `ClawBotClient` 调用对应方法
-5. 添加必要的错误处理
+1. 先判断用户是否要优先复用 ClawBot
+2. 若要复用，先看本文档和 `examples/`
+3. 优先使用 `ClawBotClient` 现有能力
+4. 仅在确实缺失时，才考虑直接写底层请求逻辑
+5. 若用户明确不要 ClawBot，则改走 `GET /api/v1/x/docs`
 
-**记住：大多数 X/Twitter 操作都已实现，优先复用而非重写。**
+**记住：ClawBot 是 Python 推荐复用层，不是唯一入口；LocalBridge 才是能力源。**

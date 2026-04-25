@@ -2,6 +2,7 @@ use crate::unified_timer::types::{ExecutionContext, ExecutionResult, Timer};
 use crate::unified_timer::executor::TimerExecutor;
 use crate::task_database::TaskDatabase;
 use async_trait::async_trait;
+use std::ffi::OsString;
 use std::process::{Command, Stdio};
 use std::time::Instant;
 use std::sync::{Arc, Mutex};
@@ -59,11 +60,19 @@ impl TimerExecutor for PythonScriptExecutor {
         let mut cmd = Command::new(&self.python_path);
         cmd.arg(&full_script_path);
 
-        // Set environment - 正确处理 home 目录
+        // Set environment
         let home = dirs::home_dir()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "/tmp".to_string());
-        cmd.env("PYTHONPATH", format!("{}/.tweetpilot:{}/.tweetpilot", self.workspace_root, home));
+        let clawbot_python_path = format!("{}/.tweetpilot/clawbot", home);
+        let mut python_path_entries = vec![clawbot_python_path.clone()];
+        if let Some(existing_python_path) = std::env::var_os("PYTHONPATH") {
+            python_path_entries.extend(std::env::split_paths(&existing_python_path).map(|path| path.display().to_string()));
+        }
+        let python_path = std::env::join_paths(python_path_entries.iter().map(OsString::from))
+            .map_err(|e| format!("Failed to build PYTHONPATH: {}", e))?;
+        cmd.env("PYTHONPATH", python_path);
+        log::info!("[PythonScriptExecutor] Using ClawBot PYTHONPATH root: {}", clawbot_python_path);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 

@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::process::{Command, Stdio};
 use std::time::Instant;
 use uuid::Uuid;
@@ -41,7 +42,18 @@ impl TaskExecutor {
         log::info!("[TaskExecutor] Executing Python script using script_path only");
 
         // Set environment
-        cmd.env("PYTHONPATH", format!("{}/.tweetpilot:~/.tweetpilot", workspace_root));
+        let home = dirs::home_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "/tmp".to_string());
+        let clawbot_python_path = format!("{}/.tweetpilot/clawbot", home);
+        let mut python_path_entries = vec![clawbot_python_path.clone()];
+        if let Some(existing_python_path) = std::env::var_os("PYTHONPATH") {
+            python_path_entries.extend(std::env::split_paths(&existing_python_path).map(|path| path.display().to_string()));
+        }
+        let python_path = std::env::join_paths(python_path_entries.iter().map(OsString::from))
+            .map_err(|e| format!("Failed to build PYTHONPATH: {}", e))?;
+        cmd.env("PYTHONPATH", python_path);
+        log::info!("[TaskExecutor] Using ClawBot PYTHONPATH root: {}", clawbot_python_path);
 
         // Set timeout
         cmd.stdout(Stdio::piped());
