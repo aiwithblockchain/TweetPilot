@@ -41,11 +41,11 @@ export const RIGHT_WIDTH_STORAGE_KEY = 'vscode-layout-right-width'
 export const RIGHT_PANEL_VISIBLE_STORAGE_KEY = 'vscode-layout-right-visible'
 
 export const DEFAULT_LEFT_WIDTH = 250
-export const DEFAULT_RIGHT_WIDTH = 400
+export const DEFAULT_RIGHT_WIDTH = 440
 export const MIN_LEFT_WIDTH = 180
 export const MAX_LEFT_WIDTH = 400
 export const MIN_RIGHT_WIDTH = 300
-export const MAX_RIGHT_WIDTH = 600
+export const MAX_RIGHT_WIDTH = 800
 
 export const INSTANCE_MOCKS: AppInstance[] = [
   {
