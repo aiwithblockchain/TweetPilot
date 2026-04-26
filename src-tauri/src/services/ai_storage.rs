@@ -20,6 +20,31 @@ pub struct StoredToolCall {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum StoredTimelineItem {
+    #[serde(rename = "thinking")]
+    Thinking {
+        id: String,
+        content: String,
+        sequence: i64,
+        #[serde(default)]
+        is_complete: Option<bool>,
+    },
+    #[serde(rename = "tool")]
+    Tool {
+        id: String,
+        tool_call_id: String,
+        sequence: i64,
+    },
+    #[serde(rename = "text")]
+    Text {
+        id: String,
+        content: String,
+        sequence: i64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {
     #[serde(default)]
     pub id: Option<String>,
@@ -32,6 +57,8 @@ pub struct StoredMessage {
     pub thinking_complete: Option<bool>,
     #[serde(default)]
     pub tool_calls: Option<Vec<StoredToolCall>>,
+    #[serde(default)]
+    pub timeline: Option<Vec<StoredTimelineItem>>,
     #[serde(default)]
     pub status: Option<String>,
 }
@@ -103,7 +130,7 @@ impl AiStorage {
         let conn = self.connection()?;
         conn.execute(
             "INSERT INTO ai_sessions (id, title, created_at, updated_at, message_count, provider_id, model, system_prompt, schema_version)
-             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, 3)",
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, 5)",
             params![
                 input.id,
                 input.title,
@@ -196,6 +223,7 @@ impl AiStorage {
                     thinking: row.get(4)?,
                     thinking_complete: row.get(5)?,
                     tool_calls: None,
+                    timeline: None,
                     status: row.get(6)?,
                 })
             })
@@ -210,6 +238,10 @@ impl AiStorage {
                 let tool_calls = self.load_tool_calls(message_id)?;
                 if !tool_calls.is_empty() {
                     message.tool_calls = Some(tool_calls);
+                }
+                let timeline = self.load_timeline_items(message_id)?;
+                if !timeline.is_empty() {
+                    message.timeline = Some(timeline);
                 }
             }
         }
@@ -248,6 +280,51 @@ impl AiStorage {
             .map_err(|e| format!("Failed to load AI tool calls: {}", e))
     }
 
+    fn load_timeline_items(&self, message_id: &str) -> Result<Vec<StoredTimelineItem>, String> {
+        let conn = self.connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, type, sequence, content, tool_call_id, is_complete
+                 FROM ai_message_timeline_items
+                 WHERE message_id = ?1
+                 ORDER BY sequence ASC, id ASC",
+            )
+            .map_err(|e| format!("Failed to prepare AI timeline query: {}", e))?;
+
+        let rows = stmt
+            .query_map(params![message_id], |row| {
+                let item_type: String = row.get(1)?;
+                let id: String = row.get(0)?;
+                let sequence: i64 = row.get(2)?;
+                let content: Option<String> = row.get(3)?;
+                let tool_call_id: Option<String> = row.get(4)?;
+                let is_complete: Option<bool> = row.get(5)?;
+
+                match item_type.as_str() {
+                    "thinking" => Ok(StoredTimelineItem::Thinking {
+                        id,
+                        content: content.unwrap_or_default(),
+                        sequence,
+                        is_complete,
+                    }),
+                    "tool" => Ok(StoredTimelineItem::Tool {
+                        id,
+                        tool_call_id: tool_call_id.unwrap_or_default(),
+                        sequence,
+                    }),
+                    _ => Ok(StoredTimelineItem::Text {
+                        id,
+                        content: content.unwrap_or_default(),
+                        sequence,
+                    }),
+                }
+            })
+            .map_err(|e| format!("Failed to query AI timeline items: {}", e))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to load AI timeline items: {}", e))
+    }
+
     pub fn insert_message(&self, session_id: &str, message: &StoredMessage) -> Result<(), String> {
         let conn = self.connection()?;
         let message_id = message
@@ -271,6 +348,7 @@ impl AiStorage {
         )
         .map_err(|e| format!("Failed to insert AI message: {}", e))?;
 
+        self.replace_timeline_items(&message_id, message.timeline.as_deref().unwrap_or(&[]))?;
         self.refresh_session_metadata(session_id)
     }
 
@@ -331,6 +409,7 @@ impl AiStorage {
         .map_err(|e| format!("Failed to finalize AI message: {}", e))?;
 
         self.replace_tool_calls(&message_id, message.tool_calls.as_deref().unwrap_or(&[]))?;
+        self.replace_timeline_items(&message_id, message.timeline.as_deref().unwrap_or(&[]))?;
         self.refresh_session_metadata(session_id)
     }
 
@@ -365,6 +444,61 @@ impl AiStorage {
 
         tx.commit()
             .map_err(|e| format!("Failed to commit AI tool-call transaction: {}", e))?;
+        Ok(())
+    }
+
+    pub fn replace_timeline_items(&self, message_id: &str, items: &[StoredTimelineItem]) -> Result<(), String> {
+        let mut conn = self.connection()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Failed to start AI timeline transaction: {}", e))?;
+
+        tx.execute(
+            "DELETE FROM ai_message_timeline_items WHERE message_id = ?1",
+            params![message_id],
+        )
+        .map_err(|e| format!("Failed to delete AI timeline items: {}", e))?;
+
+        for item in items {
+            match item {
+                StoredTimelineItem::Thinking {
+                    id,
+                    content,
+                    sequence,
+                    is_complete,
+                } => {
+                    tx.execute(
+                        "INSERT INTO ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'thinking', ?3, ?4, NULL, ?5)",
+                        params![id, message_id, sequence, content, is_complete],
+                    )
+                    .map_err(|e| format!("Failed to insert AI thinking timeline item: {}", e))?;
+                }
+                StoredTimelineItem::Tool {
+                    id,
+                    tool_call_id,
+                    sequence,
+                } => {
+                    tx.execute(
+                        "INSERT INTO ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'tool', ?3, NULL, ?4, NULL)",
+                        params![id, message_id, sequence, tool_call_id],
+                    )
+                    .map_err(|e| format!("Failed to insert AI tool timeline item: {}", e))?;
+                }
+                StoredTimelineItem::Text { id, content, sequence } => {
+                    tx.execute(
+                        "INSERT INTO ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'text', ?3, ?4, NULL, NULL)",
+                        params![id, message_id, sequence, content],
+                    )
+                    .map_err(|e| format!("Failed to insert AI text timeline item: {}", e))?;
+                }
+            }
+        }
+
+        tx.commit()
+            .map_err(|e| format!("Failed to commit AI timeline transaction: {}", e))?;
         Ok(())
     }
 

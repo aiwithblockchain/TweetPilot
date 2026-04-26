@@ -2,7 +2,7 @@ use claurst_api::{client::ClientConfig, AnthropicClient, AnthropicStreamEvent};
 use claurst_core::{Config, ContentBlock, CostTracker, Message, MessageContent, PermissionMode};
 use claurst_query::{run_query_loop, QueryConfig, QueryEvent, QueryOutcome};
 use claurst_tools::{BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, Tool, ToolContext};
-use crate::services::ai_storage::{AiStorage, StoredMessage, StoredToolCall};
+use crate::services::ai_storage::{AiStorage, StoredMessage, StoredTimelineItem, StoredToolCall};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +36,10 @@ fn to_runtime_message(message: StoredMessage) -> Option<Message> {
         "assistant" => Some(Message::assistant(message.content)),
         _ => None,
     }
+}
+
+fn next_timeline_sequence(timeline: &[StoredTimelineItem]) -> i64 {
+    timeline.len() as i64
 }
 
 pub struct ClaurstSession {
@@ -160,6 +164,7 @@ impl ClaurstSession {
             thinking: None,
             thinking_complete: None,
             tool_calls: None,
+            timeline: None,
             status: None,
         };
 
@@ -175,6 +180,7 @@ impl ClaurstSession {
             thinking: None,
             thinking_complete: Some(false),
             tool_calls: None,
+            timeline: Some(Vec::new()),
             status: Some("thinking".to_string()),
         };
 
@@ -189,9 +195,11 @@ impl ClaurstSession {
         let storage_for_events = self.storage.clone();
         let thinking_buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
         let tool_calls = Arc::new(tokio::sync::Mutex::new(Vec::<StoredToolCall>::new()));
+        let timeline_items = Arc::new(tokio::sync::Mutex::new(Vec::<StoredTimelineItem>::new()));
         let status_text = Arc::new(tokio::sync::Mutex::new(None::<String>));
         let thinking_buffer_for_events = Arc::clone(&thinking_buffer);
         let tool_calls_for_events = Arc::clone(&tool_calls);
+        let timeline_items_for_events = Arc::clone(&timeline_items);
         let status_text_for_events = Arc::clone(&status_text);
 
         tokio::spawn(async move {
@@ -203,6 +211,23 @@ impl ClaurstSession {
                             match delta {
                                 ContentDelta::TextDelta { text } => {
                                     let _ = storage_for_events.append_message_content(&assistant_message_id_for_events, &text);
+                                    let mut timeline_guard = timeline_items_for_events.lock().await;
+                                    match timeline_guard.last_mut() {
+                                        Some(StoredTimelineItem::Text { content, .. }) => {
+                                            content.push_str(&text);
+                                        }
+                                        _ => {
+                                            let sequence = next_timeline_sequence(&timeline_guard);
+                                            timeline_guard.push(StoredTimelineItem::Text {
+                                                id: format!("{}-text-{}", assistant_message_id_for_events, sequence),
+                                                content: text.clone(),
+                                                sequence,
+                                            });
+                                        }
+                                    }
+                                    let snapshot = timeline_guard.clone();
+                                    drop(timeline_guard);
+                                    let _ = storage_for_events.replace_timeline_items(&assistant_message_id_for_events, &snapshot);
                                     let _ = event_window.emit("message-chunk", serde_json::json!({
                                         "request_id": request_id_owned.clone(),
                                         "chunk": text,
@@ -217,6 +242,26 @@ impl ClaurstSession {
                                         Some(false),
                                     );
                                     drop(thinking_guard);
+
+                                    let mut timeline_guard = timeline_items_for_events.lock().await;
+                                    match timeline_guard.last_mut() {
+                                        Some(StoredTimelineItem::Thinking { content, is_complete, .. }) => {
+                                            content.push_str(&thinking);
+                                            *is_complete = Some(false);
+                                        }
+                                        _ => {
+                                            let sequence = next_timeline_sequence(&timeline_guard);
+                                            timeline_guard.push(StoredTimelineItem::Thinking {
+                                                id: format!("{}-thinking-{}", assistant_message_id_for_events, sequence),
+                                                content: thinking.clone(),
+                                                sequence,
+                                                is_complete: Some(false),
+                                            });
+                                        }
+                                    }
+                                    let snapshot = timeline_guard.clone();
+                                    drop(timeline_guard);
+                                    let _ = storage_for_events.replace_timeline_items(&assistant_message_id_for_events, &snapshot);
                                     let _ = event_window.emit("thinking-chunk", serde_json::json!({
                                         "request_id": request_id_owned.clone(),
                                         "chunk": thinking,
@@ -229,8 +274,9 @@ impl ClaurstSession {
                     QueryEvent::ToolStart { tool_name, .. } => {
                         let description = format!("Using {}", tool_name);
                         let timestamp_ms = chrono::Utc::now().timestamp_millis();
+                        let tool_call_id = format!("{}-{}", tool_name, timestamp_ms);
                         tool_calls_for_events.lock().await.push(StoredToolCall {
-                            id: format!("{}-{}", tool_name, timestamp_ms),
+                            id: tool_call_id.clone(),
                             tool: tool_name.clone(),
                             action: description.clone(),
                             input: None,
@@ -242,6 +288,20 @@ impl ClaurstSession {
                         });
                         let snapshot = tool_calls_for_events.lock().await.clone();
                         let _ = storage_for_events.replace_tool_calls(&assistant_message_id_for_events, &snapshot);
+
+                        let mut timeline_guard = timeline_items_for_events.lock().await;
+                        if let Some(StoredTimelineItem::Thinking { is_complete, .. }) = timeline_guard.last_mut() {
+                            *is_complete = Some(true);
+                        }
+                        let sequence = next_timeline_sequence(&timeline_guard);
+                        timeline_guard.push(StoredTimelineItem::Tool {
+                            id: format!("{}-tool-{}", assistant_message_id_for_events, sequence),
+                            tool_call_id: tool_call_id.clone(),
+                            sequence,
+                        });
+                        let timeline_snapshot = timeline_guard.clone();
+                        drop(timeline_guard);
+                        let _ = storage_for_events.replace_timeline_items(&assistant_message_id_for_events, &timeline_snapshot);
                         let _ = event_window.emit("tool-call-start", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "tool": tool_name,
@@ -322,6 +382,10 @@ impl ClaurstSession {
                         let calls = tool_calls.lock().await.clone();
                         if calls.is_empty() { None } else { Some(calls) }
                     },
+                    timeline: {
+                        let timeline = timeline_items.lock().await.clone();
+                        if timeline.is_empty() { None } else { Some(timeline) }
+                    },
                     status: Some("cancelled".to_string()),
                 };
                 let _ = self.storage.finalize_message(&self.session_id, &cancelled_message);
@@ -345,6 +409,10 @@ impl ClaurstSession {
                         let calls = tool_calls.lock().await.clone();
                         if calls.is_empty() { None } else { Some(calls) }
                     },
+                    timeline: {
+                        let timeline = timeline_items.lock().await.clone();
+                        if timeline.is_empty() { None } else { Some(timeline) }
+                    },
                     status: Some("error".to_string()),
                 };
                 let _ = self.storage.finalize_message(&self.session_id, &failed_message);
@@ -366,6 +434,10 @@ impl ClaurstSession {
                     tool_calls: {
                         let calls = tool_calls.lock().await.clone();
                         if calls.is_empty() { None } else { Some(calls) }
+                    },
+                    timeline: {
+                        let timeline = timeline_items.lock().await.clone();
+                        if timeline.is_empty() { None } else { Some(timeline) }
                     },
                     status: Some("error".to_string()),
                 };
@@ -396,6 +468,17 @@ impl ClaurstSession {
                 Some(calls)
             }
         };
+        let final_timeline = {
+            let mut timeline = timeline_items.lock().await.clone();
+            if let Some(StoredTimelineItem::Thinking { is_complete, .. }) = timeline.last_mut() {
+                *is_complete = Some(true);
+            }
+            if timeline.is_empty() {
+                None
+            } else {
+                Some(timeline)
+            }
+        };
         let final_status = status_text
             .lock()
             .await
@@ -410,6 +493,7 @@ impl ClaurstSession {
             thinking: final_thinking,
             thinking_complete: Some(true),
             tool_calls: final_tool_calls,
+            timeline: final_timeline,
             status: final_status,
         };
 

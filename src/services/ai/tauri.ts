@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { AiSettings, ProviderConfig } from '@/types/ai-settings'
+import type { PersistedAssistantTimelineItem } from '@/components/ChatInterface/types'
 
 export interface Message {
   id: string
@@ -30,6 +31,7 @@ export interface StoredMessage {
   thinking?: string | null
   thinking_complete?: boolean | null
   tool_calls?: StoredToolCall[] | null
+  timeline?: PersistedAssistantTimelineItem[] | null
   status?: string | null
 }
 

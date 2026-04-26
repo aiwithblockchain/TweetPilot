@@ -7,7 +7,12 @@ import { workspaceService } from '@/services/workspace'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
 import { SessionPanel } from './ChatInterface/SessionPanel'
 import { Clock, Plus } from 'lucide-react'
-import type { AssistantTimelineItem, ChatMessage, ToolCall, PersistedToolCall } from './ChatInterface/types'
+import type {
+  AssistantTimelineItem,
+  ChatMessage,
+  PersistedToolCall,
+  ToolCall,
+} from './ChatInterface/types'
 
 interface ChatInterfaceProps {
   onOpenSettings?: () => void
@@ -39,6 +44,41 @@ function fromPersistedToolCall(toolCall: PersistedToolCall): ToolCall {
 }
 
 function buildTimelineFromStoredMessage(message: StoredMessage): AssistantTimelineItem[] {
+  const toolCalls = message.tool_calls?.map(fromPersistedToolCall) || []
+  const toolCallMap = new Map(toolCalls.map((toolCall) => [toolCall.id, toolCall]))
+  const persistedTimeline = message.timeline || []
+
+  if (persistedTimeline.length > 0) {
+    return persistedTimeline.flatMap((item): AssistantTimelineItem[] => {
+      if (item.type === 'thinking') {
+        return [{
+          id: item.id,
+          type: 'thinking',
+          content: item.content,
+          isComplete: item.is_complete ?? true,
+          isActive: !(item.is_complete ?? true),
+        }]
+      }
+
+      if (item.type === 'tool') {
+        const toolCall = toolCallMap.get(item.tool_call_id)
+        return toolCall
+          ? [{
+              id: item.id,
+              type: 'tool',
+              toolCall,
+            }]
+          : []
+      }
+
+      return [{
+        id: item.id,
+        type: 'text',
+        content: item.content,
+      }]
+    })
+  }
+
   const timeline: AssistantTimelineItem[] = []
 
   if (message.thinking) {
@@ -51,12 +91,12 @@ function buildTimelineFromStoredMessage(message: StoredMessage): AssistantTimeli
     })
   }
 
-  if (message.tool_calls?.length) {
+  if (toolCalls.length) {
     timeline.push(
-      ...message.tool_calls.map((toolCall) => ({
+      ...toolCalls.map((toolCall) => ({
         id: `${message.id ?? 'assistant'}-tool-${toolCall.id}`,
         type: 'tool' as const,
-        toolCall: fromPersistedToolCall(toolCall),
+        toolCall,
       })),
     )
   }
@@ -287,6 +327,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
   const currentRequestIdRef = useRef<string | null>(null)
+  const sessionLoadRequestIdRef = useRef(0)
   const isComposingRef = useRef(false)
   const lastCompositionEndAtRef = useRef(0)
 
@@ -315,10 +356,17 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [toast])
 
   // Load sessions list
-  const loadSessions = async () => {
+  const loadSessions = async (preferredSessionId?: string | null) => {
     if (!isConfigured) return
+
+    const requestId = ++sessionLoadRequestIdRef.current
+
     try {
       const workingDir = await workspaceService.getCurrentWorkspace()
+      if (requestId !== sessionLoadRequestIdRef.current) {
+        return
+      }
+
       if (!workingDir) {
         setSessions([])
         setMessages([])
@@ -327,21 +375,30 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       }
 
       const sessionList = await aiService.listSessions(workingDir)
+      if (requestId !== sessionLoadRequestIdRef.current) {
+        return
+      }
+
       setSessions(sessionList)
       setCurrentSessionId((prev) => {
-        const stillExists = prev ? sessionList.some((session) => session.id === prev) : false
+        const nextSessionId = preferredSessionId ?? prev
+        const stillExists = nextSessionId ? sessionList.some((session) => session.id === nextSessionId) : false
         if (!stillExists) {
           setMessages([])
           return null
         }
-        return prev
+        return nextSessionId
       })
     } catch (error) {
+      if (requestId !== sessionLoadRequestIdRef.current) {
+        return
+      }
       console.error('Failed to load sessions:', error)
     }
   }
 
   const resetChatState = () => {
+    sessionLoadRequestIdRef.current += 1
     setMessages([])
     setCurrentSessionId(null)
     setCurrentRequestId(null)
@@ -596,7 +653,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       setMessages(loadedMessages)
       setCurrentSessionId(loadedSession.session.id)
       setShowSessionPanel(false)
-      await loadSessions()
+      await loadSessions(loadedSession.session.id)
 
       try {
         await aiService.activateSession(sessionId, workingDir)
@@ -625,7 +682,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       setMessages([])
       setCurrentSessionId(sessionId)
       setShowSessionPanel(false)
-      await loadSessions()
+      await loadSessions(sessionId)
       toast.success('新会话已创建')
     } catch (error) {
       console.error('Failed to create session:', error)

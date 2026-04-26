@@ -212,7 +212,7 @@ tweets = client.x.timeline.list_timeline_tweets()
 first_tweet = client.x.timeline.get_first_timeline_tweet()
 
 # 获取推文详情
-tweet = client.x.tweets.get_tweet(tweet_id)
+tweet = client.x.tweets.get_tweet(tweet_id)  # 底层 REST 统一走 GET /api/v1/x/tweets?tweetId=...
 replies = client.x.tweets.get_tweet_replies(tweet_id)
 
 # 获取用户资料

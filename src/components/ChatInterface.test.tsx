@@ -274,6 +274,65 @@ describe('ChatInterface', () => {
     })
   })
 
+  it('replays restored assistant timeline items in persisted chronological order', async () => {
+    mockAiService.loadSession.mockResolvedValueOnce({
+      session: {
+        id: 'session-1',
+        title: 'Test Session',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        message_count: 2,
+        workspace: '/tmp/workspace',
+      },
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'restored user',
+          timestamp: Date.now() - 1000,
+        },
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'final answer',
+          timestamp: Date.now(),
+          tool_calls: [
+            {
+              id: 'tool-1',
+              tool: 'Read',
+              action: 'Read file',
+              output: 'file body',
+              status: 'success',
+              start_time: Date.now() - 500,
+              end_time: Date.now() - 400,
+            },
+          ],
+          timeline: [
+            { id: 't-1', type: 'thinking', content: 'first thought', sequence: 0, is_complete: true },
+            { id: 't-2', type: 'tool', tool_call_id: 'tool-1', sequence: 1 },
+            { id: 't-3', type: 'thinking', content: 'second thought', sequence: 2, is_complete: true },
+            { id: 't-4', type: 'text', content: 'final answer', sequence: 3 },
+          ],
+        },
+      ],
+    })
+
+    await openHistoryAndSelectSession('Test Session')
+
+    await waitFor(() => {
+      const orderedItems = [
+        screen.getByText('thinking:first thought'),
+        screen.getByText('tool:Read:file body'),
+        screen.getByText('thinking:second thought'),
+        screen.getByText('text:final answer'),
+      ]
+
+      expect(orderedItems[0].compareDocumentPosition(orderedItems[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(orderedItems[1].compareDocumentPosition(orderedItems[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(orderedItems[2].compareDocumentPosition(orderedItems[3]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+  })
+
   it('renders assistant timeline events in the order they arrive', async () => {
     let onThinkingChunk: ((data: { request_id: string; chunk: string }) => void) | undefined
     let onToolCallStart: ((data: { request_id: string; tool: string; action: string }) => void) | undefined

@@ -167,6 +167,7 @@ impl TaskDatabase {
         conn.execute_batch(include_str!("../migrations/002_create_accounts_table.sql"))?;
         conn.execute_batch(include_str!("../migrations/003_create_x_accounts_and_trend.sql"))?;
         conn.execute_batch(include_str!("../migrations/004_create_ai_conversation_tables.sql"))?;
+        conn.execute_batch(include_str!("../migrations/005_create_ai_message_timeline_items.sql"))?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         Ok(())
     }

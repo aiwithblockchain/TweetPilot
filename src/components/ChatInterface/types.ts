@@ -32,6 +32,30 @@ export interface TextTimelineItem {
 
 export type AssistantTimelineItem = ThinkingTimelineItem | ToolTimelineItem | TextTimelineItem
 
+export interface PersistedThinkingTimelineItem {
+  id: string
+  type: 'thinking'
+  content: string
+  sequence: number
+  is_complete?: boolean | null
+}
+
+export interface PersistedToolTimelineItem {
+  id: string
+  type: 'tool'
+  tool_call_id: string
+  sequence: number
+}
+
+export interface PersistedTextTimelineItem {
+  id: string
+  type: 'text'
+  content: string
+  sequence: number
+}
+
+export type PersistedAssistantTimelineItem = PersistedThinkingTimelineItem | PersistedToolTimelineItem | PersistedTextTimelineItem
+
 export interface ChatMessage {
   id: string
   role: 'assistant' | 'user'
