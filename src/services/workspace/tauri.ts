@@ -101,6 +101,10 @@ export const workspaceTauriService: WorkspaceService = {
     return response.map(mapWorkspaceHistory)
   },
 
+  async deleteRecentWorkspace(path: string) {
+    await tauriInvoke<void>('delete_recent_workspace', { path })
+  },
+
   async setCurrentWorkspace(path: string) {
     await tauriInvoke<void>('set_current_workspace', { path })
   },

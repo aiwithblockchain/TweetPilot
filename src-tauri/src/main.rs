@@ -28,6 +28,7 @@ fn main() {
 
     // Initialize task state (workspace context will be created when workspace is selected)
     let task_state = TaskState::new();
+    let runtime_workspace_state = workspace::RuntimeWorkspaceState::new();
 
     // Initialize AI state
     let ai_state = ai::AiState {
@@ -42,6 +43,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(task_state)
+        .manage(runtime_workspace_state)
         .manage(ai_state)
         .setup(move |app| {
             if let Err(error) = services::resource_installer::ensure_bundled_home_installed(&app.path().resource_dir()?) {
@@ -134,6 +136,7 @@ fn main() {
             workspace::select_local_directory,
             workspace::clone_from_github,
             workspace::get_recent_workspaces,
+            workspace::delete_recent_workspace,
             workspace::set_current_workspace,
             workspace::clear_current_workspace_command,
             workspace::get_current_workspace,

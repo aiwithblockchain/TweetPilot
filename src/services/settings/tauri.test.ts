@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const tauriInvokeMock = vi.fn()
 
@@ -7,6 +7,51 @@ vi.mock('@/lib/tauri-api', () => ({
 }))
 
 describe('settingsTauriService', () => {
+  beforeEach(() => {
+    tauriInvokeMock.mockReset()
+  })
+
+  it('maps preferences to app settings', async () => {
+    const { settingsTauriService } = await import('./tauri')
+
+    tauriInvokeMock.mockResolvedValueOnce({
+      language: 'zh-CN',
+      theme: 'dark',
+      startup: 'workspace-selector',
+    })
+
+    await expect(settingsTauriService.getSettings()).resolves.toEqual({
+      language: 'zh-CN',
+      theme: 'dark',
+    })
+  })
+
+  it('preserves startup when updating settings', async () => {
+    const { settingsTauriService } = await import('./tauri')
+
+    tauriInvokeMock
+      .mockResolvedValueOnce({
+        language: 'zh-CN',
+        theme: 'dark',
+        startup: 'workspace-selector',
+      })
+      .mockResolvedValueOnce(undefined)
+
+    await settingsTauriService.updateSettings({
+      language: 'en-US',
+      theme: 'light',
+    })
+
+    expect(tauriInvokeMock).toHaveBeenNthCalledWith(1, 'get_preferences')
+    expect(tauriInvokeMock).toHaveBeenNthCalledWith(2, 'save_preferences', {
+      preferences: {
+        language: 'en-US',
+        theme: 'light',
+        startup: 'workspace-selector',
+      },
+    })
+  })
+
   it('maps local bridge config from snake_case to camelCase', async () => {
     const { settingsTauriService } = await import('./tauri')
 

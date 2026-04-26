@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { workspaceService } from '@/services'
+import type { WorkspaceHistory } from '@/services/workspace'
 import { listen } from '@tauri-apps/api/event'
 import { TitleBar } from '@/components/TitleBar'
 
@@ -20,9 +22,10 @@ export default function WorkspaceSelector({
   const [repoUrl, setRepoUrl] = useState('')
   const [cloning, setCloning] = useState(false)
   const [targetDirectory, setTargetDirectory] = useState<string | null>(null)
-  const [recentWorkspaces, setRecentWorkspaces] = useState<Array<{path: string; name: string; lastAccessed: string}>>([])
+  const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceHistory[]>([])
   const [showRecentWorkspaces, setShowRecentWorkspaces] = useState(false)
   const [cloneProgress, setCloneProgress] = useState<string>('')
+  const [recentMutationPath, setRecentMutationPath] = useState<string | null>(null)
 
   useEffect(() => {
     void loadRecentWorkspaces()
@@ -31,18 +34,23 @@ export default function WorkspaceSelector({
   const loadRecentWorkspaces = async () => {
     try {
       const recent = await workspaceService.getRecentWorkspaces()
-      const validWorkspaces = []
-      for (const workspace of recent) {
-        try {
-          const exists = await workspaceService.checkDirectoryExists(workspace.path)
-          if (exists) {
-            validWorkspaces.push(workspace)
+      const recentWithStatus = await Promise.all(
+        recent.map(async (workspace) => {
+          try {
+            const exists = await workspaceService.checkDirectoryExists(workspace.path)
+            return {
+              ...workspace,
+              exists,
+            }
+          } catch {
+            return {
+              ...workspace,
+              exists: false,
+            }
           }
-        } catch {
-          // Directory doesn't exist, skip it
-        }
-      }
-      setRecentWorkspaces(validWorkspaces)
+        }),
+      )
+      setRecentWorkspaces(recentWithStatus)
     } catch (err) {
       console.error('Failed to load recent workspaces:', err)
     }
@@ -125,6 +133,22 @@ export default function WorkspaceSelector({
     }
   }
 
+  const handleDeleteRecentWorkspace = async (event: MouseEvent, path: string) => {
+    event.stopPropagation()
+    event.preventDefault()
+    setRecentMutationPath(path)
+    setError(null)
+
+    try {
+      await workspaceService.deleteRecentWorkspace(path)
+      await loadRecentWorkspaces()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除最近工作目录失败')
+    } finally {
+      setRecentMutationPath(null)
+    }
+  }
+
   const isBusy = loading || cloning || isInitializingWorkspace
 
   return (
@@ -176,15 +200,37 @@ export default function WorkspaceSelector({
               <div className="space-y-2">
                 <div className="text-sm font-medium text-[var(--color-text-secondary)]">最近使用</div>
                 {recentWorkspaces.slice(0, 3).map((workspace) => (
-                  <button
+                  <div
                     key={workspace.path}
-                    onClick={() => void handleOpenWorkspace(workspace.path)}
-                    disabled={isBusy}
-                    className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+                    className="w-full p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors disabled:opacity-50"
                   >
-                    <div className="text-sm font-medium mb-1 text-[var(--color-text)]">{workspace.name}</div>
-                    <div className="text-xs text-[var(--color-text-secondary)] truncate">{workspace.path}</div>
-                  </button>
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        onClick={() => void handleOpenWorkspace(workspace.path)}
+                        disabled={isBusy}
+                        className="flex-1 min-w-0 text-left cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <div className="text-sm font-medium mb-1 text-[var(--color-text)]">
+                          {workspace.name}
+                        </div>
+                        <div className="text-xs text-[var(--color-text-secondary)] truncate">
+                          {workspace.path}
+                        </div>
+                        {workspace.exists === false && (
+                          <div className="mt-2 text-xs text-red-400">
+                            目录不存在，但可从历史记录中删除
+                          </div>
+                        )}
+                      </button>
+                      <button
+                        onClick={(event) => void handleDeleteRecentWorkspace(event, workspace.path)}
+                        disabled={isBusy || recentMutationPath === workspace.path}
+                        className="shrink-0 px-3 py-1.5 text-xs border border-[var(--color-border)] rounded text-[var(--color-text-secondary)] hover:text-red-400 hover:border-red-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {recentMutationPath === workspace.path ? '删除中...' : '删除'}
+                      </button>
+                    </div>
+                  </div>
                 ))}
                 {recentWorkspaces.length > 3 && (
                   <button
@@ -299,21 +345,39 @@ export default function WorkspaceSelector({
 
             <div className="flex-1 overflow-auto space-y-2">
               {recentWorkspaces.map((workspace) => (
-                <button
+                <div
                   key={workspace.path}
-                  onClick={() => {
-                    setShowRecentWorkspaces(false)
-                    void handleOpenWorkspace(workspace.path)
-                  }}
-                  disabled={isBusy}
-                  className="w-full p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors text-left disabled:opacity-50"
+                  className="w-full p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg hover:border-[#6D5BF6] transition-colors disabled:opacity-50"
                 >
-                  <div className="text-sm font-medium mb-1">{workspace.name}</div>
-                  <div className="text-xs text-secondary break-all">{workspace.path}</div>
-                  <div className="text-xs text-secondary mt-1">
-                    最后访问: {new Date(workspace.lastAccessed).toLocaleString('zh-CN')}
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      onClick={() => {
+                        setShowRecentWorkspaces(false)
+                        void handleOpenWorkspace(workspace.path)
+                      }}
+                      disabled={isBusy}
+                      className="flex-1 min-w-0 text-left cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <div className="text-sm font-medium mb-1">{workspace.name}</div>
+                      <div className="text-xs text-secondary break-all">{workspace.path}</div>
+                      <div className="text-xs text-secondary mt-1">
+                        最后访问: {new Date(workspace.lastAccessed).toLocaleString('zh-CN')}
+                      </div>
+                      {workspace.exists === false && (
+                        <div className="mt-2 text-xs text-red-400">
+                          目录不存在，但可从历史记录中删除
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={(event) => void handleDeleteRecentWorkspace(event, workspace.path)}
+                      disabled={isBusy || recentMutationPath === workspace.path}
+                      className="shrink-0 px-3 py-1.5 text-xs border border-[var(--color-border)] rounded text-[var(--color-text-secondary)] hover:text-red-400 hover:border-red-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {recentMutationPath === workspace.path ? '删除中...' : '删除'}
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
 

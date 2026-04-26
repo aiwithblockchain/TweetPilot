@@ -1,7 +1,5 @@
+use crate::services::settings_store;
 use serde::{Deserialize, Serialize};
-use crate::services::storage;
-
-const AI_CONFIG_FILE: &str = "ai_config.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
@@ -52,11 +50,9 @@ impl AiSettings {
 }
 
 pub fn load_config() -> Result<AiSettings, String> {
-    let mut config: AiSettings = storage::read_json(AI_CONFIG_FILE, AiSettings::default())?;
-    config.ensure_valid_active_provider();
-    Ok(config)
+    settings_store::get_ai_settings()
 }
 
 pub fn save_config(config: &AiSettings) -> Result<(), String> {
-    storage::write_json(AI_CONFIG_FILE, config)
+    settings_store::save_ai_settings(config)
 }

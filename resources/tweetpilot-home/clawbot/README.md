@@ -212,8 +212,8 @@ tweets = client.x.timeline.list_timeline_tweets()
 first_tweet = client.x.timeline.get_first_timeline_tweet()
 
 # 获取推文详情
-tweet = client.x.tweets.get_tweet(tweet_id)  # 底层 REST 统一走 GET /api/v1/x/tweets?tweetId=...
-replies = client.x.tweets.get_tweet_replies(tweet_id)
+tweet = client.x.tweets.get_tweet(tweet_id)  # 底层 REST 统一走 GET /api/v1/x/tweets?tweetId=...，但 Python 返回的是从 raw TweetDetail 中抽出的结构化 focal tweet
+replies = client.x.tweets.get_tweet_replies(tweet_id)  # 底层 REST 统一走 GET /api/v1/x/tweets/{tweet_id}/replies，但 Python 返回的是从 raw replies payload 中抽出的结构化回复列表
 
 # 获取用户资料
 user = client.x.users.get_user("elonmusk")

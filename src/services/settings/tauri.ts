@@ -13,6 +13,8 @@ interface TauriLocalBridgeConfig {
   sync_interval_ms: number
 }
 
+const DEFAULT_STARTUP = 'workspace-selector'
+
 function mapPreferencesToAppSettings(preferences: TauriPreferences): AppSettings {
   return {
     language: preferences.language,
@@ -20,7 +22,10 @@ function mapPreferencesToAppSettings(preferences: TauriPreferences): AppSettings
   }
 }
 
-function mapAppSettingsToPreferences(settings: AppSettings, currentStartup: string = 'last-workspace'): TauriPreferences {
+function mapAppSettingsToPreferences(
+  settings: AppSettings,
+  currentStartup: string = DEFAULT_STARTUP,
+): TauriPreferences {
   return {
     language: settings.language,
     theme: settings.theme,
@@ -43,7 +48,6 @@ export const settingsTauriService: SettingsService = {
   },
 
   async updateSettings(settings) {
-    // Get current preferences to preserve startup field
     const currentPrefs = await tauriInvoke<TauriPreferences>('get_preferences')
     await tauriInvoke<void>('save_preferences', {
       preferences: mapAppSettingsToPreferences(settings, currentPrefs.startup),

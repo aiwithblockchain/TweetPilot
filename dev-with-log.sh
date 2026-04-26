@@ -13,6 +13,7 @@ LOG_FILE="$LOG_DIR/dev_${TIMESTAMP}.log"
 APP_STATE_DIR="$HOME/.tweetpilot"
 CONFIG_FILE="$APP_STATE_DIR/config.json"
 RECENT_FILE="$APP_STATE_DIR/recent-workspaces.json"
+SETTINGS_FILE="$APP_STATE_DIR/settings.json"
 ROOT_DIR=$(pwd)
 SERVICE_MODE="${VITE_SERVICE_MODE:-tauri}"
 REDACTED_ENV_KEYS=(
@@ -143,8 +144,9 @@ else:
     print(json.dumps(data, ensure_ascii=False, indent=2))
 PY
 append_command_output "port-5173" bash -lc 'lsof -nP -iTCP:5173 -sTCP:LISTEN || true'
-append_file_or_missing "tweetpilot-config" "$CONFIG_FILE"
+append_file_or_missing "tweetpilot-settings" "$SETTINGS_FILE"
 append_file_or_missing "tweetpilot-recent-workspaces" "$RECENT_FILE"
+append_command_output "tweetpilot-config-legacy-note" bash -lc 'if [ -f "$1" ]; then printf "config.json is a legacy file and no longer drives current workspace runtime state.\nPath: %s\n" "$1"; else printf "config.json not present.\n"; fi' _ "$CONFIG_FILE"
 
 log_both "[run] 开始执行 VITE_SERVICE_MODE=$SERVICE_MODE npm run tauri:dev"
 

@@ -2,6 +2,7 @@ export interface WorkspaceHistory {
   path: string
   name: string
   lastAccessed: string
+  exists?: boolean
 }
 
 export type WorkspaceEntryKind = 'file' | 'directory'
@@ -49,6 +50,7 @@ export interface WorkspaceService {
   selectLocalDirectory(): Promise<string | null>
   cloneFromGithub(repositoryUrl: string, targetPath: string): Promise<string>
   getRecentWorkspaces(): Promise<WorkspaceHistory[]>
+  deleteRecentWorkspace(path: string): Promise<void>
   setCurrentWorkspace(path: string): Promise<void>
   clearCurrentWorkspace(): Promise<void>
   getCurrentWorkspace(): Promise<string | null>

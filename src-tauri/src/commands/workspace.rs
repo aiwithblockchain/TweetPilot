@@ -3,9 +3,10 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::{AppHandle, Emitter, Manager};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Mutex;
 
-const WORKSPACE_CONFIG_FILE: &str = "config.json";
 const RECENT_WORKSPACES_FILE: &str = "recent-workspaces.json";
 const WORKSPACE_APP_DIR: &str = ".tweetpilot";
 const WORKSPACE_MARKER_FILE: &str = ".tweetpilot.json";
@@ -25,9 +26,24 @@ pub struct WorkspaceHistory {
     pub last_accessed: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct WorkspaceConfig {
-    current_workspace: Option<String>,
+pub struct RuntimeWorkspaceState {
+    current_workspace: Arc<Mutex<Option<String>>>,
+}
+
+impl RuntimeWorkspaceState {
+    pub fn new() -> Self {
+        Self {
+            current_workspace: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub async fn set_current_workspace(&self, path: Option<String>) {
+        *self.current_workspace.lock().await = path;
+    }
+
+    pub async fn get_current_workspace(&self) -> Option<String> {
+        self.current_workspace.lock().await.clone()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,20 +89,18 @@ fn workspace_name(path: &str) -> String {
         .to_string()
 }
 
-fn load_workspace_config() -> Result<WorkspaceConfig, String> {
-    storage::read_json(WORKSPACE_CONFIG_FILE, WorkspaceConfig::default())
-}
-
-fn save_workspace_config(config: &WorkspaceConfig) -> Result<(), String> {
-    storage::write_json(WORKSPACE_CONFIG_FILE, config)
-}
-
 fn load_recent_workspaces() -> Result<Vec<WorkspaceHistory>, String> {
     storage::read_json(RECENT_WORKSPACES_FILE, Vec::<WorkspaceHistory>::new())
 }
 
 fn save_recent_workspaces(recent_workspaces: &[WorkspaceHistory]) -> Result<(), String> {
     storage::write_json(RECENT_WORKSPACES_FILE, &recent_workspaces)
+}
+
+fn remove_recent_workspace(path: &str) -> Result<(), String> {
+    let mut recent_workspaces = load_recent_workspaces()?;
+    recent_workspaces.retain(|item| item.path != path);
+    save_recent_workspaces(&recent_workspaces)
 }
 
 fn update_recent_workspaces(path: &str) -> Result<(), String> {
@@ -102,13 +116,6 @@ fn update_recent_workspaces(path: &str) -> Result<(), String> {
     );
     recent_workspaces.truncate(10);
     save_recent_workspaces(&recent_workspaces)
-}
-
-fn persist_current_workspace(path: String) -> Result<(), String> {
-    let mut config = load_workspace_config()?;
-    config.current_workspace = Some(path.clone());
-    save_workspace_config(&config)?;
-    update_recent_workspaces(&path)
 }
 
 fn ensure_workspace_support_files(workspace_path: &Path) -> Result<(), String> {
@@ -134,10 +141,17 @@ fn ensure_workspace_support_files(workspace_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn clear_current_workspace() -> Result<(), String> {
-    let mut config = load_workspace_config()?;
-    config.current_workspace = None;
-    save_workspace_config(&config)
+async fn active_workspace_root(
+    runtime_state: &RuntimeWorkspaceState,
+) -> Result<PathBuf, String> {
+    let workspace_root = runtime_state
+        .get_current_workspace()
+        .await
+        .ok_or_else(|| "当前未选择工作目录".to_string())?;
+
+    PathBuf::from(workspace_root)
+        .canonicalize()
+        .map_err(|e| format!("解析工作目录失败: {}", e))
 }
 
 fn ensure_directory_path(path: &Path) -> Result<(), String> {
@@ -271,15 +285,11 @@ fn map_workspace_entry(path: &Path, metadata: &std::fs::Metadata) -> Result<Work
     })
 }
 
-fn validate_workspace_path(path: &Path) -> Result<(), String> {
-    let config = load_workspace_config()?;
-    let workspace_root = config
-        .current_workspace
-        .ok_or_else(|| "当前未选择工作目录".to_string())?;
-    let workspace_root = PathBuf::from(workspace_root);
-    let root = workspace_root
-        .canonicalize()
-        .map_err(|e| format!("解析工作目录失败: {}", e))?;
+async fn validate_workspace_path(
+    path: &Path,
+    runtime_state: &RuntimeWorkspaceState,
+) -> Result<(), String> {
+    let root = active_workspace_root(runtime_state).await?;
     let target = path
         .canonicalize()
         .map_err(|e| format!("解析目标路径失败: {}", e))?;
@@ -309,13 +319,16 @@ fn validate_workspace_entry_name(name: &str, label: &str) -> Result<String, Stri
     Ok(trimmed_name.to_string())
 }
 
-fn validate_workspace_target_path(path: &Path) -> Result<(), String> {
+async fn validate_workspace_target_path(
+    path: &Path,
+    runtime_state: &RuntimeWorkspaceState,
+) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("目标路径无效: {}", path.display()))?;
 
     ensure_directory_path(parent)?;
-    validate_workspace_path(parent)
+    validate_workspace_path(parent, runtime_state).await
 }
 
 fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> {
@@ -454,6 +467,7 @@ pub async fn set_current_workspace(
     app: AppHandle,
     task_state: tauri::State<'_, crate::task_commands::TaskState>,
     ai_state: tauri::State<'_, crate::commands::ai::AiState>,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
 ) -> Result<(), String> {
     log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
 
@@ -512,9 +526,12 @@ pub async fn set_current_workspace(
         *workspace_ctx = Some(new_ctx);
     }
 
-    // Step 6: Persist workspace config
-    log::info!("[set_current_workspace] Persisting workspace config");
-    persist_current_workspace(path)
+    // Step 6: Update runtime workspace state and recent history
+    log::info!("[set_current_workspace] Updating runtime workspace state");
+    runtime_workspace_state
+        .set_current_workspace(Some(path.clone()))
+        .await;
+    update_recent_workspaces(&path)
 }
 
 #[tauri::command]
@@ -539,14 +556,46 @@ pub async fn initialize_workspace(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn clear_current_workspace_command() -> Result<(), String> {
-    clear_current_workspace()
+pub async fn delete_recent_workspace(path: String) -> Result<(), String> {
+    remove_recent_workspace(&path)
 }
 
 #[tauri::command]
-pub async fn get_current_workspace() -> Result<Option<String>, String> {
-    let config = load_workspace_config()?;
-    Ok(config.current_workspace)
+pub async fn clear_current_workspace_command(
+    task_state: State<'_, crate::task_commands::TaskState>,
+    ai_state: State<'_, crate::commands::ai::AiState>,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<(), String> {
+    {
+        let mut workspace_ctx = task_state.get_context().await;
+        if let Some(old_ctx) = workspace_ctx.take() {
+            old_ctx.timer_manager.stop().await;
+            drop(old_ctx);
+        }
+    }
+
+    {
+        let cancel_token = ai_state.cancel_token.lock().await.clone();
+        if let Some(token) = cancel_token {
+            token.cancel();
+        }
+
+        *ai_state.session.lock().await = None;
+        *ai_state.cancel_token.lock().await = None;
+        *ai_state.active_request_id.lock().await = None;
+        *ai_state.active_session_id.lock().await = None;
+        *ai_state.active_working_dir.lock().await = None;
+    }
+
+    runtime_workspace_state.set_current_workspace(None).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_current_workspace(
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<Option<String>, String> {
+    Ok(runtime_workspace_state.get_current_workspace().await)
 }
 
 #[tauri::command]
@@ -555,10 +604,13 @@ pub async fn check_directory_exists(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn list_workspace_directory(path: String) -> Result<Vec<WorkspaceEntry>, String> {
+pub async fn list_workspace_directory(
+    path: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<Vec<WorkspaceEntry>, String> {
     let directory = PathBuf::from(&path);
     ensure_directory_path(&directory)?;
-    validate_workspace_path(&directory)?;
+    validate_workspace_path(&directory, runtime_workspace_state.inner()).await?;
 
     let mut entries = Vec::new();
 
@@ -588,9 +640,12 @@ pub async fn list_workspace_directory(path: String) -> Result<Vec<WorkspaceEntry
 }
 
 #[tauri::command]
-pub async fn read_workspace_file(path: String) -> Result<WorkspaceFileContent, String> {
+pub async fn read_workspace_file(
+    path: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<WorkspaceFileContent, String> {
     let file_path = PathBuf::from(&path);
-    validate_workspace_path(&file_path)?;
+    validate_workspace_path(&file_path, runtime_workspace_state.inner()).await?;
 
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("读取文件信息失败: {}", e))?;
     if !metadata.is_file() {
@@ -652,10 +707,13 @@ pub async fn read_workspace_file(path: String) -> Result<WorkspaceFileContent, S
 }
 
 #[tauri::command]
-pub async fn get_workspace_folder_summary(path: String) -> Result<WorkspaceFolderSummary, String> {
+pub async fn get_workspace_folder_summary(
+    path: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<WorkspaceFolderSummary, String> {
     let directory = PathBuf::from(&path);
     ensure_directory_path(&directory)?;
-    validate_workspace_path(&directory)?;
+    validate_workspace_path(&directory, runtime_workspace_state.inner()).await?;
 
     let mut folder_count = 0usize;
     let mut file_count = 0usize;
@@ -691,12 +749,16 @@ pub async fn get_workspace_folder_summary(path: String) -> Result<WorkspaceFolde
 }
 
 #[tauri::command]
-pub async fn create_workspace_file(parent_path: String, name: String) -> Result<WorkspaceEntry, String> {
+pub async fn create_workspace_file(
+    parent_path: String,
+    name: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&name, "文件名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
-    validate_workspace_path(&parent)?;
+    validate_workspace_path(&parent, runtime_workspace_state.inner()).await?;
 
     let target = parent.join(trimmed_name);
     if target.exists() {
@@ -708,12 +770,16 @@ pub async fn create_workspace_file(parent_path: String, name: String) -> Result<
 }
 
 #[tauri::command]
-pub async fn create_workspace_folder(parent_path: String, name: String) -> Result<WorkspaceEntry, String> {
+pub async fn create_workspace_folder(
+    parent_path: String,
+    name: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&name, "文件夹名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
-    validate_workspace_path(&parent)?;
+    validate_workspace_path(&parent, runtime_workspace_state.inner()).await?;
 
     let target = parent.join(trimmed_name);
     if target.exists() {
@@ -725,10 +791,14 @@ pub async fn create_workspace_folder(parent_path: String, name: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn rename_workspace_entry(path: String, new_name: String) -> Result<WorkspaceEntry, String> {
+pub async fn rename_workspace_entry(
+    path: String,
+    new_name: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&new_name, "名称")?;
     let source = PathBuf::from(&path);
-    validate_workspace_target_path(&source)?;
+    validate_workspace_target_path(&source, runtime_workspace_state.inner()).await?;
 
     if !source.exists() {
         return Err("要重命名的项目不存在".to_string());
@@ -748,9 +818,12 @@ pub async fn rename_workspace_entry(path: String, new_name: String) -> Result<Wo
 }
 
 #[tauri::command]
-pub async fn delete_workspace_entry(path: String) -> Result<(), String> {
+pub async fn delete_workspace_entry(
+    path: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+) -> Result<(), String> {
     let target = PathBuf::from(&path);
-    validate_workspace_target_path(&target)?;
+    validate_workspace_target_path(&target, runtime_workspace_state.inner()).await?;
 
     if !target.exists() {
         return Err("要删除的项目不存在".to_string());
@@ -800,7 +873,8 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
         let ai_state = app.state::<crate::commands::ai::AiState>();
 
         // Use set_current_workspace to properly update all state
-        set_current_workspace(path_str.clone(), app.clone(), task_state, ai_state).await?;
+        let runtime_workspace_state = app.state::<RuntimeWorkspaceState>();
+        set_current_workspace(path_str.clone(), app.clone(), task_state, ai_state, runtime_workspace_state).await?;
 
         // Emit event to frontend to reload workspace
         app.emit("workspace-changed", path_str)
@@ -832,7 +906,6 @@ pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
         )
         .title("TweetPilot")
         .inner_size(1280.0, 800.0)
-        .decorations(false)
         .build()
         .map_err(|e| format!("Failed to create window: {}", e))?;
 

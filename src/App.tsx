@@ -130,15 +130,6 @@ function AppShell() {
     nextTaskName: '',
   })
 
-  useEffect(() => {
-    // Ensure cleanup of pending workspace path after entering main interface
-    const pendingPath = sessionStorage.getItem('pending-workspace-path')
-    if (pendingPath) {
-      console.log('[AppShell] Cleaning up pending workspace path')
-      sessionStorage.removeItem('pending-workspace-path')
-    }
-  }, [])
-
   const closeUnsavedTaskSwitchDialog = () => {
     setUnsavedTaskSwitchDialog((prev) => ({
       ...prev,
@@ -402,28 +393,33 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
-    const pendingPath = sessionStorage.getItem('pending-workspace-path')
+    const restoreRuntimeWorkspace = async () => {
+      try {
+        const runtimeWorkspace = await invoke<string | null>('get_current_workspace')
 
-    if (pendingPath) {
-      console.log('[App] Restoring pending workspace after reload:', pendingPath)
-      sessionStorage.removeItem('pending-workspace-path')
-      setCurrentWorkspace(pendingPath)
-      setWorkspaceReady(true)
-      setIsCheckingWorkspace(false)
-      return
+        if (runtimeWorkspace) {
+          console.log('[App] Restoring runtime workspace after reload:', runtimeWorkspace)
+          setCurrentWorkspace(runtimeWorkspace)
+          setWorkspaceReady(true)
+          return
+        }
+
+        console.log('[App] Starting app, will show workspace selector')
+      } catch (error) {
+        console.error('[App] Failed to read runtime workspace:', error)
+      } finally {
+        setIsCheckingWorkspace(false)
+      }
     }
 
-    // Don't auto-load workspace - always show selector on startup
-    console.log('[App] Starting app, will show workspace selector')
-    setIsCheckingWorkspace(false)
+    void restoreRuntimeWorkspace()
   }, [])
+
 
   useEffect(() => {
     const setupEventListeners = async () => {
       const unlistenWorkspaceChanged = await listen<string>('workspace-changed', (event) => {
         console.log('[App] Workspace changed via menu:', event.payload)
-        // Backend state is already switched by the Rust command, persist path for frontend reload only.
-        sessionStorage.setItem('pending-workspace-path', event.payload)
         setCurrentWorkspace(event.payload)
         setWorkspaceReady(true)
         setTimeout(() => window.location.reload(), 100)

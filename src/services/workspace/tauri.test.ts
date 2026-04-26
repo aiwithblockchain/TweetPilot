@@ -30,6 +30,18 @@ describe('workspaceTauriService', () => {
     expect(tauriInvokeMock).toHaveBeenCalledWith('get_current_workspace')
   })
 
+  it('maps delete recent workspace to the Tauri command', async () => {
+    const { workspaceTauriService } = await import('./tauri')
+
+    tauriInvokeMock.mockResolvedValueOnce(undefined)
+
+    await workspaceTauriService.deleteRecentWorkspace('/tmp/workspace')
+
+    expect(tauriInvokeMock).toHaveBeenCalledWith('delete_recent_workspace', {
+      path: '/tmp/workspace',
+    })
+  })
+
   it('maps rename entry to the Tauri command', async () => {
     const { workspaceTauriService } = await import('./tauri')
 
