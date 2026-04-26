@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 
 interface ParameterEditorProps {
   value: Record<string, string>
@@ -17,10 +17,15 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
     setNewValue('')
   }
 
-  const handleRemove = (key: string) => {
-    const updated = { ...value }
-    delete updated[key]
-    onChange(updated)
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      handleAdd()
+    }
   }
 
   const entries = Object.entries(value)
@@ -54,7 +59,7 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
           onChange={(e) => setNewKey(e.target.value)}
           placeholder="参数名"
           className="flex-1 h-9 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          onKeyDown={handleInputKeyDown}
         />
         <input
           type="text"
@@ -62,7 +67,7 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
           onChange={(e) => setNewValue(e.target.value)}
           placeholder="参数值"
           className="flex-1 h-9 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6]"
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          onKeyDown={handleInputKeyDown}
         />
         <button
           type="button"

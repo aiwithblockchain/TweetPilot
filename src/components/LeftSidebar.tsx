@@ -118,6 +118,10 @@ function WorkspaceContextMenu({
     </div>
   )
 }
+function shouldIgnoreEnterForIme(event: KeyboardEvent<HTMLInputElement>) {
+  return event.nativeEvent.isComposing
+}
+
 export function LeftSidebar({
   activeView,
   width,
@@ -186,6 +190,10 @@ export function LeftSidebar({
     if (!workspaceInlineCreate.active) return null
 
     const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+      if (shouldIgnoreEnterForIme(event)) {
+        return
+      }
+
       if (event.key === 'Enter') {
         event.preventDefault()
         void onWorkspaceInlineCreateSubmit()
@@ -254,6 +262,10 @@ export function LeftSidebar({
     if (!workspaceRenameState.active) return null
 
     const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+      if (shouldIgnoreEnterForIme(event)) {
+        return
+      }
+
       if (event.key === 'Enter') {
         event.preventDefault()
         void onWorkspaceRenameSubmit()

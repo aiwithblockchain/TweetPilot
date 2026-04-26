@@ -131,6 +131,29 @@ describe('LeftSidebar workspace inline create', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('does not submit inline create on Enter while IME composition is active', () => {
+    const onSubmit = vi.fn()
+
+    renderSidebar({
+      workspaceInlineCreate: {
+        active: true,
+        kind: 'file',
+        parentPath: '/workspace/src',
+        value: 'draft.ts',
+        pending: false,
+        error: null,
+      },
+      onWorkspaceInlineCreateSubmit: onSubmit,
+    })
+
+    const input = screen.getByPlaceholderText('输入新文件名称')
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'isComposing', { value: true })
+    input.dispatchEvent(event)
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('renders root-level inline create when parent path is not visible in tree', () => {
     renderSidebar({
       workspaceInlineCreate: {
@@ -193,6 +216,28 @@ describe('LeftSidebar workspace inline create', () => {
 
     fireEvent.keyDown(input, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not submit rename on Enter while IME composition is active', () => {
+    const onSubmit = vi.fn()
+
+    renderSidebar({
+      workspaceRenameState: {
+        active: true,
+        path: '/workspace/src/index.ts',
+        value: 'renamed.ts',
+        pending: false,
+        error: null,
+      },
+      onWorkspaceRenameSubmit: onSubmit,
+    })
+
+    const input = screen.getByPlaceholderText('输入新名称')
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'isComposing', { value: true })
+    input.dispatchEvent(event)
+
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('opens workspace context menu and triggers action', () => {
