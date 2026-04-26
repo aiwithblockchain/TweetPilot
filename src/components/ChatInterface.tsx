@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useToast } from '@/contexts/ToastContext'
 import { aiService, type SessionMetadata, type StoredMessage } from '@/services/ai/tauri'
 import { workspaceService } from '@/services/workspace'
@@ -141,6 +142,9 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [pendingEvents, setPendingEvents] = useState<Record<string, Array<{ type: 'thinking'; chunk: string } | { type: 'tool-start'; tool: string; action: string } | { type: 'tool-end'; tool: string; success: boolean; result: string }>>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
+  const currentRequestIdRef = useRef<string | null>(null)
+  const isComposingRef = useRef(false)
+  const lastCompositionEndAtRef = useRef(0)
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -170,24 +174,89 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const loadSessions = async () => {
     if (!isConfigured) return
     try {
-      const sessionList = await aiService.listSessions()
+      const workingDir = await workspaceService.getCurrentWorkspace()
+      if (!workingDir) {
+        setSessions([])
+        setMessages([])
+        setCurrentSessionId(null)
+        return
+      }
+
+      const sessionList = await aiService.listSessions(workingDir)
       setSessions(sessionList)
+      setCurrentSessionId((prev) => {
+        const stillExists = prev ? sessionList.some((session) => session.id === prev) : false
+        if (!stillExists) {
+          setMessages([])
+          return null
+        }
+        return prev
+      })
     } catch (error) {
       console.error('Failed to load sessions:', error)
     }
   }
 
+  const resetChatState = () => {
+    setMessages([])
+    setCurrentSessionId(null)
+    setCurrentRequestId(null)
+    setIsLoading(false)
+  }
+
   useEffect(() => {
-    loadSessions()
+    const refreshSessions = async () => {
+      resetChatState()
+      await loadSessions()
+    }
+
+    refreshSessions()
   }, [isConfigured])
+
+  useEffect(() => {
+    let disposed = false
+
+    const setupWorkspaceChangedListener = async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        const unlisten = await listen<string>('workspace-changed', () => {
+          resetChatState()
+          if (isConfigured) {
+            void loadSessions()
+          } else {
+            setSessions([])
+          }
+        })
+
+        if (disposed) {
+          unlisten()
+        }
+
+        return unlisten
+      } catch (error) {
+        console.debug('[ChatInterface] workspace-changed listener unavailable', error)
+        return () => {}
+      }
+    }
+
+    const cleanup = setupWorkspaceChangedListener()
+    return () => {
+      disposed = true
+      cleanup.then(unlisten => unlisten())
+    }
+  }, [isConfigured])
+
+  useEffect(() => {
+    currentRequestIdRef.current = currentRequestId
+  }, [currentRequestId])
 
   // Set up event listeners
   useEffect(() => {
-    console.log('[ChatInterface] Setting up event listeners, currentRequestId:', currentRequestId)
+    console.log('[ChatInterface] Setting up event listeners')
 
     const unlistenChunk = aiService.onMessageChunk((data) => {
       console.log('[ChatInterface] Received message-chunk:', data)
-      if (data.request_id === currentRequestId) {
+      if (data.request_id === currentRequestIdRef.current) {
         console.log('[ChatInterface] Request ID matches, updating message')
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1]
@@ -200,28 +269,28 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
           return prev
         })
       } else {
-        console.log('[ChatInterface] Request ID mismatch:', data.request_id, 'vs', currentRequestId)
+        console.log('[ChatInterface] Request ID mismatch:', data.request_id, 'vs', currentRequestIdRef.current)
       }
     })
 
     const unlistenThinkingChunk = aiService.onThinkingChunk((data) => {
       console.log('[ChatInterface] Received thinking-chunk:', data)
-      appendThinkingChunk(data.request_id, data.chunk, currentRequestId, setMessages, setPendingEvents)
+      appendThinkingChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
     })
 
     const unlistenToolStart = aiService.onToolCallStart((data) => {
       console.log('[ChatInterface] Received tool-call-start:', data)
-      applyToolStart(data.request_id, data.tool, data.action, currentRequestId, setMessages, setPendingEvents)
+      applyToolStart(data.request_id, data.tool, data.action, currentRequestIdRef.current, setMessages, setPendingEvents)
     })
 
     const unlistenToolEnd = aiService.onToolCallEnd((data) => {
       console.log('[ChatInterface] Received tool-call-end:', data)
-      applyToolEnd(data.request_id, data.tool, data.success, data.result || '', currentRequestId, setMessages, setPendingEvents)
+      applyToolEnd(data.request_id, data.tool, data.success, data.result || '', currentRequestIdRef.current, setMessages, setPendingEvents)
     })
 
     const unlistenAiStatus = aiService.onAiStatus((data) => {
       console.log('[ChatInterface] Received ai-status:', data)
-      if (data.request_id === currentRequestId) {
+      if (data.request_id === currentRequestIdRef.current) {
         console.log('[ChatInterface] Updating status to:', data.text)
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1]
@@ -235,7 +304,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     const unlistenRequestEnd = aiService.onRequestEnd((data) => {
       console.log('[ChatInterface] Received ai-request-end:', data)
-      if (data.request_id === currentRequestId) {
+      if (data.request_id === currentRequestIdRef.current) {
         console.log('[ChatInterface] Request completed, cleaning up')
         setIsLoading(false)
         setCurrentRequestId(null)
@@ -268,7 +337,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         unlistenRequestEnd,
       ]).then(fns => fns.forEach(fn => fn()))
     }
-  }, [currentRequestId])
+  }, [toast])
 
   useEffect(() => {
     if (!currentRequestId) {
@@ -298,6 +367,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [currentRequestId, pendingEvents])
 
   const handleSend = async () => {
+    console.log('[ChatInterface] handleSend called', {
+      valueLength: value.length,
+      isLoading,
+      isConfigured,
+      currentSessionId,
+    })
+
     if (!value.trim() || isLoading) return
 
     if (!isConfigured) {
@@ -307,6 +383,12 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     if (!currentSessionId) {
       toast.error('请先从历史会话中选择，或点击右上角 + 新建会话')
+      return
+    }
+
+    const workingDir = await workspaceService.getCurrentWorkspace()
+    if (!workingDir) {
+      toast.error('请先选择工作区')
       return
     }
 
@@ -333,7 +415,8 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     setIsLoading(true)
 
     try {
-      const response = await aiService.sendMessage(userMessage.content)
+      console.log('[ChatInterface] About to call aiService.sendMessage')
+      const response = await aiService.sendMessage(userMessage.content, workingDir)
       console.log('[ChatInterface] Received request ID:', response.request_id)
       setCurrentRequestId(response.request_id)
     } catch (error) {
@@ -342,7 +425,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       toast.error(`发送消息失败: ${errorMessage}`, 8000)
       setIsLoading(false)
       setCurrentRequestId(null)
-      setMessages((prev) => prev.slice(0, -1))
+      setMessages((prev) => prev.slice(0, -2))
     }
   }
 
@@ -356,7 +439,14 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const nativeEvent = e.nativeEvent as KeyboardEvent & { isComposing?: boolean; keyCode?: number }
+    const justEndedComposition = Date.now() - lastCompositionEndAtRef.current < 50
+
+    if (isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229 || justEndedComposition) {
+      return
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -365,13 +455,27 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
   const handleSelectSession = async (sessionId: string) => {
     try {
-      const loadedSession = await aiService.loadSession(sessionId)
+      const workingDir = await workspaceService.getCurrentWorkspace()
+      if (!workingDir) {
+        toast.error('请先选择工作区')
+        return
+      }
+
+      const loadedSession = await aiService.loadSession(workingDir, sessionId)
       const loadedMessages = loadedSession.messages.map(fromStoredMessage)
       setMessages(loadedMessages)
       setCurrentSessionId(loadedSession.session.id)
       setShowSessionPanel(false)
       await loadSessions()
-      toast.success('会话已加载')
+
+      try {
+        await aiService.activateSession(sessionId, workingDir)
+        toast.success('会话已加载')
+      } catch (error) {
+        console.error('Failed to activate session runtime:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        toast.warning(`会话历史已加载，但当前无法继续对话: ${errorMessage}`)
+      }
     } catch (error) {
       console.error('Failed to load session:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -404,7 +508,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     if (!confirm('确定要删除这个会话吗？')) return
 
     try {
-      await aiService.deleteSession(sessionId)
+      const workingDir = await workspaceService.getCurrentWorkspace()
+      if (!workingDir) {
+        toast.error('请先选择工作区')
+        return
+      }
+
+      await aiService.deleteSession(workingDir, sessionId)
       await loadSessions()
 
       if (sessionId === currentSessionId) {
@@ -522,6 +632,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onCompositionStart={() => {
+            isComposingRef.current = true
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false
+            lastCompositionEndAtRef.current = Date.now()
+          }}
           onKeyDown={handleKeyDown}
           placeholder={currentSessionId ? '输入消息...' : '请先选择历史会话，或点击右上角 + 新建会话'}
           disabled={isLoading || !currentSessionId}

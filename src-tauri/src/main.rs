@@ -34,6 +34,8 @@ fn main() {
         session: Arc::new(tokio::sync::Mutex::new(None)),
         cancel_token: Arc::new(tokio::sync::Mutex::new(None)),
         active_request_id: Arc::new(tokio::sync::Mutex::new(None)),
+        active_session_id: Arc::new(tokio::sync::Mutex::new(None)),
+        active_working_dir: Arc::new(tokio::sync::Mutex::new(None)),
     };
 
     tauri::Builder::default()
@@ -192,6 +194,7 @@ fn main() {
             ai::list_ai_sessions,
             ai::get_session_metadata,
             ai::load_ai_session,
+            ai::activate_ai_session,
             ai::delete_ai_session,
             ai::create_new_session,
         ])

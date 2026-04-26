@@ -1,12 +1,8 @@
-use claurst_core::{Config, PermissionMode, Message, MessageContent, ContentBlock, CostTracker};
-use claurst_query::{QueryConfig, QueryOutcome, QueryEvent, run_query_loop};
-use claurst_tools::{
-    Tool, ToolContext,
-    FileReadTool, FileEditTool, FileWriteTool,
-    BashTool, GlobTool, GrepTool,
-};
-use claurst_api::{AnthropicClient, client::ClientConfig, AnthropicStreamEvent};
-use crate::services::conversation_storage::{ConversationStorage, StoredMessage, StoredToolCall};
+use claurst_api::{client::ClientConfig, AnthropicClient, AnthropicStreamEvent};
+use claurst_core::{Config, ContentBlock, CostTracker, Message, MessageContent, PermissionMode};
+use claurst_query::{run_query_loop, QueryConfig, QueryEvent, QueryOutcome};
+use claurst_tools::{BashTool, FileEditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool, Tool, ToolContext};
+use crate::services::ai_storage::{AiStorage, StoredMessage, StoredToolCall};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,17 +30,23 @@ fn collect_final_text_from_message(msg: &Message) -> String {
     }
 }
 
+fn to_runtime_message(message: StoredMessage) -> Option<Message> {
+    match message.role.as_str() {
+        "user" => Some(Message::user(message.content)),
+        "assistant" => Some(Message::assistant(message.content)),
+        _ => None,
+    }
+}
+
 pub struct ClaurstSession {
     session_id: String,
-    #[allow(dead_code)]
-    working_dir: PathBuf,
     client: AnthropicClient,
     config: QueryConfig,
     messages: Vec<Message>,
     tools: Vec<Box<dyn Tool>>,
     context: ToolContext,
     cost_tracker: Arc<CostTracker>,
-    storage: ConversationStorage,
+    storage: AiStorage,
 }
 
 impl ClaurstSession {
@@ -55,9 +57,14 @@ impl ClaurstSession {
         model: String,
         base_url: Option<String>,
         system_prompt: Option<String>,
+        stored_messages: Vec<StoredMessage>,
     ) -> anyhow::Result<Self> {
         let api_base = base_url.unwrap_or_else(|| "https://api.anthropic.com".to_string());
-        log::info!("Initializing Claurst session {} with api_base: {}, model: {}", session_id, api_base, model);
+        log::info!(
+            "Initializing Claurst session {} with model: {}",
+            session_id,
+            model
+        );
 
         let client_config = ClientConfig {
             api_key: api_key.clone(),
@@ -67,7 +74,6 @@ impl ClaurstSession {
         };
 
         let client = AnthropicClient::new(client_config)?;
-        log::info!("AnthropicClient created successfully");
 
         let mut config = Config::default();
         config.project_dir = Some(working_dir.clone());
@@ -100,7 +106,7 @@ impl ClaurstSession {
             cost_tracker: Arc::clone(&cost_tracker),
             session_id: uuid::Uuid::new_v4().to_string(),
             file_history: Arc::new(parking_lot::Mutex::new(
-                claurst_core::file_history::FileHistory::new()
+                claurst_core::file_history::FileHistory::new(),
             )),
             current_turn: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             non_interactive: false,
@@ -112,24 +118,16 @@ impl ClaurstSession {
             permission_manager: None,
         };
 
-        let storage = ConversationStorage::new()
-            .map_err(|e| anyhow::anyhow!("Failed to create storage: {}", e))?;
+        let storage = AiStorage::new(&working_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to create AI storage: {}", e))?;
 
-        let messages: Vec<Message> = if let Ok(stored_messages) = storage.load_messages(&session_id) {
-            stored_messages.into_iter().map(|m| {
-                if m.role == "user" {
-                    Message::user(m.content)
-                } else {
-                    Message::assistant(m.content)
-                }
-            }).collect()
-        } else {
-            Vec::new()
-        };
+        let messages = stored_messages
+            .into_iter()
+            .filter_map(to_runtime_message)
+            .collect();
 
         Ok(Self {
             session_id,
-            working_dir,
             client,
             config: query_config,
             messages,
@@ -140,10 +138,6 @@ impl ClaurstSession {
         })
     }
 
-    pub fn get_session_id(&self) -> &str {
-        &self.session_id
-    }
-
     pub async fn send_message(
         &mut self,
         message: &str,
@@ -151,29 +145,48 @@ impl ClaurstSession {
         window: Window,
         cancel_token: CancellationToken,
     ) -> anyhow::Result<String> {
-        let now = chrono::Utc::now().timestamp();
+        let user_timestamp = chrono::Utc::now().timestamp();
+        let user_message_id = format!("user-{}", request_id);
+        let assistant_message_id = format!("assistant-{}", request_id);
+
         self.messages.push(Message::user(message.to_string()));
         log::info!("User message added, total messages: {}", self.messages.len());
 
-        if let Err(e) = self.storage.save_message(
-            &self.session_id,
-            StoredMessage {
-                id: Some(format!("user-{}", now)),
-                role: "user".to_string(),
-                content: message.to_string(),
-                timestamp: now,
-                thinking: None,
-                thinking_complete: None,
-                tool_calls: None,
-                status: None,
-            },
-        ) {
-            log::warn!("Failed to save user message to storage: {}", e);
-        }
+        let user_message = StoredMessage {
+            id: Some(user_message_id),
+            role: "user".to_string(),
+            content: message.to_string(),
+            timestamp: user_timestamp,
+            thinking: None,
+            thinking_complete: None,
+            tool_calls: None,
+            status: None,
+        };
+
+        self.storage
+            .insert_message(&self.session_id, &user_message)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        let assistant_placeholder = StoredMessage {
+            id: Some(assistant_message_id.clone()),
+            role: "assistant".to_string(),
+            content: String::new(),
+            timestamp: user_timestamp,
+            thinking: None,
+            thinking_complete: Some(false),
+            tool_calls: None,
+            status: Some("thinking".to_string()),
+        };
+
+        self.storage
+            .insert_message(&self.session_id, &assistant_placeholder)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let event_window = window.clone();
         let request_id_owned = request_id.to_string();
+        let assistant_message_id_for_events = assistant_message_id.clone();
+        let storage_for_events = self.storage.clone();
         let thinking_buffer = Arc::new(tokio::sync::Mutex::new(String::new()));
         let tool_calls = Arc::new(tokio::sync::Mutex::new(Vec::<StoredToolCall>::new()));
         let status_text = Arc::new(tokio::sync::Mutex::new(None::<String>));
@@ -189,13 +202,21 @@ impl ClaurstSession {
                         if let AnthropicStreamEvent::ContentBlockDelta { delta, .. } = stream_event {
                             match delta {
                                 ContentDelta::TextDelta { text } => {
+                                    let _ = storage_for_events.append_message_content(&assistant_message_id_for_events, &text);
                                     let _ = event_window.emit("message-chunk", serde_json::json!({
                                         "request_id": request_id_owned.clone(),
                                         "chunk": text,
                                     }));
                                 }
                                 ContentDelta::ThinkingDelta { thinking } => {
-                                    thinking_buffer_for_events.lock().await.push_str(&thinking);
+                                    let mut thinking_guard = thinking_buffer_for_events.lock().await;
+                                    thinking_guard.push_str(&thinking);
+                                    let _ = storage_for_events.update_message_thinking(
+                                        &assistant_message_id_for_events,
+                                        &thinking_guard,
+                                        Some(false),
+                                    );
+                                    drop(thinking_guard);
                                     let _ = event_window.emit("thinking-chunk", serde_json::json!({
                                         "request_id": request_id_owned.clone(),
                                         "chunk": thinking,
@@ -219,6 +240,8 @@ impl ClaurstSession {
                             start_time: timestamp_ms,
                             end_time: None,
                         });
+                        let snapshot = tool_calls_for_events.lock().await.clone();
+                        let _ = storage_for_events.replace_tool_calls(&assistant_message_id_for_events, &snapshot);
                         let _ = event_window.emit("tool-call-start", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "tool": tool_name,
@@ -228,13 +251,23 @@ impl ClaurstSession {
                     QueryEvent::ToolEnd { tool_name, result, is_error, .. } => {
                         let end_time = chrono::Utc::now().timestamp_millis();
                         let mut tool_calls_guard = tool_calls_for_events.lock().await;
-                        if let Some(tool_call) = tool_calls_guard.iter_mut().rev().find(|tc| tc.tool == tool_name && tc.status == "running") {
-                            tool_call.status = if is_error { "error".to_string() } else { "success".to_string() };
+                        if let Some(tool_call) = tool_calls_guard
+                            .iter_mut()
+                            .rev()
+                            .find(|tc| tc.tool == tool_name && tc.status == "running")
+                        {
+                            tool_call.status = if is_error {
+                                "error".to_string()
+                            } else {
+                                "success".to_string()
+                            };
                             tool_call.output = Some(result.clone());
                             tool_call.end_time = Some(end_time);
                             tool_call.duration = Some((end_time - tool_call.start_time) as f64 / 1000.0);
                         }
+                        let snapshot = tool_calls_guard.clone();
                         drop(tool_calls_guard);
+                        let _ = storage_for_events.replace_tool_calls(&assistant_message_id_for_events, &snapshot);
                         let _ = event_window.emit("tool-call-end", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "tool": tool_name,
@@ -249,6 +282,7 @@ impl ClaurstSession {
                             "thinking"
                         };
                         *status_text_for_events.lock().await = Some(status.clone());
+                        let _ = storage_for_events.update_message_status(&assistant_message_id_for_events, Some(&status));
                         let _ = event_window.emit("ai-status", serde_json::json!({
                             "request_id": request_id_owned.clone(),
                             "phase": phase,
@@ -270,16 +304,27 @@ impl ClaurstSession {
             Some(event_tx),
             cancel_token,
             None,
-        ).await;
+        )
+        .await;
 
         let final_text = match outcome {
-            QueryOutcome::EndTurn { message: msg, .. } => {
-                collect_final_text_from_message(&msg)
-            }
-            QueryOutcome::MaxTokens { partial_message, .. } => {
-                collect_final_text_from_message(&partial_message)
-            }
+            QueryOutcome::EndTurn { message: msg, .. } => collect_final_text_from_message(&msg),
+            QueryOutcome::MaxTokens { partial_message, .. } => collect_final_text_from_message(&partial_message),
             QueryOutcome::Cancelled => {
+                let cancelled_message = StoredMessage {
+                    id: Some(assistant_message_id.clone()),
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                    thinking: Some(thinking_buffer.lock().await.clone()).filter(|value| !value.is_empty()),
+                    thinking_complete: Some(false),
+                    tool_calls: {
+                        let calls = tool_calls.lock().await.clone();
+                        if calls.is_empty() { None } else { Some(calls) }
+                    },
+                    status: Some("cancelled".to_string()),
+                };
+                let _ = self.storage.finalize_message(&self.session_id, &cancelled_message);
                 let _ = window.emit("ai-request-end", serde_json::json!({
                     "request_id": request_id,
                     "result": "cancelled",
@@ -289,6 +334,20 @@ impl ClaurstSession {
             }
             QueryOutcome::Error(e) => {
                 let error_message = format!("Query error: {}", e);
+                let failed_message = StoredMessage {
+                    id: Some(assistant_message_id.clone()),
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                    thinking: Some(thinking_buffer.lock().await.clone()).filter(|value| !value.is_empty()),
+                    thinking_complete: Some(false),
+                    tool_calls: {
+                        let calls = tool_calls.lock().await.clone();
+                        if calls.is_empty() { None } else { Some(calls) }
+                    },
+                    status: Some("error".to_string()),
+                };
+                let _ = self.storage.finalize_message(&self.session_id, &failed_message);
                 let _ = window.emit("ai-request-end", serde_json::json!({
                     "request_id": request_id,
                     "result": "error",
@@ -297,6 +356,20 @@ impl ClaurstSession {
                 return Err(anyhow::anyhow!(error_message));
             }
             QueryOutcome::BudgetExceeded { .. } => {
+                let failed_message = StoredMessage {
+                    id: Some(assistant_message_id.clone()),
+                    role: "assistant".to_string(),
+                    content: String::new(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                    thinking: Some(thinking_buffer.lock().await.clone()).filter(|value| !value.is_empty()),
+                    thinking_complete: Some(false),
+                    tool_calls: {
+                        let calls = tool_calls.lock().await.clone();
+                        if calls.is_empty() { None } else { Some(calls) }
+                    },
+                    status: Some("error".to_string()),
+                };
+                let _ = self.storage.finalize_message(&self.session_id, &failed_message);
                 let _ = window.emit("ai-request-end", serde_json::json!({
                     "request_id": request_id,
                     "result": "error",
@@ -309,29 +382,40 @@ impl ClaurstSession {
         let final_timestamp = chrono::Utc::now().timestamp();
         let final_thinking = {
             let thinking = thinking_buffer.lock().await.clone();
-            if thinking.is_empty() { None } else { Some(thinking) }
+            if thinking.is_empty() {
+                None
+            } else {
+                Some(thinking)
+            }
         };
         let final_tool_calls = {
-            let tool_calls = tool_calls.lock().await.clone();
-            if tool_calls.is_empty() { None } else { Some(tool_calls) }
+            let calls = tool_calls.lock().await.clone();
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
         };
-        let final_status = status_text.lock().await.clone().or_else(|| Some("completed".to_string()));
+        let final_status = status_text
+            .lock()
+            .await
+            .clone()
+            .or_else(|| Some("completed".to_string()));
 
-        if let Err(e) = self.storage.save_message(
-            &self.session_id,
-            StoredMessage {
-                id: Some(format!("assistant-{}", final_timestamp)),
-                role: "assistant".to_string(),
-                content: final_text.clone(),
-                timestamp: final_timestamp,
-                thinking: final_thinking,
-                thinking_complete: Some(true),
-                tool_calls: final_tool_calls,
-                status: final_status,
-            },
-        ) {
-            log::warn!("Failed to save assistant message to storage: {}", e);
-        }
+        let final_message = StoredMessage {
+            id: Some(assistant_message_id),
+            role: "assistant".to_string(),
+            content: final_text.clone(),
+            timestamp: final_timestamp,
+            thinking: final_thinking,
+            thinking_complete: Some(true),
+            tool_calls: final_tool_calls,
+            status: final_status,
+        };
+
+        self.storage
+            .finalize_message(&self.session_id, &final_message)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         let _ = window.emit("ai-request-end", serde_json::json!({
             "request_id": request_id,

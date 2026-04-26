@@ -53,16 +53,24 @@ export const aiService = {
     return invoke('init_ai_session', { workingDir })
   },
 
-  async sendMessage(message: string): Promise<{ request_id: string }> {
-    return invoke('send_ai_message', { message })
+  async sendMessage(message: string, workingDir: string): Promise<{ request_id: string }> {
+    console.log('[aiService] Invoking send_ai_message', { messageLength: message.length, workingDir })
+    try {
+      const response = await invoke<{ request_id: string }>('send_ai_message', { message, workingDir })
+      console.log('[aiService] send_ai_message resolved', response)
+      return response
+    } catch (error) {
+      console.error('[aiService] send_ai_message failed', error)
+      throw error
+    }
   },
 
   async cancelMessage(): Promise<void> {
     return invoke('cancel_ai_message')
   },
 
-  async clearSession(): Promise<void> {
-    return invoke('clear_ai_session')
+  async clearSession(workingDir: string, sessionId: string): Promise<void> {
+    return invoke('clear_ai_session', { workingDir, sessionId })
   },
 
   async getConfig(): Promise<AiSettings> {
@@ -97,20 +105,24 @@ export const aiService = {
     return listen('ai-request-end', (event) => callback(event.payload as any))
   },
 
-  async listSessions(): Promise<SessionMetadata[]> {
-    return invoke('list_ai_sessions')
+  async listSessions(workingDir: string): Promise<SessionMetadata[]> {
+    return invoke('list_ai_sessions', { workingDir })
   },
 
-  async getSessionMetadata(sessionId: string): Promise<SessionMetadata> {
-    return invoke('get_session_metadata', { sessionId })
+  async getSessionMetadata(workingDir: string, sessionId: string): Promise<SessionMetadata> {
+    return invoke('get_session_metadata', { workingDir, sessionId })
   },
 
-  async loadSession(sessionId: string): Promise<LoadedSession> {
-    return invoke('load_ai_session', { sessionId })
+  async loadSession(workingDir: string, sessionId: string): Promise<LoadedSession> {
+    return invoke('load_ai_session', { workingDir, sessionId })
   },
 
-  async deleteSession(sessionId: string): Promise<void> {
-    return invoke('delete_ai_session', { sessionId })
+  async activateSession(sessionId: string, workingDir: string): Promise<void> {
+    return invoke('activate_ai_session', { sessionId, workingDir })
+  },
+
+  async deleteSession(workingDir: string, sessionId: string): Promise<void> {
+    return invoke('delete_ai_session', { workingDir, sessionId })
   },
 
   async createNewSession(workingDir: string): Promise<string> {

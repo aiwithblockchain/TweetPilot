@@ -26,10 +26,10 @@ export interface PersistedToolCall {
   id: string
   tool: string
   action: string
-  input?: string
-  output?: string
+  input?: string | null
+  output?: string | null
   status: string
-  duration?: number
+  duration?: number | null
   start_time: number
-  end_time?: number
+  end_time?: number | null
 }

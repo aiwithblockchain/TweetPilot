@@ -17,6 +17,12 @@ export function ParameterEditor({ value, onChange }: ParameterEditorProps) {
     setNewValue('')
   }
 
+  const handleRemove = (keyToRemove: string) => {
+    const nextValue = { ...value }
+    delete nextValue[keyToRemove]
+    onChange(nextValue)
+  }
+
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) {
       return

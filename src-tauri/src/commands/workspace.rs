@@ -453,6 +453,7 @@ pub async fn set_current_workspace(
     path: String,
     app: AppHandle,
     task_state: tauri::State<'_, crate::task_commands::TaskState>,
+    ai_state: tauri::State<'_, crate::commands::ai::AiState>,
 ) -> Result<(), String> {
     log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
 
@@ -481,21 +482,37 @@ pub async fn set_current_workspace(
         }
     }
 
-    // Step 2: Create new workspace context
+    // Step 2: Cancel and clear active AI runtime state
+    {
+        let cancel_token = ai_state.cancel_token.lock().await.clone();
+        if let Some(token) = cancel_token {
+            log::info!("[set_current_workspace] Cancelling in-flight AI request before workspace switch");
+            token.cancel();
+        }
+
+        *ai_state.session.lock().await = None;
+        *ai_state.cancel_token.lock().await = None;
+        *ai_state.active_request_id.lock().await = None;
+        *ai_state.active_session_id.lock().await = None;
+        *ai_state.active_working_dir.lock().await = None;
+        log::info!("[set_current_workspace] Cleared active AI runtime state");
+    }
+
+    // Step 3: Create new workspace context
     log::info!("[set_current_workspace] Creating new workspace context");
     let new_ctx = crate::task_commands::WorkspaceContext::new(path.clone(), app.clone())?;
 
-    // Step 3: Start timers for new workspace
+    // Step 4: Start timers for new workspace
     log::info!("[set_current_workspace] Starting timers for new workspace");
     new_ctx.start_timers().await?;
 
-    // Step 4: Save new workspace context
+    // Step 5: Save new workspace context
     {
         let mut workspace_ctx = task_state.get_context().await;
         *workspace_ctx = Some(new_ctx);
     }
 
-    // Step 5: Persist workspace config
+    // Step 6: Persist workspace config
     log::info!("[set_current_workspace] Persisting workspace config");
     persist_current_workspace(path)
 }
@@ -780,9 +797,10 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
 
         // Get TaskState from app state
         let task_state = app.state::<crate::task_commands::TaskState>();
+        let ai_state = app.state::<crate::commands::ai::AiState>();
 
         // Use set_current_workspace to properly update all state
-        set_current_workspace(path_str.clone(), app.clone(), task_state).await?;
+        set_current_workspace(path_str.clone(), app.clone(), task_state, ai_state).await?;
 
         // Emit event to frontend to reload workspace
         app.emit("workspace-changed", path_str)
