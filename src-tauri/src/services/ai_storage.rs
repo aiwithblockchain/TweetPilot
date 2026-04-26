@@ -128,6 +128,12 @@ impl AiStorage {
 
     pub fn create_session(&self, input: CreateSessionInput) -> Result<(), String> {
         let conn = self.connection()?;
+        log::info!(
+            "[ai-storage] create_session: workspace={}, session_id={}, db_path={}",
+            self.workspace,
+            input.id,
+            self.db_path.display()
+        );
         conn.execute(
             "INSERT INTO ai_sessions (id, title, created_at, updated_at, message_count, provider_id, model, system_prompt, schema_version)
              VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, 5)",
@@ -196,6 +202,11 @@ impl AiStorage {
     }
 
     pub fn load_session(&self, session_id: &str) -> Result<LoadedSession, String> {
+        log::info!(
+            "[ai-storage] load_session: workspace={}, session_id={}",
+            self.workspace,
+            session_id
+        );
         let session = self.get_session_metadata(session_id)?;
         let messages = self.load_messages(session_id)?;
         Ok(LoadedSession { session, messages })
@@ -332,6 +343,14 @@ impl AiStorage {
             .clone()
             .ok_or_else(|| "AI message id is required for persistence".to_string())?;
 
+        log::info!(
+            "[ai-storage] insert_message: workspace={}, session_id={}, message_id={}, role={}",
+            self.workspace,
+            session_id,
+            message_id,
+            message.role
+        );
+
         conn.execute(
             "INSERT INTO ai_messages (id, session_id, role, content, timestamp, thinking, thinking_complete, status)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -392,6 +411,16 @@ impl AiStorage {
             .id
             .clone()
             .ok_or_else(|| "AI message id is required for finalization".to_string())?;
+
+        log::info!(
+            "[ai-storage] finalize_message: workspace={}, session_id={}, message_id={}, status={:?}, tool_call_count={}, timeline_item_count={}",
+            self.workspace,
+            session_id,
+            message_id,
+            message.status,
+            message.tool_calls.as_ref().map(|calls| calls.len()).unwrap_or(0),
+            message.timeline.as_ref().map(|items| items.len()).unwrap_or(0)
+        );
 
         conn.execute(
             "UPDATE ai_messages
@@ -504,6 +533,11 @@ impl AiStorage {
 
     pub fn clear_session_messages(&self, session_id: &str) -> Result<(), String> {
         let conn = self.connection()?;
+        log::info!(
+            "[ai-storage] clear_session_messages: workspace={}, session_id={}",
+            self.workspace,
+            session_id
+        );
         conn.execute("DELETE FROM ai_messages WHERE session_id = ?1", params![session_id])
             .map_err(|e| format!("Failed to clear AI session messages: {}", e))?;
         self.refresh_session_metadata(session_id)
@@ -511,6 +545,11 @@ impl AiStorage {
 
     pub fn delete_session(&self, session_id: &str) -> Result<(), String> {
         let conn = self.connection()?;
+        log::info!(
+            "[ai-storage] delete_session: workspace={}, session_id={}",
+            self.workspace,
+            session_id
+        );
         conn.execute("DELETE FROM ai_sessions WHERE id = ?1", params![session_id])
             .map_err(|e| format!("Failed to delete AI session: {}", e))?;
         Ok(())
@@ -529,41 +568,30 @@ impl AiStorage {
 
     fn refresh_session_metadata(&self, session_id: &str) -> Result<(), String> {
         let conn = self.connection()?;
-        let (message_count, updated_at) = conn
+        let message_count = conn
             .query_row(
-                "SELECT COUNT(*), COALESCE(MAX(timestamp), created_at) FROM ai_messages
-                 JOIN ai_sessions ON ai_sessions.id = ai_messages.session_id
-                 WHERE session_id = ?1",
+                "SELECT COUNT(*) FROM ai_messages WHERE session_id = ?1",
                 params![session_id],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                |row| row.get::<_, i64>(0),
             )
-            .optional()
-            .map_err(|e| format!("Failed to recalculate AI session metadata: {}", e))?
-            .unwrap_or((0, 0));
+            .map_err(|e| format!("Failed to count AI session messages: {}", e))?;
 
         if message_count == 0 {
-            let created_at = conn
-                .query_row(
-                    "SELECT created_at FROM ai_sessions WHERE id = ?1",
-                    params![session_id],
-                    |row| row.get::<_, i64>(0),
-                )
-                .optional()
-                .map_err(|e| format!("Failed to read AI session creation time: {}", e))?
-                .unwrap_or(0);
-
             conn.execute(
                 "UPDATE ai_sessions SET message_count = 0, updated_at = created_at WHERE id = ?1",
                 params![session_id],
             )
             .map_err(|e| format!("Failed to update empty AI session metadata: {}", e))?;
-
-            if created_at == 0 {
-                return Ok(());
-            }
-
             return Ok(());
         }
+
+        let updated_at = conn
+            .query_row(
+                "SELECT MAX(timestamp) FROM ai_messages WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| format!("Failed to determine AI session update time: {}", e))?;
 
         let title = conn
             .query_row(
@@ -598,5 +626,283 @@ fn generate_title(first_message: &str) -> String {
         first_message.to_string()
     } else {
         chars.iter().take(MAX_LEN).collect::<String>() + "..."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AiStorage, CreateSessionInput, StoredMessage, StoredTimelineItem, StoredToolCall};
+    use crate::task_database::TaskDatabase;
+    use std::fs;
+    use uuid::Uuid;
+
+    fn with_workspace_db<T>(name: &str, test: impl FnOnce(AiStorage, std::path::PathBuf) -> T) -> T {
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-ai-storage-tests-{}-{}",
+            name,
+            Uuid::new_v4()
+        ));
+        let workspace_dir = temp_root.join("workspace");
+        let tweetpilot_dir = workspace_dir.join(".tweetpilot");
+        fs::create_dir_all(&tweetpilot_dir).expect("create workspace .tweetpilot dir");
+
+        let db_path = tweetpilot_dir.join("tweetpilot.db");
+        TaskDatabase::new(db_path).expect("initialize workspace database schema");
+
+        let storage = AiStorage::new(&workspace_dir).expect("create ai storage");
+        let result = test(storage, workspace_dir.clone());
+        let _ = fs::remove_dir_all(&temp_root);
+        result
+    }
+
+    #[test]
+    fn load_session_preserves_persisted_timeline_order() {
+        with_workspace_db("timeline-order", |storage, _workspace_dir| {
+            let session_id = format!("session-{}", Uuid::new_v4());
+            let message_id = format!("assistant-{}", Uuid::new_v4());
+
+            storage
+                .create_session(CreateSessionInput {
+                    id: session_id.clone(),
+                    title: "新会话".to_string(),
+                    created_at: 100,
+                    updated_at: 100,
+                    provider_id: Some("provider-1".to_string()),
+                    model: "claude-sonnet-4-6".to_string(),
+                    system_prompt: Some("system prompt".to_string()),
+                })
+                .expect("create session");
+
+            storage
+                .insert_message(
+                    &session_id,
+                    &StoredMessage {
+                        id: Some(message_id.clone()),
+                        role: "assistant".to_string(),
+                        content: "final answer".to_string(),
+                        timestamp: 101,
+                        thinking: Some("first thoughtsecond thought".to_string()),
+                        thinking_complete: Some(true),
+                        tool_calls: None,
+                        timeline: Some(vec![
+                            StoredTimelineItem::Thinking {
+                                id: format!("{}-thinking-0", message_id),
+                                content: "first thought".to_string(),
+                                sequence: 0,
+                                is_complete: Some(true),
+                            },
+                            StoredTimelineItem::Thinking {
+                                id: format!("{}-thinking-2", message_id),
+                                content: "second thought".to_string(),
+                                sequence: 2,
+                                is_complete: Some(true),
+                            },
+                            StoredTimelineItem::Text {
+                                id: format!("{}-text-3", message_id),
+                                content: "final answer".to_string(),
+                                sequence: 3,
+                            },
+                        ]),
+                        status: Some("completed".to_string()),
+                    },
+                )
+                .expect("insert placeholder assistant message");
+
+            storage
+                .replace_tool_calls(
+                    &message_id,
+                    &[StoredToolCall {
+                        id: format!("{}-tool-call", message_id),
+                        tool: "Read".to_string(),
+                        action: "Read file".to_string(),
+                        input: None,
+                        output: Some("file body".to_string()),
+                        status: "success".to_string(),
+                        duration: Some(0.2),
+                        start_time: 102,
+                        end_time: Some(103),
+                    }],
+                )
+                .expect("insert tool call");
+
+            storage
+                .replace_timeline_items(
+                    &message_id,
+                    &[
+                        StoredTimelineItem::Thinking {
+                            id: format!("{}-thinking-0", message_id),
+                            content: "first thought".to_string(),
+                            sequence: 0,
+                            is_complete: Some(true),
+                        },
+                        StoredTimelineItem::Tool {
+                            id: format!("{}-tool-1", message_id),
+                            tool_call_id: format!("{}-tool-call", message_id),
+                            sequence: 1,
+                        },
+                        StoredTimelineItem::Thinking {
+                            id: format!("{}-thinking-2", message_id),
+                            content: "second thought".to_string(),
+                            sequence: 2,
+                            is_complete: Some(true),
+                        },
+                        StoredTimelineItem::Text {
+                            id: format!("{}-text-3", message_id),
+                            content: "final answer".to_string(),
+                            sequence: 3,
+                        },
+                    ],
+                )
+                .expect("insert timeline");
+
+            let loaded = storage.load_session(&session_id).expect("load session");
+            let timeline = loaded.messages[0].timeline.clone().expect("timeline persisted");
+
+            assert_eq!(timeline.len(), 4);
+            match &timeline[0] {
+                StoredTimelineItem::Thinking { content, sequence, .. } => {
+                    assert_eq!(content, "first thought");
+                    assert_eq!(*sequence, 0);
+                }
+                _ => panic!("expected first timeline item to be thinking"),
+            }
+            match &timeline[1] {
+                StoredTimelineItem::Tool { tool_call_id, sequence, .. } => {
+                    assert_eq!(tool_call_id, &format!("{}-tool-call", message_id));
+                    assert_eq!(*sequence, 1);
+                }
+                _ => panic!("expected second timeline item to be tool"),
+            }
+            match &timeline[2] {
+                StoredTimelineItem::Thinking { content, sequence, .. } => {
+                    assert_eq!(content, "second thought");
+                    assert_eq!(*sequence, 2);
+                }
+                _ => panic!("expected third timeline item to be thinking"),
+            }
+            match &timeline[3] {
+                StoredTimelineItem::Text { content, sequence, .. } => {
+                    assert_eq!(content, "final answer");
+                    assert_eq!(*sequence, 3);
+                }
+                _ => panic!("expected fourth timeline item to be text"),
+            }
+        });
+    }
+
+    #[test]
+    fn delete_session_cascades_messages_tool_calls_and_timeline_items() {
+        with_workspace_db("delete-cascade", |storage, workspace_dir| {
+            let session_id = format!("session-{}", Uuid::new_v4());
+            let message_id = format!("assistant-{}", Uuid::new_v4());
+            let tool_call_id = format!("{}-tool-call", message_id);
+
+            storage
+                .create_session(CreateSessionInput {
+                    id: session_id.clone(),
+                    title: "新会话".to_string(),
+                    created_at: 200,
+                    updated_at: 200,
+                    provider_id: Some("provider-1".to_string()),
+                    model: "claude-sonnet-4-6".to_string(),
+                    system_prompt: Some("system prompt".to_string()),
+                })
+                .expect("create session");
+
+            storage
+                .insert_message(
+                    &session_id,
+                    &StoredMessage {
+                        id: Some(message_id.clone()),
+                        role: "assistant".to_string(),
+                        content: "final answer".to_string(),
+                        timestamp: 201,
+                        thinking: Some("thought".to_string()),
+                        thinking_complete: Some(true),
+                        tool_calls: None,
+                        timeline: Some(vec![StoredTimelineItem::Text {
+                            id: format!("{}-text-1", message_id),
+                            content: "final answer".to_string(),
+                            sequence: 1,
+                        }]),
+                        status: Some("completed".to_string()),
+                    },
+                )
+                .expect("insert message");
+
+            storage
+                .replace_tool_calls(
+                    &message_id,
+                    &[StoredToolCall {
+                        id: tool_call_id.clone(),
+                        tool: "Read".to_string(),
+                        action: "Read file".to_string(),
+                        input: None,
+                        output: Some("file body".to_string()),
+                        status: "success".to_string(),
+                        duration: Some(0.1),
+                        start_time: 202,
+                        end_time: Some(203),
+                    }],
+                )
+                .expect("insert tool calls");
+
+            storage
+                .replace_timeline_items(
+                    &message_id,
+                    &[
+                        StoredTimelineItem::Tool {
+                            id: format!("{}-tool-0", message_id),
+                            tool_call_id: tool_call_id.clone(),
+                            sequence: 0,
+                        },
+                        StoredTimelineItem::Text {
+                            id: format!("{}-text-1", message_id),
+                            content: "final answer".to_string(),
+                            sequence: 1,
+                        },
+                    ],
+                )
+                .expect("insert timeline items");
+
+            storage.delete_session(&session_id).expect("delete session");
+
+            let conn = rusqlite::Connection::open(workspace_dir.join(".tweetpilot").join("tweetpilot.db"))
+                .expect("open sqlite db for verification");
+
+            let session_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM ai_sessions WHERE id = ?1",
+                    rusqlite::params![session_id],
+                    |row| row.get(0),
+                )
+                .expect("count sessions");
+            let message_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM ai_messages WHERE session_id = ?1",
+                    rusqlite::params![session_id],
+                    |row| row.get(0),
+                )
+                .expect("count messages");
+            let tool_call_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM ai_tool_calls WHERE message_id = ?1",
+                    rusqlite::params![message_id],
+                    |row| row.get(0),
+                )
+                .expect("count tool calls");
+            let timeline_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM ai_message_timeline_items WHERE message_id = ?1",
+                    rusqlite::params![message_id],
+                    |row| row.get(0),
+                )
+                .expect("count timeline items");
+
+            assert_eq!(session_count, 0);
+            assert_eq!(message_count, 0);
+            assert_eq!(tool_call_count, 0);
+            assert_eq!(timeline_count, 0);
+        });
     }
 }

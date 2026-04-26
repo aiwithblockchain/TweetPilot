@@ -406,12 +406,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   useEffect(() => {
-    const refreshSessions = async () => {
+    if (!isConfigured) {
       resetChatState()
-      await loadSessions()
+      setSessions([])
+      return
     }
 
-    refreshSessions()
+    void loadSessions()
   }, [isConfigured])
 
   useEffect(() => {
