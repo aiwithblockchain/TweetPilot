@@ -117,6 +117,24 @@ PYTHONPATH="$HOME/.tweetpilot/clawbot" python3 scripts/example.py
 - 优先保持 `from clawbot import ClawBotClient` 这一统一导入方式；
 - 若用户明确要求脱离 TweetPilot 独立运行，再补充对应环境说明。
 
+### AI 自测脚本时的注意事项
+
+如果 AI 编写了依赖 `clawbot` 的 Python 脚本，并且想在生成后立即自行测试，需要先区分测试场景：
+
+1. **通过 TweetPilot 内部执行器 / 定时任务运行**  
+   不应因为担心导入失败，就主动把 `sys.path` 修补代码写进用户脚本。正常情况下，TweetPilot 会注入正确的 `PYTHONPATH`。
+
+2. **脱离 TweetPilot，直接用系统 Python 手动测试脚本**  
+   应先确认测试环境是否已包含 `~/.tweetpilot/clawbot`。若没有，应优先通过环境方式补充，例如：
+
+```bash
+PYTHONPATH="$HOME/.tweetpilot/clawbot" python3 scripts/example.py
+```
+
+只有在用户明确要求脚本脱离 TweetPilot 独立运行时，才应补充等价的 `sys.path` 处理或环境说明。
+
+如果只是因为手动测试时缺少 `PYTHONPATH` 导致 `import clawbot` 失败，不应立刻误判为脚本业务逻辑或 ClawBot 接口本身有问题。
+
 ---
 
 ## 快速开始

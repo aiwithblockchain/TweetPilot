@@ -71,6 +71,13 @@ client = ClawBotClient()
 - `from clawbot import ClawBotClient` 这一导入方式依赖 TweetPilot 执行器提供正确的 `PYTHONPATH`
 - 如果用户明确要脱离 TweetPilot 手动运行脚本，再说明所需环境前提
 
+**AI 自测规则：**
+- 如果 AI 只是为 TweetPilot 内部执行器 / 任务系统生成脚本，不要因为担心导入失败而主动往用户脚本里插入 `sys.path` 修补代码
+- 如果 AI 需要在 TweetPilot 外部用系统 Python 自行测试依赖 `clawbot` 的脚本，应先检查测试环境是否已包含 `~/.tweetpilot/clawbot`
+- 若未包含，应优先通过环境方式补充，例如：`PYTHONPATH="$HOME/.tweetpilot/clawbot" python3 scripts/example.py`
+- 只有在用户明确要求脚本脱离 TweetPilot 独立运行时，才可以补充等价的 `sys.path` 处理或环境说明
+- 因测试时缺少 `PYTHONPATH` 导致 `import clawbot` 失败时，不应立刻误判为业务代码本身有问题
+
 #### 1.2 用户明确不想依赖 ClawBot
 
 如果用户明确表示：

@@ -10,6 +10,28 @@ export interface ToolCall {
   endTime?: number
 }
 
+export interface ThinkingTimelineItem {
+  id: string
+  type: 'thinking'
+  content: string
+  isActive?: boolean
+  isComplete?: boolean
+}
+
+export interface ToolTimelineItem {
+  id: string
+  type: 'tool'
+  toolCall: ToolCall
+}
+
+export interface TextTimelineItem {
+  id: string
+  type: 'text'
+  content: string
+}
+
+export type AssistantTimelineItem = ThinkingTimelineItem | ToolTimelineItem | TextTimelineItem
+
 export interface ChatMessage {
   id: string
   role: 'assistant' | 'user'
@@ -20,6 +42,7 @@ export interface ChatMessage {
   thinkingComplete?: boolean
   toolCalls?: ToolCall[]
   status?: string
+  timeline?: AssistantTimelineItem[]
 }
 
 export interface PersistedToolCall {

@@ -63,7 +63,20 @@ vi.mock('@/services/ai/tauri', () => ({
 }))
 
 vi.mock('./ChatInterface/AssistantMessage', () => ({
-  AssistantMessage: ({ message }: { message: { content: string } }) => <div>{message.content}</div>,
+  AssistantMessage: ({ message }: { message: { content: string; timeline?: Array<{ type: string; content?: string; toolCall?: { tool: string; output?: string } }> } }) => (
+    <div>
+      {message.timeline?.map((item, index) => {
+        if (item.type === 'thinking') {
+          return <div key={`thinking-${index}`}>thinking:{item.content}</div>
+        }
+        if (item.type === 'tool') {
+          return <div key={`tool-${index}`}>tool:{item.toolCall?.tool}:{item.toolCall?.output ?? ''}</div>
+        }
+        return <div key={`text-${index}`}>text:{item.content}</div>
+      })}
+      <div>{message.content}</div>
+    </div>
+  ),
 }))
 
 vi.mock('./ChatInterface/SessionPanel', () => ({
@@ -258,6 +271,63 @@ describe('ChatInterface', () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('加载会话失败: session missing')
+    })
+  })
+
+  it('renders assistant timeline events in the order they arrive', async () => {
+    let onThinkingChunk: ((data: { request_id: string; chunk: string }) => void) | undefined
+    let onToolCallStart: ((data: { request_id: string; tool: string; action: string }) => void) | undefined
+    let onToolCallEnd: ((data: { request_id: string; tool: string; success: boolean; result: string }) => void) | undefined
+    let onMessageChunk: ((data: { request_id: string; chunk: string }) => void) | undefined
+    let onRequestEnd: ((data: { request_id: string; result: string }) => void) | undefined
+
+    mockAiService.onThinkingChunk.mockImplementation(async (callback: typeof onThinkingChunk) => {
+      onThinkingChunk = callback
+      return () => {}
+    })
+    mockAiService.onToolCallStart.mockImplementation(async (callback: typeof onToolCallStart) => {
+      onToolCallStart = callback
+      return () => {}
+    })
+    mockAiService.onToolCallEnd.mockImplementation(async (callback: typeof onToolCallEnd) => {
+      onToolCallEnd = callback
+      return () => {}
+    })
+    mockAiService.onMessageChunk.mockImplementation(async (callback: typeof onMessageChunk) => {
+      onMessageChunk = callback
+      return () => {}
+    })
+    mockAiService.onRequestEnd.mockImplementation(async (callback: typeof onRequestEnd) => {
+      onRequestEnd = callback
+      return () => {}
+    })
+
+    const input = await renderReadyChat()
+    fireEvent.change(input, { target: { value: 'hello' } })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 })
+
+    await waitFor(() => {
+      expect(mockAiService.sendMessage).toHaveBeenCalledWith('hello', '/tmp/workspace')
+    })
+
+    onThinkingChunk?.({ request_id: 'request-1', chunk: 'first thought' })
+    onToolCallStart?.({ request_id: 'request-1', tool: 'Read', action: 'Read file' })
+    onToolCallEnd?.({ request_id: 'request-1', tool: 'Read', success: true, result: 'file body' })
+    onThinkingChunk?.({ request_id: 'request-1', chunk: 'second thought' })
+    onMessageChunk?.({ request_id: 'request-1', chunk: 'final answer' })
+    onRequestEnd?.({ request_id: 'request-1', result: 'success' })
+
+    await waitFor(() => {
+      const orderedItems = [
+        screen.getByText('thinking:first thought'),
+        screen.getByText('tool:Read:file body'),
+        screen.getByText('thinking:second thought'),
+        screen.getByText('text:final answer'),
+      ]
+
+      expect(orderedItems[0].compareDocumentPosition(orderedItems[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(orderedItems[1].compareDocumentPosition(orderedItems[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(orderedItems[2].compareDocumentPosition(orderedItems[3]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
   })
 

@@ -1,16 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { useToast } from '@/contexts/ToastContext'
 import { aiService, type SessionMetadata, type StoredMessage } from '@/services/ai/tauri'
 import { workspaceService } from '@/services/workspace'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
 import { SessionPanel } from './ChatInterface/SessionPanel'
 import { Clock, Plus } from 'lucide-react'
-import type { ChatMessage, ToolCall, PersistedToolCall } from './ChatInterface/types'
+import type { AssistantTimelineItem, ChatMessage, ToolCall, PersistedToolCall } from './ChatInterface/types'
 
 interface ChatInterfaceProps {
   onOpenSettings?: () => void
 }
+
+type PendingEvent =
+  | { type: 'thinking'; chunk: string }
+  | { type: 'tool-start'; tool: string; action: string }
+  | { type: 'tool-end'; tool: string; success: boolean; result: string }
+  | { type: 'text'; chunk: string }
+  | { type: 'status'; text: string }
 
 function fromPersistedToolCall(toolCall: PersistedToolCall): ToolCall {
   return {
@@ -30,6 +38,40 @@ function fromPersistedToolCall(toolCall: PersistedToolCall): ToolCall {
   }
 }
 
+function buildTimelineFromStoredMessage(message: StoredMessage): AssistantTimelineItem[] {
+  const timeline: AssistantTimelineItem[] = []
+
+  if (message.thinking) {
+    timeline.push({
+      id: `${message.id ?? 'assistant'}-thinking`,
+      type: 'thinking',
+      content: message.thinking,
+      isComplete: message.thinking_complete ?? true,
+      isActive: !(message.thinking_complete ?? true),
+    })
+  }
+
+  if (message.tool_calls?.length) {
+    timeline.push(
+      ...message.tool_calls.map((toolCall) => ({
+        id: `${message.id ?? 'assistant'}-tool-${toolCall.id}`,
+        type: 'tool' as const,
+        toolCall: fromPersistedToolCall(toolCall),
+      })),
+    )
+  }
+
+  if (message.content) {
+    timeline.push({
+      id: `${message.id ?? 'assistant'}-text`,
+      type: 'text',
+      content: message.content,
+    })
+  }
+
+  return timeline
+}
+
 function fromStoredMessage(message: StoredMessage, index: number): ChatMessage {
   return {
     id: message.id ?? `${message.role}-${message.timestamp}-${index}`,
@@ -40,93 +82,195 @@ function fromStoredMessage(message: StoredMessage, index: number): ChatMessage {
     thinkingComplete: message.thinking_complete ?? undefined,
     toolCalls: message.tool_calls?.map(fromPersistedToolCall),
     status: message.status ?? undefined,
+    timeline: message.role === 'assistant' ? buildTimelineFromStoredMessage(message) : undefined,
   }
 }
 
-function appendThinkingChunk(targetRequestId: string, chunk: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, Array<{ type: 'thinking'; chunk: string } | { type: 'tool-start'; tool: string; action: string } | { type: 'tool-end'; tool: string; success: boolean; result: string }>>>>) {
-  if (targetRequestId !== activeRequestId) {
-    setPendingEvents((prev) => ({
-      ...prev,
-      [targetRequestId]: [...(prev[targetRequestId] || []), { type: 'thinking', chunk }],
-    }))
-    return
-  }
+function queuePendingEvent(targetRequestId: string, event: PendingEvent, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
+  setPendingEvents((prev) => ({
+    ...prev,
+    [targetRequestId]: [...(prev[targetRequestId] || []), event],
+  }))
+}
 
+function updateStreamingAssistant(
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
+  updater: (message: ChatMessage) => ChatMessage,
+) {
   setMessages((prev) => {
     const lastMessage = prev[prev.length - 1]
     if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-      const newThinking = (lastMessage.thinking || '') + chunk
-      return [
-        ...prev.slice(0, -1),
-        { ...lastMessage, thinking: newThinking },
-      ]
+      return [...prev.slice(0, -1), updater(lastMessage)]
     }
     return prev
   })
 }
 
-function applyToolStart(targetRequestId: string, tool: string, action: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, Array<{ type: 'thinking'; chunk: string } | { type: 'tool-start'; tool: string; action: string } | { type: 'tool-end'; tool: string; success: boolean; result: string }>>>>) {
+function appendThinkingChunk(targetRequestId: string, chunk: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
   if (targetRequestId !== activeRequestId) {
-    setPendingEvents((prev) => ({
-      ...prev,
-      [targetRequestId]: [...(prev[targetRequestId] || []), { type: 'tool-start', tool, action }],
-    }))
+    queuePendingEvent(targetRequestId, { type: 'thinking', chunk }, setPendingEvents)
     return
   }
 
-  setMessages((prev) => {
-    const lastMessage = prev[prev.length - 1]
-    if (lastMessage && lastMessage.role === 'assistant') {
-      const toolCalls = lastMessage.toolCalls || []
-      const newToolCall: ToolCall = {
-        id: `${tool}-${Date.now()}`,
-        tool,
-        action,
-        status: 'running',
-        startTime: Date.now(),
+  updateStreamingAssistant(setMessages, (lastMessage) => {
+    const timeline = [...(lastMessage.timeline || [])]
+    const lastTimelineItem = timeline[timeline.length - 1]
+    const newThinking = (lastMessage.thinking || '') + chunk
+
+    if (lastTimelineItem?.type === 'thinking' && lastTimelineItem.isActive) {
+      timeline[timeline.length - 1] = {
+        ...lastTimelineItem,
+        content: lastTimelineItem.content + chunk,
       }
-      return [
-        ...prev.slice(0, -1),
-        {
-          ...lastMessage,
-          toolCalls: [...toolCalls, newToolCall],
-        },
-      ]
+    } else {
+      timeline.push({
+        id: `${lastMessage.id}-thinking-${timeline.length}`,
+        type: 'thinking',
+        content: chunk,
+        isActive: true,
+        isComplete: false,
+      })
     }
-    return prev
+
+    return {
+      ...lastMessage,
+      thinking: newThinking,
+      timeline,
+    }
   })
 }
 
-function applyToolEnd(targetRequestId: string, tool: string, success: boolean, result: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, Array<{ type: 'thinking'; chunk: string } | { type: 'tool-start'; tool: string; action: string } | { type: 'tool-end'; tool: string; success: boolean; result: string }>>>>) {
+function applyToolStart(targetRequestId: string, tool: string, action: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
   if (targetRequestId !== activeRequestId) {
-    setPendingEvents((prev) => ({
-      ...prev,
-      [targetRequestId]: [...(prev[targetRequestId] || []), { type: 'tool-end', tool, success, result }],
-    }))
+    queuePendingEvent(targetRequestId, { type: 'tool-start', tool, action }, setPendingEvents)
     return
   }
 
-  setMessages((prev) => {
-    const lastMessage = prev[prev.length - 1]
-    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.toolCalls) {
-      const toolCalls = lastMessage.toolCalls.map((tc) => {
-        if (tc.tool === tool && tc.status === 'running') {
-          const endTime = Date.now()
-          const duration = (endTime - tc.startTime) / 1000
-          return {
-            ...tc,
+  updateStreamingAssistant(setMessages, (lastMessage) => {
+    const toolCalls = lastMessage.toolCalls || []
+    const timeline = [...(lastMessage.timeline || [])]
+    const newToolCall: ToolCall = {
+      id: `${tool}-${Date.now()}`,
+      tool,
+      action,
+      status: 'running',
+      startTime: Date.now(),
+    }
+
+    const updatedTimeline = timeline.map((item) =>
+      item.type === 'thinking' && item.isActive
+        ? { ...item, isActive: false, isComplete: true }
+        : item,
+    )
+
+    updatedTimeline.push({
+      id: `${lastMessage.id}-tool-${newToolCall.id}`,
+      type: 'tool',
+      toolCall: newToolCall,
+    })
+
+    return {
+      ...lastMessage,
+      toolCalls: [...toolCalls, newToolCall],
+      timeline: updatedTimeline,
+    }
+  })
+}
+
+function applyToolEnd(targetRequestId: string, tool: string, success: boolean, result: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
+  if (targetRequestId !== activeRequestId) {
+    queuePendingEvent(targetRequestId, { type: 'tool-end', tool, success, result }, setPendingEvents)
+    return
+  }
+
+  updateStreamingAssistant(setMessages, (lastMessage) => {
+    const toolCalls = (lastMessage.toolCalls || []).map((tc) => {
+      if (tc.tool === tool && tc.status === 'running') {
+        const endTime = Date.now()
+        const duration = (endTime - tc.startTime) / 1000
+        return {
+          ...tc,
+          status: (success ? 'success' : 'error') as 'success' | 'error',
+          output: result || '',
+          duration,
+          endTime,
+        }
+      }
+      return tc
+    })
+
+    const timeline = (lastMessage.timeline || []).map((item) => {
+      if (item.type === 'tool' && item.toolCall.tool === tool && item.toolCall.status === 'running') {
+        const endTime = Date.now()
+        const duration = (endTime - item.toolCall.startTime) / 1000
+        return {
+          ...item,
+          toolCall: {
+            ...item.toolCall,
             status: (success ? 'success' : 'error') as 'success' | 'error',
             output: result || '',
             duration,
             endTime,
-          }
+          },
         }
-        return tc
-      })
-      return [...prev.slice(0, -1), { ...lastMessage, toolCalls }]
+      }
+      return item
+    })
+
+    return {
+      ...lastMessage,
+      toolCalls,
+      timeline,
     }
-    return prev
   })
+}
+
+function appendTextChunk(targetRequestId: string, chunk: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
+  if (targetRequestId !== activeRequestId) {
+    queuePendingEvent(targetRequestId, { type: 'text', chunk }, setPendingEvents)
+    return
+  }
+
+  updateStreamingAssistant(setMessages, (lastMessage) => {
+    const timeline = [...(lastMessage.timeline || [])]
+    const updatedTimeline = timeline.map((item) =>
+      item.type === 'thinking' && item.isActive
+        ? { ...item, isActive: false, isComplete: true }
+        : item,
+    )
+    const lastTimelineItem = updatedTimeline[updatedTimeline.length - 1]
+
+    if (lastTimelineItem?.type === 'text') {
+      updatedTimeline[updatedTimeline.length - 1] = {
+        ...lastTimelineItem,
+        content: lastTimelineItem.content + chunk,
+      }
+    } else {
+      updatedTimeline.push({
+        id: `${lastMessage.id}-text-${updatedTimeline.length}`,
+        type: 'text',
+        content: chunk,
+      })
+    }
+
+    return {
+      ...lastMessage,
+      content: lastMessage.content + chunk,
+      timeline: updatedTimeline,
+    }
+  })
+}
+
+function applyStatus(targetRequestId: string, text: string, activeRequestId: string | null, setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>, setPendingEvents: React.Dispatch<React.SetStateAction<Record<string, PendingEvent[]>>>) {
+  if (targetRequestId !== activeRequestId) {
+    queuePendingEvent(targetRequestId, { type: 'status', text }, setPendingEvents)
+    return
+  }
+
+  updateStreamingAssistant(setMessages, (lastMessage) => ({
+    ...lastMessage,
+    status: text,
+  }))
 }
 
 export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
@@ -139,7 +283,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionMetadata[]>([])
   const [showSessionPanel, setShowSessionPanel] = useState(false)
-  const [pendingEvents, setPendingEvents] = useState<Record<string, Array<{ type: 'thinking'; chunk: string } | { type: 'tool-start'; tool: string; action: string } | { type: 'tool-end'; tool: string; success: boolean; result: string }>>>({})
+  const [pendingEvents, setPendingEvents] = useState<Record<string, PendingEvent[]>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
   const currentRequestIdRef = useRef<string | null>(null)
@@ -218,7 +362,6 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     const setupWorkspaceChangedListener = async () => {
       try {
-        const { listen } = await import('@tauri-apps/api/event')
         const unlisten = await listen<string>('workspace-changed', () => {
           resetChatState()
           if (isConfigured) {
@@ -256,21 +399,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     const unlistenChunk = aiService.onMessageChunk((data) => {
       console.log('[ChatInterface] Received message-chunk:', data)
-      if (data.request_id === currentRequestIdRef.current) {
-        console.log('[ChatInterface] Request ID matches, updating message')
-        setMessages((prev) => {
-          const lastMessage = prev[prev.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            return [
-              ...prev.slice(0, -1),
-              { ...lastMessage, content: lastMessage.content + data.chunk },
-            ]
-          }
-          return prev
-        })
-      } else {
-        console.log('[ChatInterface] Request ID mismatch:', data.request_id, 'vs', currentRequestIdRef.current)
-      }
+      appendTextChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
     })
 
     const unlistenThinkingChunk = aiService.onThinkingChunk((data) => {
@@ -290,16 +419,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     const unlistenAiStatus = aiService.onAiStatus((data) => {
       console.log('[ChatInterface] Received ai-status:', data)
-      if (data.request_id === currentRequestIdRef.current) {
-        console.log('[ChatInterface] Updating status to:', data.text)
-        setMessages((prev) => {
-          const lastMessage = prev[prev.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            return [...prev.slice(0, -1), { ...lastMessage, status: data.text }]
-          }
-          return prev
-        })
-      }
+      applyStatus(data.request_id, data.text, currentRequestIdRef.current, setMessages, setPendingEvents)
     })
 
     const unlistenRequestEnd = aiService.onRequestEnd((data) => {
@@ -320,7 +440,12 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         setMessages((prev) => {
           const lastMessage = prev[prev.length - 1]
           if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined }]
+            const timeline = (lastMessage.timeline || []).map((item) =>
+              item.type === 'thinking' && item.isActive
+                ? { ...item, isActive: false, isComplete: true }
+                : item,
+            )
+            return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined, thinkingComplete: true, timeline }]
           }
           return prev
         })
@@ -354,8 +479,12 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         appendThinkingChunk(currentRequestId, event.chunk, currentRequestId, setMessages, setPendingEvents)
       } else if (event.type === 'tool-start') {
         applyToolStart(currentRequestId, event.tool, event.action, currentRequestId, setMessages, setPendingEvents)
-      } else {
+      } else if (event.type === 'tool-end') {
         applyToolEnd(currentRequestId, event.tool, event.success, event.result, currentRequestId, setMessages, setPendingEvents)
+      } else if (event.type === 'text') {
+        appendTextChunk(currentRequestId, event.chunk, currentRequestId, setMessages, setPendingEvents)
+      } else {
+        applyStatus(currentRequestId, event.text, currentRequestId, setMessages, setPendingEvents)
       }
     })
 
@@ -405,6 +534,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       content: '',
       timestamp: Date.now(),
       isStreaming: true,
+      timeline: [],
     }
 
     assistantMessageIdRef.current = assistantMessage.id

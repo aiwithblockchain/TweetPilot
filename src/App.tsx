@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import WorkspaceSelector from './pages/WorkspaceSelector'
 import { TitleBar } from './components/TitleBar'
 import { ActivityBar } from './components/ActivityBar'
@@ -385,7 +387,6 @@ function AppContent() {
     setIsInitializingWorkspace(true)
 
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
       await invoke('set_current_workspace', { path: normalizedPath })
       console.log('[App] Backend initialized successfully')
       setCurrentWorkspace(normalizedPath)
@@ -419,8 +420,6 @@ function AppContent() {
 
   useEffect(() => {
     const setupEventListeners = async () => {
-      const { listen } = await import('@tauri-apps/api/event')
-
       const unlistenWorkspaceChanged = await listen<string>('workspace-changed', (event) => {
         console.log('[App] Workspace changed via menu:', event.payload)
         // Backend state is already switched by the Rust command, persist path for frontend reload only.
