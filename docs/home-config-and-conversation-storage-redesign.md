@@ -354,21 +354,41 @@ CREATE INDEX idx_tool_calls_message_id ON tool_calls(message_id);
 - 当前工作目录只需要在“本次运行周期内”可用
 - `config.json` 不再有继续存在的产品价值
 
-### 代码层含义
+### 当前代码现实
 
-当前代码里，`config.json` 仍被后端命令读取，例如：
+截至当前代码状态，workspace 相关逻辑对 `config.json` 的依赖比早期讨论时更明确，主要体现在 `src-tauri/src/commands/workspace.rs`：
 
-- `get_current_workspace()`
-- `validate_workspace_path()`
+- `WORKSPACE_CONFIG_FILE` 仍然定义为 `config.json`
+- `set_current_workspace()` 结束时仍会调用 `persist_current_workspace(path)`
+- `persist_current_workspace()` 会同时：
+  - 写入 `config.json.current_workspace`
+  - 更新 `recent-workspaces.json`
+- `get_current_workspace()` 当前直接从 `config.json` 读取
+- `clear_current_workspace_command()` 当前也还是通过清空 `config.json` 中的字段来完成“清空当前 workspace”
 
-但这只是**当前实现方式**，不代表它必须继续保留。
+这说明当前 `config.json` 不只是“历史残留文件”，而是仍然参与了当前 workspace 生命周期。
 
-本次方案的明确方向应改为：
+因此后续开发不能把“删除 `config.json`”理解成简单删文件，而应理解为：
 
-- 前端维护当前 workspace 的运行期状态
-- 后端维护当前 workspace 的运行期状态
-- 前后端通过统一的运行期状态同步机制共享当前 workspace
-- 不再把当前 workspace 持久化到 `config.json`
+- 把后端当前 workspace 的真实来源从磁盘文件切换到运行期 state
+- 把 `set_current_workspace()` / `get_current_workspace()` / `clear_current_workspace_command()` 一起改造到新的运行期状态模型
+- 让 `recent-workspaces.json` 的维护逻辑与“当前 workspace 状态”解耦
+
+### 前端当前状态补充
+
+截至当前代码状态，前端启动流程已经部分符合新产品结论：
+
+- `src/App.tsx` 启动时已经不再自动调用 `get_current_workspace()` 恢复工作目录
+- 当前逻辑是启动后直接显示 workspace selector
+
+但当前前端还保留了一层运行期桥接：
+
+- 在窗口切换/刷新场景下，会通过 `sessionStorage` 暂存 `pending-workspace-path`
+- 然后在页面重新加载后恢复本次运行内的前端状态
+
+这不属于“跨启动恢复”，但说明当前前端运行期状态并不只有 React state，还混合了临时的 `sessionStorage` 桥接机制。
+
+后续在实现统一的运行期 workspace state 时，需要把这部分一并纳入边界设计。
 
 ### 为什么可以去掉 `config.json`
 
@@ -377,8 +397,8 @@ CREATE INDEX idx_tool_calls_message_id ON tool_calls(message_id);
 1. **跨启动恢复**
    - 已明确不需要
 
-2. **后端文件兜底**
-   - 可改为后端内存态兜底
+2. **后端当前 workspace 来源**
+   - 可以改为后端运行期 state
    - 不需要继续依赖磁盘文件作为当前 workspace 来源
 
 ### 新的职责边界
@@ -387,7 +407,7 @@ CREATE INDEX idx_tool_calls_message_id ON tool_calls(message_id);
   - 稳定应用设置
 - **recent-workspaces.json**
   - 历史工作目录列表
-- **前端/后端内存态**
+- **前端/后端运行期状态**
   - 当前运行中的 workspace
 - **conversations.db**
   - AI 会话数据
@@ -408,7 +428,34 @@ CREATE INDEX idx_tool_calls_message_id ON tool_calls(message_id);
 - `workspace.rs` 自己管理 `config.json` / `recent-workspaces.json`
 - `preferences.rs` 自己管理 `preferences.json` / `local-bridge-config.json`
 - `ai_config.rs` 单独管理 `ai_config.json`
-- `conversation_storage.rs` 单独管理 `conversations/`
+- conversations 相关能力正在逐步从旧文件型存储向数据库化方向演进
+
+### 当前代码中的额外现实
+
+除了文件分散之外，当前代码里还有几个会影响重构顺序的重要事实：
+
+1. **preferences 默认值仍带有旧恢复语义**
+   - `src-tauri/src/commands/preferences.rs` 中，`startup` 默认值当前仍是 `last-workspace`
+   - 这与“启动后始终首页、不做跨启动恢复”的最新产品结论不一致
+   - 后续改造时需要明确：
+     - 是保留 `startup` 字段但调整语义
+     - 还是彻底移除该字段
+
+2. **recent 列表当前仍在前端过滤不存在目录**
+   - `src/pages/WorkspaceSelector.tsx` 当前会对 `getRecentWorkspaces()` 的结果逐条调用 `checkDirectoryExists()`
+   - 不存在的目录会被直接过滤掉
+   - 这会导致“记录还在，但用户看不见也删不掉”的问题仍然存在
+
+3. **recent 删除能力当前还没有真正落地**
+   - 当前后端只有 `load_recent_workspaces()` / `save_recent_workspaces()` / `update_recent_workspaces()`
+   - 尚无 `remove_recent_workspace()`
+   - 当前前端 service 也尚无 `deleteRecentWorkspace()`
+   - 当前首页和“查看全部工作目录”弹窗中也都还没有删除按钮
+
+4. **workspace 运行期状态当前并不统一**
+   - 后端仍以 `config.json` 作为 current workspace 的持久化来源
+   - 前端则已经改成“启动后始终显示首页”，但仍保留 `sessionStorage` 作为窗口切换/刷新时的临时桥接
+   - 因此本次并不是单纯删文件，而是要真正统一 runtime state 的来源
 
 ### 本次重构后的分层目标
 - `settings.json` 统一承载原 `preferences.json`、`ai_config.json`、`local-bridge-config.json`
@@ -490,33 +537,69 @@ src-tauri/src/services/
 
 ## 实施顺序建议
 
-### 第一步：先收敛配置文件结构
-1. 新增统一的 `settings.json`
-2. 将 UI 配置、AI 配置、LocalBridge 配置统一收敛到 `settings.json`
-3. 保留 `recent-workspaces.json`，并补齐删除记录能力
-4. 删除 `config.json` 相关职责，改造当前 workspace 为运行期内存态
-5. 抽出统一 store 层
+### 第一步：先重构 workspace 运行期状态
+1. 从 `workspace.rs` 中拆掉 `config.json` 作为 current workspace 来源的职责
+2. 将 `set_current_workspace()` / `get_current_workspace()` / `clear_current_workspace_command()` 收敛到统一的运行期状态模型
+3. 明确前端与后端之间 current workspace 的同步方式
+4. 收敛或移除 `sessionStorage` 的临时桥接逻辑
 
-### 第二步：重构会话存储
-6. 设计并落地 `conversations.db`
-7. 为 `ConversationStorage` 提供数据库实现
-8. 直接移除 JSONL 方案，不再引入兼容迁移逻辑
+### 第二步：收敛全局配置文件结构
+5. 新增统一的 `settings.json`
+6. 将 UI 配置、AI 配置、LocalBridge 配置统一收敛到 `settings.json`
+7. 明确 `startup` 字段是重定义还是删除，避免继续带入 `last-workspace` 语义
+8. 抽出统一 store 层
 
-### 第三步：清理旧代码
-9. 删除 `config.json` 相关实现
-10. 删除 `ai_config.json` / `local-bridge-config.json` / `preferences.json` 相关实现
-11. 删除 `conversations/` 文件存储实现
+### 第三步：补齐 recent history 管理能力
+9. 保留 `recent-workspaces.json`，并补齐删除记录能力
+10. 去掉“只展示存在目录”的静默过滤策略
+11. 让不可用记录仍然可见、可删
+
+### 第四步：重构会话存储
+12. 设计并落地 `conversations.db`
+13. 为 `ConversationStorage` 提供数据库实现
+14. 直接移除 JSONL 方案，不再引入兼容迁移逻辑
+
+### 第五步：清理旧代码
+15. 删除 `config.json` 相关实现
+16. 删除 `ai_config.json` / `local-bridge-config.json` / `preferences.json` 相关实现
+17. 删除 `conversations/` 文件存储实现
 
 ---
 
 ## 面向开发的具体改动清单
 
-### A. `settings.json` 合并改造
+### A. 当前 workspace 运行期状态改造
+
+#### 后端
+涉及文件：
+- `src-tauri/src/commands/workspace.rs`
+- 可能新增 app state / runtime state 相关模块
+
+需要完成：
+- 去掉 `config.json` 作为 current workspace 来源的职责
+- 将当前 workspace 改为运行期 app state / runtime state 管理
+- 将 `set_current_workspace()` 改为只更新运行期状态，并保留 recent history 更新逻辑
+- 将 `get_current_workspace()` 改为从运行期状态读取
+- 将 `clear_current_workspace_command()` 改为清空运行期状态
+- 重新梳理 current workspace 与 recent history 的职责边界
+
+#### 前端
+涉及文件：
+- `src/App.tsx`
+- `src/services/workspace/tauri.ts`
+
+需要完成：
+- 保持当前 workspace 为运行期状态
+- 与后端运行期状态保持同步
+- 启动后始终显示 workspace selector，不做恢复
+- 评估并收敛当前 `sessionStorage` 的 `pending-workspace-path` 临时桥接逻辑，避免形成第二套状态来源
+
+### B. `settings.json` 合并改造
 
 #### 后端
 涉及文件：
 - `src-tauri/src/commands/preferences.rs`
-- `src-tauri/src/commands/ai_config.rs`
+- `src-tauri/src/services/ai_config.rs`
 - 与 LocalBridge 配置相关的读写文件
 - 建议新增：`src-tauri/src/services/settings_store.rs`
 
@@ -527,13 +610,21 @@ src-tauri/src/services/
 - 将原 LocalBridge 配置收敛到 `settings.local_bridge`
 - 增加 `version` 字段
 - 删除旧分散配置文件对应的长期实现
+- 明确处理当前 `startup` 字段：
+  - 若保留，则需改掉 `last-workspace` 语义
+  - 若不保留，则在合并时一并移除
 
 #### 前端
+涉及文件：
+- `src/services/settings/tauri.ts`
+- `src/services/settings/types.ts`
+
 需要完成：
 - 所有原本分别读取 preferences / ai_config / local_bridge 的调用，逐步改为读取统一 settings 结构
 - 保持字段语义不变，先改存储入口，再逐步收敛调用点
+- 避免继续把 startup 恢复语义带入新 settings 结构
 
-### B. `recent-workspaces.json` 相关改动
+### C. `recent-workspaces.json` 相关改动
 
 #### 后端
 涉及文件：
@@ -563,57 +654,59 @@ src-tauri/src/services/
 - `src/pages/WorkspaceSelector.tsx`
 
 需要完成：
+- 去掉“只展示存在目录”的静默过滤策略，至少不能让不可用记录彻底消失
 - 首页“最近使用”列表项增加删除按钮
 - “查看全部工作目录”弹窗列表项增加删除按钮
 - 删除按钮点击时阻止冒泡
 - 删除后刷新 `getRecentWorkspaces()`
 - 对本地已不存在目录的记录，仍提供删除入口
 
-### C. 当前 workspace 内存态改造
-
-#### 后端
-目标：
-- 去掉对 `config.json` 的长期依赖
-- 将当前 workspace 改为运行期 app state / runtime state 管理
-
-重点改造点：
-- `get_current_workspace()` 不再依赖读取 `config.json`
-- `validate_workspace_path()` 不再依赖读取 `config.json`
-- `set_current_workspace()` 不再写入 `config.json`
-
-#### 前端
-目标：
-- 保持当前 workspace 为运行期状态
-- 与后端运行期状态保持同步
-- 启动后始终显示 workspace selector，不做恢复
-
 ### D. conversations 数据库化
 
 涉及文件：
 - `src-tauri/src/services/conversation_storage.rs`
 - 可能新增数据库 store / repository 文件
+- 相关 AI/session 设计文档
 
 需要完成：
 - 将 JSONL 存储改为 SQLite
 - 增加 sessions / messages / tool_calls 表
 - 直接以数据库结构作为正式实现
+- 注意与 `docs/ai-workspace-bound-session-db-redesign.md` 的边界保持一致，避免两份文档对同一层职责给出冲突定义
 
 ---
 
 ## 风险与注意事项
 
-### 1. 不要一次性改太多调用层
-- 优先先做 store 层收敛
-- 再逐步收敛命令层逻辑
-- workspace 内存态改造要明确前后端同步边界
+### 1. 不要低估 `config.json` 与 workspace 生命周期的耦合
+当前代码里，`config.json` 不是单纯的“启动恢复文件”，它仍然参与：
 
-### 2. settings / recent / runtime state 边界要严格
+- `set_current_workspace()` 的持久化收尾
+- `get_current_workspace()` 的读取来源
+- `clear_current_workspace_command()` 的清理逻辑
+
+因此删除 `config.json` 不是单点替换，而是一次 workspace runtime state 重构。
+
+### 2. 不要一次性改太多调用层
+- 优先先梳理 workspace runtime state 来源
+- 再收敛 settings store
+- 再补 recent history 管理能力
+- 最后处理 conversations 数据库化
+
+### 3. settings / recent / runtime state 边界要严格
 - `settings` = 用户偏好 + AI 配置 + LocalBridge 配置
 - `recent-workspaces` = 历史工作目录列表
 - `runtime state` = 当前运行中的 workspace
 - 不要再次把这三类数据混进同一个 `config.json`
 
-### 3. recent 列表不要再“静默丢弃问题”
+### 4. `startup` 字段不能原样带入新结构
+当前 `preferences.rs` 的默认值仍然是 `last-workspace`，这与“启动后始终首页，不做跨启动恢复”冲突。
+
+因此后续实现时必须明确：
+- 要么移除 `startup`
+- 要么保留字段但重定义语义与默认值
+
+### 5. recent 列表不要再“静默丢弃问题”
 当前前端对不存在目录会直接过滤，这虽然能避免展示坏数据，但也掩盖了“记录仍然存在却无法清理”的问题。
 
 后续实现时应注意：
@@ -621,19 +714,33 @@ src-tauri/src/services/
 - 或至少保留删除入口
 - 不应只做静默过滤后结束
 
-### 4. settings 合并要保持字段语义稳定
+### 6. 运行期 workspace 状态来源要唯一
+当前前端已有 `sessionStorage` 的 `pending-workspace-path` 临时桥接逻辑。
+
+后续实现时要避免出现：
+- 后端 runtime state 一套
+- 前端 React state 一套
+- `sessionStorage` 再一套
+
+应尽量收敛为单一可信状态来源，只在确有必要时保留最小桥接。
+
+### 7. settings 合并要保持字段语义稳定
 - 本次是“文件合并”，不是“业务语义重写”
 - 应尽量保持现有 AI 配置字段、LocalBridge 配置字段、UI 配置字段语义不变
 - 优先解决“入口统一”和“存储集中”，避免一次性引入过多字段重命名
 
-### 5. conversations 需要明确 workspace 归属
+### 8. conversations 需要明确 workspace 归属与文档边界
 当前 metadata 中 `workspace` 为空字符串，数据库化时建议在 session 维度真实存储 workspace，避免继续丢失上下文。
+
+同时应注意：
+- 本文档只定义全局存储与会话存储的总体方向
+- 更细的 AI/session 数据模型应与 `docs/ai-workspace-bound-session-db-redesign.md` 保持一致
 
 ---
 
 ## 最终建议结论
 
-基于最新需求，推荐方案如下：
+基于最新需求与当前代码现实，推荐方案如下：
 
 ### 保留
 - `settings.json`
@@ -654,10 +761,16 @@ src-tauri/src/services/
 ### 架构方向
 - 引入统一全局存储层
 - `settings.json` 作为唯一全局配置文件
-- 所有磁盘配置文件带 `version`
-- 当前 workspace 改为前后端共享的运行期内存态
+- 当前 workspace 改为前后端共享的运行期状态
+- recent history 保持独立文件并可管理
 - 应用启动后始终显示首页，不做跨启动恢复
 - 会话改为 SQLite 管理
 - recent workspaces 从“被动记录”升级为“可管理历史列表”
 
-这样可以把当前“零散 JSON + 文件型会话存储”的方案，整理成“配置清晰、运行态边界明确、会话可扩展、recent history 可管理”的长期结构。
+### 实施重点
+- 先重构 workspace runtime state，再删除 `config.json` 依赖
+- 再收敛 `settings.json`
+- 再补齐 recent workspaces 删除能力与不可用记录处理
+- 最后推进 conversations 数据库化
+
+这样可以把当前“零散 JSON + 文件型会话存储 + 磁盘 current workspace”的方案，整理成“配置清晰、运行态边界明确、会话可扩展、recent history 可管理”的长期结构。
