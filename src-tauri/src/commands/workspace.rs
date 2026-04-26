@@ -906,6 +906,7 @@ pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
         )
         .title("TweetPilot")
         .inner_size(1280.0, 800.0)
+        .decorations(false)
         .build()
         .map_err(|e| format!("Failed to create window: {}", e))?;
 

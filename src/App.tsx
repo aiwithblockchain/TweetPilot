@@ -355,6 +355,22 @@ function AppShell() {
   )
 }
 
+function AppLoadingShell() {
+  return (
+    <div className="h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
+      <TitleBar
+        leftSidebarVisible={false}
+        rightPanelVisible={false}
+        onToggleLeftSidebar={() => {}}
+        onToggleRightPanel={() => {}}
+      />
+      <div className="flex-1 flex items-center justify-center text-sm text-[var(--color-text-secondary)]">
+        正在打开工作目录...
+      </div>
+    </div>
+  )
+}
+
 function AppContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<string | null>(null)
@@ -450,7 +466,7 @@ function AppContent() {
   }, [initializeWorkspace])
 
   if (isCheckingWorkspace) {
-    return null
+    return <AppLoadingShell />
   }
 
   if (!workspaceReady) {
