@@ -5,6 +5,7 @@ const APP_HOME_DIR: &str = ".tweetpilot";
 const BUNDLED_HOME_DIR: &str = "tweetpilot-home";
 const SKILL_FILE_NAME: &str = "skill.md";
 const CLAWBOT_DIR_NAME: &str = "clawbot";
+const CLAWBOT_README_FILE_NAME: &str = "README.md";
 
 pub fn ensure_bundled_home_installed(resource_dir: &Path) -> Result<(), String> {
     let bundled_home = resolve_bundled_home_dir(resource_dir)?;
@@ -22,9 +23,13 @@ pub fn ensure_bundled_home_installed(resource_dir: &Path) -> Result<(), String> 
         &bundled_home.join(SKILL_FILE_NAME),
         &target_home.join(SKILL_FILE_NAME),
     )?;
-    copy_dir_if_missing(
-        &bundled_home.join(CLAWBOT_DIR_NAME),
-        &target_home.join(CLAWBOT_DIR_NAME),
+
+    let bundled_clawbot_dir = bundled_home.join(CLAWBOT_DIR_NAME);
+    let target_clawbot_dir = target_home.join(CLAWBOT_DIR_NAME);
+    copy_dir_if_missing(&bundled_clawbot_dir, &target_clawbot_dir)?;
+    copy_file_if_missing(
+        &bundled_clawbot_dir.join(CLAWBOT_README_FILE_NAME),
+        &target_clawbot_dir.join(CLAWBOT_README_FILE_NAME),
     )?;
 
     log::info!(
@@ -192,6 +197,34 @@ mod tests {
                 fs::read_to_string(tweetpilot_home.join("clawbot").join("README.md"))
                     .expect("read installed clawbot readme"),
                 "clawbot readme"
+            );
+
+            let _ = fs::remove_dir_all(&resource_root);
+        });
+    }
+
+    #[test]
+    fn installs_missing_clawbot_readme_when_clawbot_dir_already_exists() {
+        with_test_home("install-missing-readme", |_temp_home| {
+            let resource_root = std::env::temp_dir().join(format!(
+                "tweetpilot-bundled-home-{}",
+                Uuid::new_v4()
+            ));
+            let bundled_home = resource_root.join("tweetpilot-home");
+            let clawbot_dir = bundled_home.join("clawbot");
+            fs::create_dir_all(&clawbot_dir).expect("create bundled clawbot dir");
+            fs::write(bundled_home.join("skill.md"), "skill content").expect("write skill");
+            fs::write(clawbot_dir.join("README.md"), "bundled clawbot readme").expect("write clawbot readme");
+
+            let tweetpilot_home = tweetpilot_home_dir_from_env().expect("resolve tweetpilot home");
+            fs::create_dir_all(tweetpilot_home.join("clawbot")).expect("create existing clawbot dir");
+
+            ensure_bundled_home_installed(&resource_root).expect("install bundled home");
+
+            assert_eq!(
+                fs::read_to_string(tweetpilot_home.join("clawbot").join("README.md"))
+                    .expect("read installed clawbot readme"),
+                "bundled clawbot readme"
             );
 
             let _ = fs::remove_dir_all(&resource_root);

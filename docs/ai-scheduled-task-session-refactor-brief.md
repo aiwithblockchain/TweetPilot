@@ -33,23 +33,20 @@
 
 ### 2.2 persona prompt
 
-persona prompt 应为**可选能力**，而不是强制能力。
+persona prompt 应为**任务表中的一个普通字符串字段**，并且是**可选能力**。
 
-任务侧建议支持以下模式：
+这里不对 persona 的格式、模板或拼接协议做额外约束，当前阶段只认定：
+
+- task 上可以没有 persona prompt
+- task 上也可以直接保存一段 persona prompt 字符串
+- 是否使用 persona，由任务配置决定
+
+因此任务侧建议至少支持：
 
 - 不使用 persona
-- 使用某个 Twitter 账号的 persona
+- 使用 task 记录中的 persona prompt 字符串
 
-因此任务配置中应显式提供一个开关，例如：
-
-- `use_persona: true | false`
-- `twitter_account_id: string | null`
-
-约束建议：
-
-- `use_persona = false` 时，不注入 persona prompt
-- `use_persona = true` 时，要求选择具体账号
-- 某些读取型、分析型任务默认应允许关闭 persona
+换句话说，这一层我们只关心“有没有字符串、是否启用”，**不关心具体格式和拼接细节**。
 
 ### 2.3 脚本执行方式
 
@@ -71,12 +68,21 @@ persona prompt 应为**可选能力**，而不是强制能力。
 
 任务 AI Session 需要特别命名、编号，并使用不同于当前普通 AI Session 的数据库表进行存储。
 
+这里的“独立存储”进一步明确为：
+
+- **完全复用现有 Session 的逻辑和消息结构**
+- 只是任务 Session 的消息内容写入**独立数据库表**
+- 任务 Session 使用**独立格式的 ID**
+- 任务 Session 数据**不进入系统共用的 conversations 目录**
+- 任务 Session 数据存储在**工作目录对应的数据库体系**中
+
 原因：
 
 - 需要通过“任务执行记录”定位某次 AI 执行
 - 需要查看该任务执行的完整对话过程
 - 需要避免与普通聊天 Session 混淆
 - 便于后续做任务审计、失败排查、历史回放
+- 便于按工作区清理任务数据，而不影响普通 AI Session
 
 ---
 
@@ -96,7 +102,7 @@ persona prompt 应为**可选能力**，而不是强制能力。
 - `schedule_type` / `cron_expr`
 - `enabled`
 - `use_persona`
-- `twitter_account_id`
+- `persona_prompt`
 - `created_by`
 - `created_at`
 - `updated_at`
@@ -104,6 +110,7 @@ persona prompt 应为**可选能力**，而不是强制能力。
 说明：
 
 - `description` 为用户填写的任务描述
+- `persona_prompt` 是 task 表中的普通字符串字段，可为空
 - 该描述可以包含“执行哪个脚本、结果写到哪里”等要求
 - 任务定义本身不保存 AI 对话，仅保存配置
 
@@ -111,7 +118,7 @@ persona prompt 应为**可选能力**，而不是强制能力。
 
 存储“某次任务何时被触发，结果如何”。
 
-建议新增任务执行记录表，例如：`task_ai_runs`
+建议在现有任务执行记录表基础上扩展，而不是新增一套完全独立的运行记录体系。
 
 建议字段示例：
 
@@ -124,31 +131,41 @@ persona prompt 应为**可选能力**，而不是强制能力。
 - `finished_at`
 - `final_output`
 - `error_message`
-- `task_session_id`
+- `task_session_id`（可为 null）
 - `created_at`
 
 说明：
 
 - 每次调度触发就生成一条 run
 - `final_output` 仅保存最终输出结果
-- `task_session_id` 关联任务专用 Session
+- `task_session_id` 为可空字段，用于关联任务专用 Session
+- 非 AI 型任务可不写入 `task_session_id`
+- AI 型任务可通过该字段追溯完整过程
 - `session_code` 用于展示与排查
 
 ### 3.3 任务专用 Session 层
 
 存储“该次任务 AI 的完整执行过程”。
 
-建议新增独立于当前普通 Session 的表，例如：
+这里不建议重新设计消息模型，而是：
+
+- **完全复用现有 Session 的消息结构**
+- **完全复用现有 Session 的处理逻辑**
+- 仅将任务 Session 的数据落到独立数据库表中
+- 并使用独立 ID 规则与任务执行记录关联
+
+建议表方向：
 
 - `task_ai_sessions`
 - `task_ai_messages`
-- 如有工具日志，也可增加 `task_ai_tool_calls`
 
 关键原则：
 
-- 不复用当前普通聊天表
-- 但底层字段设计可以参考当前 Session 体系
-- 任务 Session 必须能完整还原一次任务执行的过程
+- 不复用当前普通聊天的存储位置
+- 但字段结构与行为尽量与现有 Session 保持一致
+- 不新增专门的工具调用日志表
+- 工具调用过程继续作为 Session 消息内容的一部分保留
+- 任务失败原因优先通过关联 Session 内容进行展示和排查
 
 建议字段方向：
 
@@ -168,7 +185,10 @@ persona prompt 应为**可选能力**，而不是强制能力。
 - `role`
 - `content`
 - `message_index`
-- `tool_call_metadata`（可选）
+- `thinking`
+- `thinking_complete`
+- `tool_calls`
+- `status`
 - `created_at`
 
 这样可以通过任务执行记录直接追溯完整 AI 对话。
@@ -208,31 +228,27 @@ persona prompt 应为**可选能力**，而不是强制能力。
 
 ### 4.2 任务输入建议
 
-任务侧不需要额外发明复杂协议，建议先采用“主输入 + 可选 persona 附加输入”的方式。
+任务侧不需要额外发明复杂协议。
 
-可理解为：
+当前约束很简单：
 
-- 基础输入：用户任务描述
-- 可选附加输入：persona prompt
+- 基础输入就是用户任务描述
+- persona prompt 是 task 表中的一个字符串字段
+- 如果启用 persona，就把这个字符串一起交给现有 Session
+- 如果未启用 persona，就只发送任务描述
 
-建议内部形成类似这样的输入结构：
-
-- 当 `use_persona = false`
-  - 仅发送任务描述
-- 当 `use_persona = true`
-  - 在任务描述前附加账号 persona 上下文
-
-例如内部逻辑可以是：
+本阶段**不限定 persona 的格式，也不限定具体拼接协议**，只要求：
 
 1. 读取任务描述
-2. 判断是否使用 persona
-3. 如使用，则读取对应账号 persona
-4. 将 persona + 用户任务描述 一并交给现有 Session
+2. 判断是否启用 persona
+3. 如启用，则读取 task.persona_prompt
+4. 将 persona 字符串与任务描述一并交给现有 Session
 
 注意：
 
-- persona 是增强信息，不替代 system prompt
+- persona 是附加上下文
 - system prompt 仍由现有 Session 机制负责注入
+- 最终输出的判定规则为：**任务执行完成后的最后一条字符串消息**
 
 ---
 
@@ -296,16 +312,17 @@ persona prompt 应为**可选能力**，而不是强制能力。
 建议整体流程如下：
 
 1. 调度器扫描到期任务
-2. 创建 `task_ai_runs` 记录，状态为 `pending`
-3. 创建任务专用 Session，生成专属编号
-4. 将 run 状态更新为 `running`
-5. 根据配置决定是否读取 persona prompt
+2. 创建执行记录，状态为 `pending`
+3. 为本次执行新建一个任务专用 Session，并生成专属编号
+4. 将执行记录状态更新为 `running`
+5. 根据配置决定是否读取 task.persona_prompt
 6. 通过现有 Session 创建与执行链路发起任务 AI Session
 7. AI 在 Session 中根据任务描述自主调用工具、执行脚本、写文件
-8. 执行结束后，系统获取 AI 最终输出
-9. 将最终输出写入 `task_ai_runs.final_output`
-10. 将 run 状态更新为 `success` 或 `failed`
-11. 后台通过 `task_ai_runs -> task_ai_sessions -> task_ai_messages` 查看完整执行过程
+8. 执行结束后，系统获取最后一条字符串消息作为 `final_output`
+9. 将 `task_session_id` 回填到执行记录
+10. 将最终输出写入执行记录
+11. 成功则更新状态为 `success`，失败则更新状态为 `failed`
+12. 后台通过执行记录上的按钮，按 `task_session_id` 弹窗查看完整 AI 过程
 
 ---
 
@@ -321,16 +338,148 @@ persona prompt 应为**可选能力**，而不是强制能力。
 
 ---
 
-## 9. 需要下一步继续明确的问题
+## 9. 进一步明确后的设计结论
 
-这份文档先作为简要重构方向，下一轮建议继续细化以下问题：
+结合当前代码现状，本轮已明确以下结论：
 
-1. 任务专用 Session 是否完全复用现有消息结构，还是只复用部分字段
-2. persona prompt 在任务输入中的具体拼接格式
-3. 任务执行完成后，“最终输出”如何判定（最后一条 assistant 消息，还是指定结构）
-4. 工具调用日志是否需要单独建表
-5. 调度失败、Session 创建失败、工具执行失败时的状态流转
-6. 后台界面如何展示任务执行记录与完整 AI 对话
+1. **任务专用 Session 完全复用现有 Session 的逻辑和消息结构**，不重新设计消息模型。
+2. **任务 Session 只隔离存储位置**：普通 AI Session 继续存放在当前全局 conversations 目录；任务 AI Session 存放到工作目录对应的数据库表。
+3. **persona prompt 只是 task 表中的字符串字段**，可为空；是否启用由任务配置决定，不额外约束格式。
+4. **最终输出的判定规则**：任务执行结束后的最后一条字符串消息。
+5. **不新增单独的工具调用日志表**：执行记录表增加可空的 `task_session_id` 即可，详细过程通过 session 关联查看。
+6. **失败处理最小化**：任务失败时只记录失败状态和基本错误信息，具体原因通过关联的任务 Session 展示。
+7. **前端展示方式**：在任务执行记录后增加“查看过程”按钮；当存在 `task_session_id` 时，点击后弹窗加载对应完整过程。
+
+### 9.1 任务记录清空逻辑
+
+当前代码里：
+
+- 普通 AI Session 的消息由 `ConversationStorage` 管理，删除时会直接删除对应 session 文件
+- 任务删除逻辑当前仅删除 `tasks` 表中的任务定义
+- 执行记录查询来自 `executions` 表，但当前 `delete_task` 未体现级联清理执行记录
+
+因此任务侧需要新增一套**与现有清理方式一致的级联清理逻辑**。
+
+建议拆成两个动作：
+
+#### A. 清空某个任务的执行记录
+
+当用户执行“清空任务记录”时，应执行：
+
+1. 查询该 task 的全部执行记录
+2. 找出其中非空的 `task_session_id`
+3. 先删除这些 `task_session_id` 对应的：
+   - `task_ai_messages`
+   - `task_ai_sessions`
+4. 再删除该 task 的全部执行记录
+
+这样可以保证：
+
+- 执行记录被清空时，不会残留孤儿 Session 数据
+- 任务定义本身仍然保留
+- 清理行为与当前“删除 session 时连带删除其内容”的思路一致
+
+#### B. 删除任务
+
+当用户执行“删除任务”时，应执行：
+
+1. 先注销 timer
+2. 清空该 task 的全部执行记录
+3. 级联删除这些记录关联的任务 Session 内容
+4. 最后删除 `tasks` 表中的任务定义
+
+也就是说，**删除任务 = 删除任务定义 + 删除执行记录 + 删除关联任务 Session 内容**。
+
+### 9.2 每次执行新建 Session 还是复用旧 Session
+
+这是本次设计里最关键的取舍点之一。
+
+我结合你的目标和当前实现，结论是：
+
+## 结论：**每次任务执行都应新建一个 Task AI Session，不复用旧 Session。**
+
+原因如下。
+
+#### 原因 1：任务执行记录天然是一对一的审计单元
+
+你已经明确希望：
+
+- 每次任务执行有独立记录
+- 每次记录都能查看完整 AI 过程
+
+如果复用旧 Session，那么多次执行会混在同一条对话链里：
+
+- 难以区分第几次执行从哪里开始、在哪里结束
+- 最终输出定位会变得不稳定
+- 失败排查会很痛苦
+
+而“一次执行一个 Session”则天然对应：
+
+- 一条执行记录
+- 一个 task_session_id
+- 一段完整过程
+- 一个最终输出
+
+这和你当前的产品目标最一致。
+
+#### 原因 2：避免上下文污染
+
+任务是定时执行的，前一次运行结果不应该默认影响下一次运行。
+
+如果复用旧 Session：
+
+- 历史消息会持续累积
+- AI 会受到前序运行内容影响
+- 长期任务会出现上下文膨胀
+- 同一个任务会越来越不可控
+
+而每次新建 Session：
+
+- 本次执行只受本次输入影响
+- 结果更稳定
+- 更容易复现
+- 更容易控制 token 成本与上下文规模
+
+#### 原因 3：更符合“任务型执行”而不是“持续聊天”
+
+普通 AI Session 适合连续对话。
+
+但你的任务场景本质上是：
+
+- 定时触发
+- 一次性执行
+- 保存结果
+- 查看过程
+
+这更像“作业运行实例”，不是“持续会话”。
+
+所以模型上也更应该采用：
+
+- task = 定义
+- execution record = 一次运行
+- task session = 这次运行的完整过程
+
+#### 原因 4：清理更简单
+
+如果每次执行独立 Session，那么：
+
+- 清空某个 task 的记录时，只需按 execution record 找出所有 session 一并删除
+- 删除某次执行记录时，也能只删除那一次对应的 session
+- 不会出现多个 run 共享一个 session 导致的误删或残留问题
+
+这对后续维护非常重要。
+
+### 9.3 复用旧 Session 的唯一适用场景
+
+理论上，只有当未来出现这类需求时，才值得考虑复用：
+
+- 任务要求“连续记忆”
+- 明确希望本次执行读取上一次 AI 的推理或结论
+- 任务本质上是长期 agent 而不是独立 run
+
+但这已经不是当前这版定时任务系统的目标。
+
+因此本期不建议设计成可复用 Session，以免把模型做复杂。
 
 ---
 
