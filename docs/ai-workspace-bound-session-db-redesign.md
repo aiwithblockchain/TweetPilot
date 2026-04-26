@@ -1023,7 +1023,962 @@ JSONL 结构本身仍然不适合长期演进。
 
 ---
 
-## 十九、一句话总结
+## 十九、精确接口草案
+
+为了让后续实现可以直接开工，这里补充建议的 Rust / TypeScript 接口草案。
+
+## 19.1 Rust 数据模型草案
+
+### `AiSessionRow`
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSessionRow {
+    pub id: String,
+    pub title: String,
+    pub workspace_path: String,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_message_at: Option<String>,
+    pub message_count: i64,
+    pub model: Option<String>,
+    pub provider_id: Option<String>,
+    pub system_prompt: Option<String>,
+    pub constraints_version: Option<String>,
+    pub summary: Option<String>,
+}
+```
+
+### `AiMessageRow`
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiMessageRow {
+    pub id: String,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub thinking: Option<String>,
+    pub thinking_complete: Option<bool>,
+    pub status: Option<String>,
+    pub request_id: Option<String>,
+    pub sequence_no: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+```
+
+### `AiToolCallRow`
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiToolCallRow {
+    pub id: String,
+    pub message_id: String,
+    pub session_id: String,
+    pub tool: String,
+    pub action: String,
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub status: String,
+    pub duration: Option<f64>,
+    pub start_time: String,
+    pub end_time: Option<String>,
+}
+```
+
+### `LoadedAiSession`
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadedAiSession {
+    pub session: AiSessionRow,
+    pub messages: Vec<AiMessageWithToolCalls>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiMessageWithToolCalls {
+    pub message: AiMessageRow,
+    pub tool_calls: Vec<AiToolCallRow>,
+}
+```
+
+### `CreateAiSessionInput`
+
+```rust
+pub struct CreateAiSessionInput {
+    pub id: String,
+    pub title: String,
+    pub workspace_path: String,
+    pub model: Option<String>,
+    pub provider_id: Option<String>,
+    pub system_prompt: Option<String>,
+    pub constraints_version: Option<String>,
+}
+```
+
+---
+
+## 19.2 `AiStorage` 接口草案
+
+```rust
+pub struct AiStorage {
+    conn: Connection,
+}
+
+impl AiStorage {
+    pub fn new(db_path: PathBuf) -> Result<Self, String>;
+
+    pub fn create_session(&self, input: CreateAiSessionInput) -> Result<AiSessionRow, String>;
+    pub fn list_sessions(&self) -> Result<Vec<AiSessionRow>, String>;
+    pub fn get_session(&self, session_id: &str) -> Result<AiSessionRow, String>;
+    pub fn load_session(&self, session_id: &str) -> Result<LoadedAiSession, String>;
+    pub fn delete_session(&self, session_id: &str) -> Result<(), String>;
+    pub fn clear_session_messages(&self, session_id: &str) -> Result<(), String>;
+
+    pub fn get_next_sequence_no(&self, session_id: &str) -> Result<i64, String>;
+
+    pub fn create_message(&self, message: AiMessageRow) -> Result<(), String>;
+    pub fn update_message_content(
+        &self,
+        message_id: &str,
+        content: &str,
+        thinking: Option<&str>,
+        thinking_complete: Option<bool>,
+        status: Option<&str>,
+    ) -> Result<(), String>;
+
+    pub fn create_tool_call(&self, tool_call: AiToolCallRow) -> Result<(), String>;
+    pub fn finish_tool_call(
+        &self,
+        tool_call_id: &str,
+        output: Option<&str>,
+        status: &str,
+        duration: Option<f64>,
+        end_time: Option<&str>,
+    ) -> Result<(), String>;
+
+    pub fn touch_session_after_message(
+        &self,
+        session_id: &str,
+        last_message_at: &str,
+    ) -> Result<(), String>;
+}
+```
+
+### 设计取舍
+
+1. `AiStorage` 不持有 workspace path，只持有当前 workspace DB 连接。
+2. workspace 隔离由“哪个 DB 被打开”来保证，而不是每个查询都手写过滤条件。
+3. `touch_session_after_message()` 单独保留，避免每次写消息都散落更新 session cache 字段。
+
+---
+
+## 19.3 `AiState` 最小重构草案
+
+```rust
+pub struct AiState {
+    pub workspace_path: Arc<Mutex<Option<String>>>,
+    pub active_session_id: Arc<Mutex<Option<String>>>,
+    pub session: Arc<Mutex<Option<ClaurstSession>>>,
+    pub cancel_token: Arc<Mutex<Option<CancellationToken>>>,
+    pub active_request_id: Arc<Mutex<Option<String>>>,
+}
+```
+
+### 状态约束
+
+需要在代码中强制维护以下不变量：
+
+1. `session.is_some()` 时，`workspace_path` 必须存在
+2. `session.is_some()` 时，`active_session_id` 必须存在
+3. `workspace_path` 变化时，旧 `session` 必须清空
+4. `delete_ai_session()` 删除当前活跃 session 时，必须同步清空 runtime state
+
+---
+
+## 二十、命令签名建议
+
+## 20.1 后端 Tauri 命令建议
+
+### 保留并改造
+
+```rust
+#[tauri::command]
+pub async fn create_new_session(
+    working_dir: String,
+    state: State<'_, AiState>,
+) -> Result<String, String>;
+
+#[tauri::command]
+pub async fn list_ai_sessions(
+    working_dir: String,
+) -> Result<Vec<AiSessionRow>, String>;
+
+#[tauri::command]
+pub async fn load_ai_session(
+    working_dir: String,
+    session_id: String,
+) -> Result<LoadedAiSession, String>;
+
+#[tauri::command]
+pub async fn activate_ai_session(
+    working_dir: String,
+    session_id: String,
+    state: State<'_, AiState>,
+) -> Result<(), String>;
+
+#[tauri::command]
+pub async fn delete_ai_session(
+    working_dir: String,
+    session_id: String,
+    state: State<'_, AiState>,
+) -> Result<(), String>;
+
+#[tauri::command]
+pub async fn clear_ai_session(
+    working_dir: String,
+    session_id: String,
+    state: State<'_, AiState>,
+) -> Result<(), String>;
+
+#[tauri::command]
+pub async fn send_ai_message(
+    message: String,
+    state: State<'_, AiState>,
+    window: Window,
+) -> Result<serde_json::Value, String>;
+```
+
+### 为什么 `send_ai_message` 不需要再带 `working_dir`
+
+因为在最终方案里：
+- `working_dir` 已在 `activate_ai_session` / `create_new_session` 时被绑定到 runtime state
+- 发送消息只依赖“当前已激活 session”
+- 如果仍要求 send 时传 `working_dir`，说明激活模型没有真正建立起来
+
+---
+
+## 20.2 前端 TypeScript 接口建议
+
+```ts
+export interface AiSessionMetadata {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  last_message_at?: string | null
+  message_count: number
+  workspace_path: string
+  model?: string | null
+  provider_id?: string | null
+}
+
+export interface AiToolCall {
+  id: string
+  tool: string
+  action: string
+  input?: string | null
+  output?: string | null
+  status: string
+  duration?: number | null
+  start_time: string
+  end_time?: string | null
+}
+
+export interface AiMessage {
+  id: string
+  session_id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  thinking?: string | null
+  thinking_complete?: boolean | null
+  status?: string | null
+  request_id?: string | null
+  sequence_no: number
+  created_at: string
+  updated_at: string
+  tool_calls?: AiToolCall[]
+}
+
+export interface LoadedAiSession {
+  session: AiSessionMetadata
+  messages: AiMessage[]
+}
+```
+
+对应 service 建议：
+
+```ts
+async listSessions(workingDir: string): Promise<AiSessionMetadata[]>
+async loadSession(workingDir: string, sessionId: string): Promise<LoadedAiSession>
+async activateSession(workingDir: string, sessionId: string): Promise<void>
+async createNewSession(workingDir: string): Promise<string>
+async deleteSession(workingDir: string, sessionId: string): Promise<void>
+```
+
+---
+
+## 二十一、数据库迁移脚本建议
+
+建议新增文件：
+
+```text
+src-tauri/migrations/004_create_ai_conversation_tables.sql
+```
+
+建议内容：
+
+```sql
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  workspace_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_message_at TEXT,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  model TEXT,
+  provider_id TEXT,
+  system_prompt TEXT,
+  constraints_version TEXT,
+  summary TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_updated_at
+  ON ai_sessions(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_status
+  ON ai_sessions(status);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  thinking TEXT,
+  thinking_complete INTEGER,
+  status TEXT,
+  request_id TEXT,
+  sequence_no INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES ai_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_session_sequence
+  ON ai_messages(session_id, sequence_no);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_request_id
+  ON ai_messages(request_id);
+
+CREATE TABLE IF NOT EXISTS ai_tool_calls (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  action TEXT NOT NULL,
+  input TEXT,
+  output TEXT,
+  status TEXT NOT NULL,
+  duration REAL,
+  start_time TEXT NOT NULL,
+  end_time TEXT,
+  FOREIGN KEY (message_id) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id) REFERENCES ai_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_tool_calls_message_id
+  ON ai_tool_calls(message_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_tool_calls_session_id
+  ON ai_tool_calls(session_id);
+```
+
+---
+
+## 二十二、与现有模块的对接建议
+
+## 22.1 与 `TaskDatabase` 的关系
+
+当前 `TaskDatabase::init_schema()` 已集中加载 migration，这一点应继续保持。
+
+建议调整：
+
+```rust
+fn init_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(include_str!("../migrations/001_create_tasks_tables.sql"))?;
+    conn.execute_batch(include_str!("../migrations/002_create_accounts_table.sql"))?;
+    conn.execute_batch(include_str!("../migrations/003_create_x_accounts_and_trend.sql"))?;
+    conn.execute_batch(include_str!("../migrations/004_create_ai_conversation_tables.sql"))?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    Ok(())
+}
+```
+
+### 是否把 AI 表方法直接写进 `TaskDatabase`
+
+这里有两种选择：
+
+#### 方案 A：全部写进 `TaskDatabase`
+优点：
+- 少一个 DB 封装层
+- 复用现有模式
+
+缺点：
+- `TaskDatabase` 职责会继续膨胀
+- 后续 AI 逻辑越来越难维护
+
+#### 方案 B：新增 `AiStorage`，内部复用同一个 db path
+优点：
+- 职责更清楚
+- AI 与任务系统边界更清晰
+
+缺点：
+- 会多一层封装
+
+### 本文建议
+
+**推荐方案 B。**
+
+原因很简单：AI conversation 已经是一个独立数据域，不应该继续把 `TaskDatabase` 做成“所有表的万能仓库”。
+
+---
+
+## 22.2 与 workspace 命令模块的关系
+
+当前 `workspace.rs` 仍然维护 `config.json` 中的 `current_workspace`。这和更早的全局配置重构文档有耦合，但不阻塞本次 AI 对话重构。
+
+本次 AI 方案里，对 workspace 模块的最低要求只有两个：
+
+1. 能拿到当前运行中的 workspace path
+2. 能确保 `<workspace>/.tweetpilot/` 已存在
+
+也就是说，本次 AI 重构不要求先完成整个 workspace 配置体系改造；只需要复用它提供的当前工作区能力即可。
+
+---
+
+## 二十三、`ClaurstSession` 重构边界
+
+`ClaurstSession` 当前既承担：
+- 运行时消息数组管理
+- provider 调用
+- 工具执行
+- 历史消息加载
+- 存储落盘
+
+这会让后续 workspace-DB 方案很难落地。
+
+### 建议明确边界
+
+#### `ClaurstSession` 应负责
+- 内存中的 message 序列
+- provider 请求发送
+- 流式事件派发
+- 工具执行生命周期
+
+#### `ClaurstSession` 不应负责
+- 自己决定从哪里加载历史消息
+- 自己决定把消息写到什么存储
+- 自己扫描 `~/.tweetpilot/conversations`
+
+### 建议改造方式
+
+把它变成一个纯运行时对象：
+
+```rust
+pub struct ClaurstSession {
+    session_id: String,
+    working_dir: PathBuf,
+    client: AnthropicClient,
+    config: QueryConfig,
+    messages: Vec<Message>,
+    tools: Vec<Box<dyn Tool>>,
+    context: ToolContext,
+    cost_tracker: Arc<CostTracker>,
+}
+```
+
+把旧的：
+- `ConversationStorage`
+- 与 JSONL 相关的自动读写
+
+从 `ClaurstSession` 中抽离出去。
+
+---
+
+## 二十五、运行时生命周期与状态机
+
+这一节补足“implementation-ready”最关键但前文还不够明确的部分：
+
+- 什么时刻创建 runtime session
+- 什么时刻只读 DB、不改 runtime
+- 什么时刻必须清空 runtime
+- 什么时刻允许发送
+
+如果这些边界不写清楚，后续实现时很容易再次出现：
+- 前端以为 session 已切换
+- 后端实际仍停留在旧 session
+- UI / DB / runtime 三者错位
+
+### 25.1 runtime state 最小语义
+
+建议把后端 AI 运行态统一理解成下面这组状态：
+
+```rust
+pub struct AiState {
+    pub workspace_path: Arc<Mutex<Option<String>>>,
+    pub active_session_id: Arc<Mutex<Option<String>>>,
+    pub session: Arc<Mutex<Option<ClaurstSession>>>,
+    pub cancel_token: Arc<Mutex<Option<CancellationToken>>>,
+    pub active_request_id: Arc<Mutex<Option<String>>>,
+}
+```
+
+其中每个字段的语义必须固定：
+
+- `workspace_path`：当前 runtime session 所属 workspace
+- `active_session_id`：当前 runtime session 对应的 session id
+- `session`：真正可发送请求的内存态 `ClaurstSession`
+- `cancel_token`：仅对当前 in-flight request 有效
+- `active_request_id`：仅对当前 in-flight request 有效
+
+### 25.2 必须维持的不变量
+
+后端代码中要明确维护这些不变量：
+
+1. `session.is_some()` 时，`workspace_path.is_some()` 必须成立
+2. `session.is_some()` 时，`active_session_id.is_some()` 必须成立
+3. `active_request_id.is_some()` 时，`session.is_some()` 必须成立
+4. 切换到另一个 workspace 时，旧 `session` / `active_session_id` / `active_request_id` / `cancel_token` 必须一起清空
+5. 删除当前活跃 session 时，runtime state 必须一起清空
+6. `send_ai_message()` 只能在 `session + workspace_path + active_session_id` 三者同时存在时执行
+
+实现上不要只“尽量保持一致”，而是要在命令入口显式校验，不满足就立即返回错误。
+
+### 25.3 状态转换规则
+
+#### 状态 A：无活跃 runtime
+
+```text
+workspace_path = None
+active_session_id = None
+session = None
+active_request_id = None
+cancel_token = None
+```
+
+允许操作：
+- `list_ai_sessions`
+- `load_ai_session`
+- `create_new_session`
+- `activate_ai_session`
+
+不允许操作：
+- `send_ai_message`
+- `cancel_ai_message`
+
+#### 状态 B：已有活跃 session，但无进行中的请求
+
+```text
+workspace_path = Some(...)
+active_session_id = Some(...)
+session = Some(...)
+active_request_id = None
+cancel_token = None
+```
+
+允许操作：
+- `send_ai_message`
+- `load_ai_session`
+- `delete_ai_session`（若删当前 session，先清 runtime）
+- `activate_ai_session`（切到另一个 session）
+
+#### 状态 C：已有活跃 session，且请求进行中
+
+```text
+workspace_path = Some(...)
+active_session_id = Some(...)
+session = Some(...)
+active_request_id = Some(...)
+cancel_token = Some(...)
+```
+
+允许操作：
+- 流式接收 chunk / thinking / tool call event
+- `cancel_ai_message`
+
+不建议允许：
+- 请求尚未结束时切换 session
+- 请求尚未结束时切换 workspace
+- 请求尚未结束时删除当前 session
+
+### 25.4 并发策略
+
+本次实现建议采用**单活跃请求模型**，不要同时支持同一窗口内多个 AI 请求并行。
+
+也就是说：
+- 同一时刻只允许一个 `active_request_id`
+- 若已有请求进行中，新的 `send_ai_message` 应立即报错或直接拒绝
+- 前端按钮层面也应同步禁用重复发送
+
+这样可以显著降低：
+- assistant 占位消息串流写错行
+- tool call 写入错 message
+- request_end 回写到过期 session
+
+这是当前产品阶段最合适的复杂度。
+
+---
+
+## 二十六、命令级行为契约
+
+这里定义每个核心命令的精确职责，避免“一个命令做一半，另一半靠前端补偿”。
+
+### 26.1 `create_new_session(working_dir)`
+
+#### 输入前置条件
+- `working_dir` 存在
+- `<working_dir>/.tweetpilot/tweetpilot.db` 可打开
+- AI provider 配置存在且有 active provider
+
+#### 执行步骤
+1. 校验 workspace 路径
+2. 打开该 workspace DB
+3. 读取当前 active provider
+4. 基于当前 workspace 生成 system prompt
+5. 生成 `session_id`
+6. 在 `ai_sessions` 插入新 session 记录
+7. 创建空的 runtime `ClaurstSession`
+8. 用新 session 覆盖 `AiState`
+9. 清空旧 `active_request_id` / `cancel_token`
+10. 返回 `session_id`
+
+#### 成功后保证
+- DB 中已有该 session metadata
+- runtime 已切到该 session
+- 此时可以直接 `send_ai_message`
+
+#### 失败回滚原则
+- 如果 DB insert 失败，则不得更新 runtime
+- 如果 runtime 构建失败，则建议删除刚插入的 session metadata，避免产生空壳 session
+
+### 26.2 `list_ai_sessions(working_dir)`
+
+#### 职责
+- 只做该 workspace DB 下的列表查询
+- 不读取 runtime state
+- 不修改 runtime state
+
+#### 设计要求
+这是一个纯查询命令，禁止顺手做激活、恢复、修复状态之类的副作用。
+
+### 26.3 `load_ai_session(working_dir, session_id)`
+
+#### 职责
+- 从该 workspace DB 读取 session metadata
+- 读取 messages + tool_calls
+- 返回给前端渲染
+
+#### 设计要求
+- `load` 是**数据读取命令**
+- 它不负责建立 runtime session
+- 它不修改 `AiState`
+
+这点要刻意坚持，否则 `load` 和 `activate` 的边界又会重新混乱。
+
+### 26.4 `activate_ai_session(working_dir, session_id)`
+
+#### 输入前置条件
+- `working_dir` 存在
+- session 在该 workspace DB 中存在
+- 当前没有 in-flight request；若有，先拒绝或要求先取消
+
+#### 执行步骤
+1. 打开 workspace DB
+2. 查询 session metadata
+3. 读取该 session 的全部历史消息
+4. 用 session metadata 中保存的 `system_prompt` / `model` / `provider_id` 恢复运行参数
+5. 构建新的 runtime `ClaurstSession`
+6. 把历史消息注入 runtime session
+7. 覆盖 `AiState.workspace_path`
+8. 覆盖 `AiState.active_session_id`
+9. 覆盖 `AiState.session`
+10. 清空 `active_request_id` / `cancel_token`
+
+#### 成功后保证
+- 后端 runtime 与该 session 一致
+- 后续 `send_ai_message` 不需要再补偿式激活
+
+### 26.5 `send_ai_message(message)`
+
+#### 输入前置条件
+- `AiState.workspace_path` 存在
+- `AiState.active_session_id` 存在
+- `AiState.session` 存在
+- 当前没有另一个 in-flight request
+- `message.trim()` 非空
+
+#### 执行步骤
+1. 生成 `request_id`
+2. 在 DB 中插入 user message
+3. 在 DB 中插入 assistant 占位 message，状态 `streaming`
+4. 更新 `AiState.active_request_id` / `cancel_token`
+5. 调用 runtime session 发送请求
+6. 在 streaming 过程中持续更新 assistant message / tool_calls
+7. 请求结束后写回最终 content / thinking / status
+8. 更新 `ai_sessions.updated_at / last_message_at / message_count`
+9. 清空 `active_request_id` / `cancel_token`
+
+#### 失败处理要求
+- 如果在真正发给 provider 之前失败，assistant 占位消息应标记为 `error` 或删除，但策略必须统一
+- 如果 provider 半途中失败，assistant 占位消息保留，状态改为 `error`
+- 无论哪种失败，`active_request_id` / `cancel_token` 都必须清空
+
+### 26.6 `cancel_ai_message()`
+
+#### 职责
+- 仅取消当前 active request
+- 不切换 session
+- 不删除消息
+
+#### 取消后的持久化要求
+- assistant 占位消息状态改为 `cancelled`
+- 已写入的 content / thinking 保留，不回滚
+- 清空 `active_request_id` / `cancel_token`
+
+### 26.7 `delete_ai_session(working_dir, session_id)`
+
+#### 执责
+- 只删除当前 workspace DB 中该 session
+- 依赖外键级联删除 messages / tool_calls
+
+#### 特殊规则
+如果删除的是当前活跃 session：
+1. 若有 in-flight request，先拒绝删除或先要求取消
+2. 清空 `AiState.workspace_path`
+3. 清空 `AiState.active_session_id`
+4. 清空 `AiState.session`
+5. 清空 `AiState.active_request_id`
+6. 清空 `AiState.cancel_token`
+
+---
+
+## 二十七、消息落库与事件关联细则
+
+这一节补足 event 到 DB 的映射规则，避免实现时出现“事件到了但不知道写哪张表哪一行”。
+
+### 27.1 message id 与 request id 的职责分离
+
+建议明确：
+
+- `message_id`：数据库主键，用于消息表关联
+- `request_id`：一次 AI 请求的链路 id，用于事件归并
+
+不要复用同一个字段同时承担两种职责。
+
+### 27.2 一次发送建议生成两条 message 记录
+
+每次用户发送后，固定生成：
+
+1. 一条 `user` message
+2. 一条 `assistant` placeholder message
+
+好处：
+- 流式 chunk 始终知道要更新哪一条 assistant message
+- tool call 始终知道要挂在哪一条 assistant message 下
+- 失败/取消时也有稳定落点
+
+### 27.3 事件写库映射建议
+
+#### `message-chunk`
+- update assistant message 的 `content`
+- `status` 保持 `streaming`
+- `updated_at` 刷新
+
+#### `thinking-chunk`
+- update assistant message 的 `thinking`
+- `updated_at` 刷新
+
+#### `tool-call-start`
+- insert 一条 `ai_tool_calls`
+- `status = running`
+
+#### `tool-call-end`
+- update 对应 `ai_tool_calls`
+- 写入 `output`
+- 写入 `status`
+- 写入 `duration`
+- 写入 `end_time`
+
+#### `ai-request-end`
+- update assistant message：
+  - `content`
+  - `thinking_complete = 1`
+  - `status = completed / error / cancelled`
+- update session cache 字段：
+  - `updated_at`
+  - `last_message_at`
+  - `message_count`
+
+### 27.4 `message_count` 的计算口径
+
+建议定义为：
+- `ai_messages` 表中的 message 总数
+- 即 user + assistant 都计数
+- tool call 不计入 `message_count`
+
+这样最简单，也最容易与当前 UI 理解保持一致。
+
+---
+
+## 二十八、Provider 配置与 session 快照策略
+
+从当前代码现实出发，provider 配置仍然来自全局 `ai_config.json`。这一点不会阻塞本次重构，但需要在实现上写清楚边界。
+
+### 28.1 本次不改 provider 配置归属
+
+本次 AI 对话重构的目标是：
+- 会话数据与 workspace 绑定
+- runtime session 与 workspace 绑定
+
+**不是**：
+- 把 provider 配置也改成 workspace 级配置
+
+因此当前阶段仍可继续：
+- 从全局 `ai_config.json` 读取 active provider
+
+### 28.2 为什么仍要在 `ai_sessions` 保存 provider/model 快照
+
+因为“当前全局 active provider”未来可能变化。
+
+如果不做快照，会出现：
+- session 创建时用的是 provider A / model X
+- 几天后用户把全局配置改成 provider B / model Y
+- 恢复旧 session 时运行参数悄悄变化
+
+这会让“继续同一会话”失去稳定性。
+
+因此建议：
+- `provider_id` 落库
+- `model` 落库
+- `system_prompt` 落库
+
+### 28.3 恢复历史 session 时如何处理 provider 不一致
+
+建议规则如下：
+
+1. **优先使用 session 快照里的 model / provider_id 作为目标配置**
+2. 实际发请求前，再从当前全局配置里查找对应 provider
+3. 如果 provider 已不存在或被禁用：
+   - `activate_ai_session` 可以仍然允许加载历史消息
+   - 但应明确标记该 session 当前不可继续发送
+   - `send_ai_message` 返回明确错误：缺少对应 provider 配置
+
+这样比“激活时直接失败并连历史都看不到”更合理。
+
+### 28.4 `system_prompt` 的使用原则
+
+建议激活历史 session 时：
+- 优先使用 `ai_sessions.system_prompt` 快照
+- 只有在该字段为空的极少数异常场景，才退回重新生成
+
+这样可以最大程度保证历史上下文稳定。
+
+---
+
+## 二十九、临时补丁回收顺序
+
+为了避免实现过程中“新方案未落地，旧补丁先删了”导致再次回归，建议按顺序回收临时补丁。
+
+### 必须最后再删的补丁
+
+1. 前端发送前的补偿式 `activateSession()`
+2. 当前基于前端补传 `working_dir` 的 stopgap 恢复路径
+3. `ConversationStorage` 旧 JSONL 依赖
+
+### 正确回收顺序
+
+#### Step 1
+先让下面这些能力全部落地并通过测试：
+- workspace DB 建表
+- session list/load/delete 走 DB
+- `activate_ai_session` 可从 DB 正确恢复 runtime
+- `send_ai_message` 可全程增量持久化到 DB
+
+#### Step 2
+确认上面稳定后，再删：
+- `handleSend()` 里的补偿式 `activateSession()`
+- `ClaurstSession` 中旧 `ConversationStorage` 读写
+
+#### Step 3
+最后再清理：
+- 旧 JSONL 类型定义
+- 旧 global conversations 引用
+- 临时诊断日志
+
+这样可以避免在迁移中途把可用止血补丁过早拆掉。
+
+---
+
+## 三十、实施 checklist
+
+为了方便直接开工，下面给出按阶段拆开的 checklist。
+
+## Phase 1 checklist
+
+- [ ] 新增 `004_create_ai_conversation_tables.sql`
+- [ ] 在 `task_database.rs` 中接入 migration 004
+- [ ] 新建 `src-tauri/src/services/ai_storage.rs`
+- [ ] 定义 `AiSessionRow` / `AiMessageRow` / `AiToolCallRow`
+- [ ] 定义 `LoadedAiSession`
+- [ ] 完成 `create/list/load/delete/clear` 数据库实现
+- [ ] 停止新增对 `~/.tweetpilot/conversations` 的读写引用
+
+## Phase 2 checklist
+
+- [ ] 扩展 `AiState`，加入 `workspace_path`
+- [ ] 扩展 `AiState`，加入 `active_session_id`
+- [ ] `create_new_session` 改为先写 DB 再激活 runtime session
+- [ ] `activate_ai_session` 改为从 workspace DB 恢复
+- [ ] `send_ai_message` 接入 DB 增量持久化
+- [ ] assistant message 流式更新写回 DB
+- [ ] tool call start/end 写回 DB
+- [ ] `delete_ai_session` 删除当前活跃 session 时同步清理 runtime state
+
+## Phase 3 checklist
+
+- [ ] `ChatInterface` 会话列表改为显式 workspace 作用域
+- [ ] workspace 切换时清空当前聊天状态
+- [ ] `handleSend()` 移除补偿式 `activateSession()`
+- [ ] 清理旧 JSONL 类型定义与前端兼容逻辑
+- [ ] 补齐前端测试与手工回归
+
+---
+
+## 三十一、当前未提交补丁与最终方案的关系
+
+为了避免实现时反复犹豫，这里明确记录当前结论：
+
+### 可以保留的补丁
+- IME 输入法防误发送修复
+- `send_ai_message` 在无 active session 时立即报错
+- 事件监听中基于 `currentRequestIdRef` 避免闭包拿旧值的修复
+
+### 需要在最终方案中回收的补丁
+- 前端发送前的补偿式 `activateSession()`
+- 当前 `activate_ai_session(session_id, working_dir)` 这种依赖前端补传 `working_dir` 的恢复模式
+- 所有基于全局 `ConversationStorage` 的旧加载路径
+
+这三点应视为过渡方案，而不是最终架构的一部分。
+
+---
+
+## 三十二、一句话总结
 
 这次重构的本质不是“把 conversations 从文件搬到数据库”，而是：
 

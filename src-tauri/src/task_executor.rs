@@ -35,11 +35,15 @@ impl TaskExecutor {
         if !script_path_ref.is_file() {
             return Err(format!("Script path is not a file: {}", script_path));
         }
+        let script_dir = script_path_ref.parent()
+            .ok_or_else(|| format!("Cannot resolve script directory for {}", script_path))?;
 
         let mut cmd = Command::new(&self.python_path);
         cmd.arg(&script_path);
+        cmd.current_dir(script_dir);
 
         log::info!("[TaskExecutor] Executing Python script using script_path only");
+        log::info!("[TaskExecutor] Using script working directory: {}", script_dir.display());
 
         // Set environment
         let home = dirs::home_dir()

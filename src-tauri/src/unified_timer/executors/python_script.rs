@@ -56,9 +56,12 @@ impl TimerExecutor for PythonScriptExecutor {
         if !script_path_ref.is_file() {
             return Err(format!("Script path is not a file: {}", full_script_path));
         }
+        let script_dir = script_path_ref.parent()
+            .ok_or_else(|| format!("Cannot resolve script directory for {}", full_script_path))?;
 
         let mut cmd = Command::new(&self.python_path);
         cmd.arg(&full_script_path);
+        cmd.current_dir(script_dir);
 
         // Set environment
         let home = dirs::home_dir()
@@ -73,6 +76,7 @@ impl TimerExecutor for PythonScriptExecutor {
             .map_err(|e| format!("Failed to build PYTHONPATH: {}", e))?;
         cmd.env("PYTHONPATH", python_path);
         log::info!("[PythonScriptExecutor] Using ClawBot PYTHONPATH root: {}", clawbot_python_path);
+        log::info!("[PythonScriptExecutor] Using script working directory: {}", script_dir.display());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
