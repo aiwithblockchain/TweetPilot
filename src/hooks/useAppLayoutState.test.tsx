@@ -1,8 +1,22 @@
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+import { listen } from '@tauri-apps/api/event'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { BlockingOverlayProvider } from '@/contexts/BlockingOverlayContext'
 import { useAppLayoutState } from './useAppLayoutState'
 import type { WorkspaceEntry } from '@/services/workspace'
+
+const workspaceChangedListeners: Array<(event: { payload: string }) => void> = []
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (eventName: string, callback: (event: { payload: string }) => void) => {
+    if (eventName === 'workspace-changed') {
+      workspaceChangedListeners.push(callback)
+    }
+    return () => {}
+  }),
+  emit: vi.fn(async () => undefined),
+}))
 
 const mocks = vi.hoisted(() => ({
   workspaceService: {
@@ -120,7 +134,9 @@ function HookHarness() {
 function renderHarness() {
   return render(
     <ToastProvider>
-      <HookHarness />
+      <BlockingOverlayProvider>
+        <HookHarness />
+      </BlockingOverlayProvider>
     </ToastProvider>
   )
 }
@@ -132,6 +148,7 @@ afterEach(() => {
 describe('useAppLayoutState workspace explorer flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    workspaceChangedListeners.length = 0
     mocks.workspaceService.getCurrentWorkspace.mockResolvedValue('/workspace')
     mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
       if (path === '/workspace') return initialRootEntries
@@ -287,27 +304,47 @@ describe('useAppLayoutState workspace explorer flow', () => {
     })
   })
 
-  it('falls back selection to nearest existing ancestor when refresh removes the selected item', async () => {
+  it('resets and reloads workspace-scoped state from the workspace-changed payload', async () => {
+    mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
+      if (path === '/workspace') return initialRootEntries
+      if (path === '/workspace-next') {
+        return [
+          {
+            path: '/workspace-next/docs',
+            name: 'docs',
+            kind: 'directory',
+            hasChildren: false,
+          },
+        ]
+      }
+      return []
+    })
+
     renderHarness()
 
     await waitFor(() => {
       expect(screen.getByTestId('tree-items').textContent).toContain('/workspace/src')
+      expect(workspaceChangedListeners.length).toBeGreaterThan(0)
     })
 
-    fireEvent.click(screen.getByText('选择文件'))
-    expect(screen.getByTestId('selected-id').textContent).toBe('/workspace/src/index.ts')
-
-    mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
-      if (path === '/workspace') return initialRootEntries
-      if (path === '/workspace/src') return []
-      return []
-    })
-
-    fireEvent.click(screen.getByText('刷新工作区'))
+    fireEvent.click(screen.getByText('选择目录'))
+    fireEvent.click(screen.getByText('重命名项目'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('selected-id').textContent).toBe('/workspace/src')
-      expect(screen.getByTestId('refresh-error').textContent).toBe('')
+      expect(screen.getByTestId('rename-active').textContent).toBe('true')
     })
+
+    workspaceChangedListeners[workspaceChangedListeners.length - 1]({ payload: '/workspace-next' })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tree-items').textContent).toContain('/workspace-next/docs')
+      expect(screen.getByTestId('tree-items').textContent).not.toContain('/workspace/src')
+      expect(screen.getByTestId('selected-id').textContent).toBe('/workspace-next')
+      expect(screen.getByTestId('rename-active').textContent).toBe('false')
+      expect(screen.getByTestId('delete-open').textContent).toBe('false')
+      expect(screen.getByTestId('inline-active').textContent).toBe('false')
+    })
+
+    expect(mocks.workspaceService.getCurrentWorkspace).toHaveBeenCalledTimes(1)
   })
 })

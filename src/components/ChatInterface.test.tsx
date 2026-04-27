@@ -496,6 +496,43 @@ describe('ChatInterface', () => {
     })
   })
 
+  it('updates the current session title in history after a reply completes', async () => {
+    let onRequestEnd: ((data: { request_id: string; result: string }) => void) | undefined
+
+    mockAiService.onRequestEnd.mockImplementation(async (callback: typeof onRequestEnd) => {
+      onRequestEnd = callback
+      return () => {}
+    })
+    mockAiService.getSessionMetadata.mockResolvedValue({
+      id: 'session-1',
+      title: 'How do I ship this?',
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      message_count: 2,
+      workspace: '/tmp/workspace',
+    })
+
+    const input = await renderReadyChat()
+    fireEvent.change(input, { target: { value: 'hello' } })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 })
+
+    await waitFor(() => {
+      expect(mockAiService.sendMessage).toHaveBeenCalledWith('hello', '/tmp/workspace')
+    })
+
+    onRequestEnd?.({ request_id: 'request-1', result: 'success' })
+
+    await waitFor(() => {
+      expect(mockAiService.getSessionMetadata).toHaveBeenCalledWith('/tmp/workspace', 'session-1')
+    })
+
+    fireEvent.click(screen.getByTitle('会话历史'))
+
+    await waitFor(() => {
+      expect(screen.getAllByText('How do I ship this?').length).toBeGreaterThan(0)
+    })
+  })
+
   it('shows history on panel reopen when there is no active session but workspace has saved sessions', async () => {
     render(<ChatInterface />)
 

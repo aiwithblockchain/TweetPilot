@@ -478,6 +478,38 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     setStopRequested(false)
   }, [])
 
+  const refreshCurrentSessionMetadata = useCallback(async () => {
+    const activeSessionId = currentSessionIdRef.current
+    if (!activeSessionId || !isConfigured) {
+      return
+    }
+
+    const workingDir = await workspaceService.getCurrentWorkspace()
+    if (!workingDir) {
+      return
+    }
+
+    try {
+      const metadata = await aiService.getSessionMetadata(workingDir, activeSessionId)
+      if (!metadata) {
+        return
+      }
+
+      setSessions((prev) => {
+        const existingIndex = prev.findIndex((session) => session.id === activeSessionId)
+        if (existingIndex === -1) {
+          return prev
+        }
+
+        const next = [...prev]
+        next[existingIndex] = metadata
+        return next
+      })
+    } catch (error) {
+      console.error('Failed to refresh session metadata:', error)
+    }
+  }, [isConfigured])
+
 
   const handleMissingSessionInWorkspace = async () => {
     resetChatState()
@@ -661,6 +693,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
             setMessages,
             toast,
           )
+          void refreshCurrentSessionMetadata()
           assistantMessageIdRef.current = null
           currentRequestIdRef.current = null
           setStopRequested(false)
@@ -693,7 +726,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       disposed = true
       cleanupFns.splice(0).forEach((cleanup) => cleanup())
     }
-  }, [toast])
+  }, [toast, refreshCurrentSessionMetadata])
 
   useEffect(() => {
     if (!currentRequestId) {
@@ -744,6 +777,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       setMessages,
       toast,
     )
+    void refreshCurrentSessionMetadata()
     assistantMessageIdRef.current = null
     currentRequestIdRef.current = null
     setStopRequested(false)
@@ -753,7 +787,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       delete next[currentRequestId]
       return next
     })
-  }, [currentRequestId, pendingRequestEnds, toast])
+  }, [currentRequestId, pendingRequestEnds, refreshCurrentSessionMetadata, toast])
 
   const handleSend = async () => {
     console.log('[ChatInterface] handleSend called', {
