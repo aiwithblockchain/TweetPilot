@@ -78,9 +78,9 @@ class MediaService:
     def post_tweet(self, text: str, file_paths: Iterable[str], instance_id: Optional[str] = None, tab_id: Optional[int] = None):
         uploads = self.upload_many(file_paths, instance_id=instance_id, tab_id=tab_id)
         media_ids = [item.media_id for item in uploads if item.media_id]
-        return self.actions.create_tweet(text=text, media_ids=media_ids)
+        return self.actions.create_tweet(text=text, media_ids=media_ids, tab_id=tab_id, instance_id=instance_id)
 
     def reply_with_media(self, tweet_id: str, text: str, file_paths: Iterable[str], instance_id: Optional[str] = None, tab_id: Optional[int] = None):
         uploads = self.upload_many(file_paths, instance_id=instance_id, tab_id=tab_id)
         media_ids = [item.media_id for item in uploads if item.media_id]
-        return self.actions.reply(tweet_id=tweet_id, text=text, media_ids=media_ids)
+        return self.actions.reply(tweet_id=tweet_id, text=text, media_ids=media_ids, tab_id=tab_id, instance_id=instance_id)

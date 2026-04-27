@@ -1,11 +1,13 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
+use crate::services::ai_storage::{LoadedSession, SessionMetadata, StoredMessage, StoredTimelineItem, StoredToolCall};
 use std::path::PathBuf;
 use uuid::Uuid;
 use cron::Schedule;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
     pub name: String,
@@ -14,6 +16,9 @@ pub struct Task {
     pub task_type: String,
     pub status: String,
     pub enabled: bool,
+    pub execution_mode: String,
+    pub use_persona: bool,
+    pub persona_prompt: Option<String>,
     pub script_path: String,
     pub script_content: Option<String>,
     pub script_hash: Option<String>,
@@ -46,11 +51,14 @@ pub struct Task {
     pub tags: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionResult {
     pub id: String,
     pub task_id: String,
+    pub run_no: Option<i64>,
+    pub session_code: Option<String>,
+    pub task_session_id: Option<String>,
     pub start_time: String,
     pub end_time: String,
     pub duration: f64,
@@ -58,15 +66,20 @@ pub struct ExecutionResult {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
+    pub final_output: Option<String>,
+    pub error_message: Option<String>,
     pub metadata: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct TaskConfigInput {
     pub name: String,
     pub description: Option<String>,
     #[serde(rename = "type")]
     pub task_type: String,
+    pub execution_mode: Option<String>,
+    pub use_persona: Option<bool>,
+    pub persona_prompt: Option<String>,
     pub script_path: String,
     pub schedule: Option<String>,
     pub schedule_type: Option<String>,
@@ -77,6 +90,41 @@ pub struct TaskConfigInput {
     pub account_id: String,
     pub parameters: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskAiSession {
+    pub id: String,
+    pub task_id: String,
+    pub task_run_id: String,
+    pub session_code: String,
+    pub title: String,
+    pub source_type: String,
+    pub working_dir: String,
+    pub provider_id: Option<String>,
+    pub model: String,
+    pub system_prompt: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub message_count: usize,
+    pub schema_version: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateTaskAiSessionInput {
+    pub id: String,
+    pub task_id: String,
+    pub task_run_id: String,
+    pub session_code: String,
+    pub title: String,
+    pub source_type: String,
+    pub working_dir: String,
+    pub provider_id: Option<String>,
+    pub model: String,
+    pub system_prompt: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -176,17 +224,18 @@ impl TaskDatabase {
         let id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now();
         let now_str = now.to_rfc3339();
-        let parameters = serde_json::to_string(&input.parameters.unwrap_or(serde_json::json!({})))
+        let parameters = serde_json::to_string(&input.parameters.clone().unwrap_or(serde_json::json!({})))
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
+        let tags = input.tags.clone().map(|t| serde_json::to_string(&t).unwrap());
 
         let schedule_type = input.schedule_type.as_deref().unwrap_or("cron");
+        let execution_mode = input.execution_mode.as_deref().unwrap_or("script");
+        let use_persona = input.use_persona.unwrap_or(false);
 
         // Calculate next_execution_time for scheduled tasks
         let next_execution_time = if input.task_type == "scheduled" {
             match schedule_type {
                 "interval" => {
-                    // Interval timer: current time + interval_seconds
                     if let Some(interval_secs) = input.interval_seconds {
                         let next = now + chrono::Duration::seconds(interval_secs);
                         Some(next.to_rfc3339())
@@ -195,7 +244,6 @@ impl TaskDatabase {
                     }
                 }
                 "cron" => {
-                    // Cron timer: calculate next cron time
                     input.schedule.as_ref().and_then(|schedule_str| {
                         match Self::calculate_next_execution(schedule_str, now) {
                             Ok(next_time) => Some(next_time),
@@ -212,9 +260,10 @@ impl TaskDatabase {
         self.conn.execute(
             "INSERT INTO tasks (
                 id, name, description, type, status, enabled,
+                execution_mode, use_persona, persona_prompt,
                 script_path, schedule, schedule_type, interval_seconds, timeout, retry_count, retry_delay,
                 account_id, parameters, tweet_id, text, tags, next_execution_time, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             params![
                 id,
                 input.name,
@@ -222,6 +271,9 @@ impl TaskDatabase {
                 input.task_type,
                 "idle",
                 true,
+                execution_mode,
+                use_persona,
+                input.persona_prompt,
                 input.script_path,
                 input.schedule,
                 schedule_type,
@@ -231,8 +283,8 @@ impl TaskDatabase {
                 input.retry_delay,
                 input.account_id,
                 parameters,
-                None::<String>, // tweet_id
-                None::<String>, // text
+                None::<String>,
+                None::<String>,
                 tags,
                 next_execution_time,
                 now_str,
@@ -278,29 +330,32 @@ impl TaskDatabase {
                 task_type: row.get(3)?,
                 status: row.get(4)?,
                 enabled: row.get(5)?,
-                script_path: row.get(6)?,
-                script_content: row.get(7)?,
-                script_hash: row.get(8)?,
-                schedule: row.get(9)?,
-                schedule_type: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "cron".to_string()),
-                interval_seconds: row.get(11)?,
-                timeout: row.get(12)?,
-                retry_count: row.get(13)?,
-                retry_delay: row.get(14)?,
-                account_id: row.get(15)?,
-                parameters: row.get(16)?,
-                tweet_id: row.get(17)?,
-                text: row.get(18)?,
-                last_execution_status: row.get(19)?,
-                last_execution_time: row.get(20)?,
-                next_execution_time: row.get(21)?,
-                total_executions: row.get(22)?,
-                success_count: row.get(23)?,
-                failure_count: row.get(24)?,
-                average_duration: row.get(25)?,
-                created_at: row.get(26)?,
-                updated_at: row.get(27)?,
-                tags: row.get(28)?,
+                execution_mode: row.get(6)?,
+                use_persona: row.get(7)?,
+                persona_prompt: row.get(8)?,
+                script_path: row.get(9)?,
+                script_content: row.get(10)?,
+                script_hash: row.get(11)?,
+                schedule: row.get(12)?,
+                schedule_type: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "cron".to_string()),
+                interval_seconds: row.get(14)?,
+                timeout: row.get(15)?,
+                retry_count: row.get(16)?,
+                retry_delay: row.get(17)?,
+                account_id: row.get(18)?,
+                parameters: row.get(19)?,
+                tweet_id: row.get(20)?,
+                text: row.get(21)?,
+                last_execution_status: row.get(22)?,
+                last_execution_time: row.get(23)?,
+                next_execution_time: row.get(24)?,
+                total_executions: row.get(25)?,
+                success_count: row.get(26)?,
+                failure_count: row.get(27)?,
+                average_duration: row.get(28)?,
+                created_at: row.get(29)?,
+                updated_at: row.get(30)?,
+                tags: row.get(31)?,
             })
         })
     }
@@ -315,29 +370,32 @@ impl TaskDatabase {
                 task_type: row.get(3)?,
                 status: row.get(4)?,
                 enabled: row.get(5)?,
-                script_path: row.get(6)?,
-                script_content: row.get(7)?,
-                script_hash: row.get(8)?,
-                schedule: row.get(9)?,
-                schedule_type: row.get::<_, Option<String>>(10)?.unwrap_or_else(|| "cron".to_string()),
-                interval_seconds: row.get(11)?,
-                timeout: row.get(12)?,
-                retry_count: row.get(13)?,
-                retry_delay: row.get(14)?,
-                account_id: row.get(15)?,
-                parameters: row.get(16)?,
-                tweet_id: row.get(17)?,
-                text: row.get(18)?,
-                last_execution_status: row.get(19)?,
-                last_execution_time: row.get(20)?,
-                next_execution_time: row.get(21)?,
-                total_executions: row.get(22)?,
-                success_count: row.get(23)?,
-                failure_count: row.get(24)?,
-                average_duration: row.get(25)?,
-                created_at: row.get(26)?,
-                updated_at: row.get(27)?,
-                tags: row.get(28)?,
+                execution_mode: row.get(6)?,
+                use_persona: row.get(7)?,
+                persona_prompt: row.get(8)?,
+                script_path: row.get(9)?,
+                script_content: row.get(10)?,
+                script_hash: row.get(11)?,
+                schedule: row.get(12)?,
+                schedule_type: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "cron".to_string()),
+                interval_seconds: row.get(14)?,
+                timeout: row.get(15)?,
+                retry_count: row.get(16)?,
+                retry_delay: row.get(17)?,
+                account_id: row.get(18)?,
+                parameters: row.get(19)?,
+                tweet_id: row.get(20)?,
+                text: row.get(21)?,
+                last_execution_status: row.get(22)?,
+                last_execution_time: row.get(23)?,
+                next_execution_time: row.get(24)?,
+                total_executions: row.get(25)?,
+                success_count: row.get(26)?,
+                failure_count: row.get(27)?,
+                average_duration: row.get(28)?,
+                created_at: row.get(29)?,
+                updated_at: row.get(30)?,
+                tags: row.get(31)?,
             })
         })?;
 
@@ -347,10 +405,12 @@ impl TaskDatabase {
     pub fn update_task(&self, task_id: &str, input: TaskConfigInput) -> Result<()> {
         let now = chrono::Utc::now();
         let now_str = now.to_rfc3339();
-        let parameters = serde_json::to_string(&input.parameters.unwrap_or(serde_json::json!({})))
+        let parameters = serde_json::to_string(&input.parameters.clone().unwrap_or(serde_json::json!({})))
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        let tags = input.tags.map(|t| serde_json::to_string(&t).unwrap());
+        let tags = input.tags.clone().map(|t| serde_json::to_string(&t).unwrap());
         let schedule_type = input.schedule_type.as_deref().unwrap_or("cron");
+        let execution_mode = input.execution_mode.as_deref().unwrap_or("script");
+        let use_persona = input.use_persona.unwrap_or(false);
 
         let next_execution_time = if input.task_type == "scheduled" {
             match schedule_type {
@@ -375,13 +435,18 @@ impl TaskDatabase {
 
         self.conn.execute(
             "UPDATE tasks SET
-                name = ?1, description = ?2, script_path = ?3, schedule = ?4, schedule_type = ?5, interval_seconds = ?6,
-                timeout = ?7, retry_count = ?8, retry_delay = ?9, parameters = ?10,
-                tags = ?11, next_execution_time = ?12, updated_at = ?13
-            WHERE id = ?14",
+                name = ?1, description = ?2, type = ?3, execution_mode = ?4, use_persona = ?5, persona_prompt = ?6,
+                script_path = ?7, schedule = ?8, schedule_type = ?9, interval_seconds = ?10,
+                timeout = ?11, retry_count = ?12, retry_delay = ?13, account_id = ?14, parameters = ?15,
+                tags = ?16, next_execution_time = ?17, updated_at = ?18
+            WHERE id = ?19",
             params![
                 input.name,
                 input.description,
+                input.task_type,
+                execution_mode,
+                use_persona,
+                input.persona_prompt,
                 input.script_path,
                 input.schedule,
                 schedule_type,
@@ -389,6 +454,7 @@ impl TaskDatabase {
                 input.timeout,
                 input.retry_count,
                 input.retry_delay,
+                input.account_id,
                 parameters,
                 tags,
                 next_execution_time,
@@ -401,6 +467,7 @@ impl TaskDatabase {
     }
 
     pub fn delete_task(&self, task_id: &str) -> Result<()> {
+        self.clear_task_execution_history(task_id)?;
         self.conn.execute("DELETE FROM tasks WHERE id = ?1", params![task_id])?;
         Ok(())
     }
@@ -426,12 +493,15 @@ impl TaskDatabase {
     pub fn save_execution(&self, result: &ExecutionResult) -> Result<()> {
         self.conn.execute(
             "INSERT INTO executions (
-                id, task_id, start_time, end_time, duration, status,
-                exit_code, stdout, stderr, metadata
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                id, task_id, run_no, session_code, task_session_id, start_time, end_time, duration, status,
+                exit_code, stdout, stderr, final_output, error_message, metadata
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 result.id,
                 result.task_id,
+                result.run_no,
+                result.session_code,
+                result.task_session_id,
                 result.start_time,
                 result.end_time,
                 result.duration,
@@ -439,25 +509,489 @@ impl TaskDatabase {
                 result.exit_code,
                 result.stdout,
                 result.stderr,
+                result.final_output,
+                result.error_message,
                 result.metadata,
             ],
         )?;
 
-        // Update task statistics
-        let success = if result.status == "success" { 1 } else { 0 };
-        let failure = if result.status == "failure" { 1 } else { 0 };
+        let normalized_status = if result.status == "failed" { "failure" } else { result.status.as_str() };
+        let success = if normalized_status == "success" { 1 } else { 0 };
+        let failure = if normalized_status == "failure" { 1 } else { 0 };
 
         self.conn.execute(
             "UPDATE tasks SET
                 total_executions = total_executions + 1,
                 success_count = success_count + ?1,
                 failure_count = failure_count + ?2,
-                last_execution_time = ?3,
-                updated_at = ?4
-            WHERE id = ?5",
-            params![success, failure, result.end_time, result.end_time, result.task_id],
+                last_execution_status = ?3,
+                last_execution_time = ?4,
+                updated_at = ?5
+            WHERE id = ?6",
+            params![success, failure, normalized_status, result.end_time, result.end_time, result.task_id],
         )?;
 
+        Ok(())
+    }
+
+    pub fn get_next_run_no(&self, task_id: &str) -> Result<i64> {
+        let next_run_no = self.conn.query_row(
+            "SELECT COALESCE(MAX(run_no), 0) + 1 FROM executions WHERE task_id = ?1",
+            params![task_id],
+            |row| row.get(0),
+        )?;
+        Ok(next_run_no)
+    }
+
+    pub fn create_execution_stub(&self, execution_id: &str, task_id: &str, run_no: Option<i64>, start_time: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO executions (
+                id, task_id, run_no, session_code, task_session_id, start_time, end_time, duration, status,
+                exit_code, stdout, stderr, final_output, error_message, metadata
+            ) VALUES (?1, ?2, ?3, NULL, NULL, ?4, NULL, NULL, 'running', NULL, '', '', NULL, NULL, NULL)",
+            params![execution_id, task_id, run_no, start_time],
+        )?;
+        Ok(())
+    }
+
+    pub fn finalize_execution(&self, result: &ExecutionResult) -> Result<()> {
+        self.conn.execute(
+            "UPDATE executions SET
+                run_no = ?2,
+                session_code = ?3,
+                task_session_id = ?4,
+                start_time = ?5,
+                end_time = ?6,
+                duration = ?7,
+                status = ?8,
+                exit_code = ?9,
+                stdout = ?10,
+                stderr = ?11,
+                final_output = ?12,
+                error_message = ?13,
+                metadata = ?14
+            WHERE id = ?1",
+            params![
+                result.id,
+                result.run_no,
+                result.session_code,
+                result.task_session_id,
+                result.start_time,
+                result.end_time,
+                result.duration,
+                result.status,
+                result.exit_code,
+                result.stdout,
+                result.stderr,
+                result.final_output,
+                result.error_message,
+                result.metadata,
+            ],
+        )?;
+
+        let normalized_status = if result.status == "failed" { "failure" } else { result.status.as_str() };
+        let success = if normalized_status == "success" { 1 } else { 0 };
+        let failure = if normalized_status == "failure" { 1 } else { 0 };
+
+        self.conn.execute(
+            "UPDATE tasks SET
+                total_executions = total_executions + 1,
+                success_count = success_count + ?1,
+                failure_count = failure_count + ?2,
+                last_execution_status = ?3,
+                last_execution_time = ?4,
+                updated_at = ?5
+            WHERE id = ?6",
+            params![success, failure, normalized_status, result.end_time, result.end_time, result.task_id],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_execution_by_id(&self, execution_id: &str) -> Result<ExecutionResult> {
+        self.conn.query_row(
+            "SELECT id, task_id, run_no, session_code, task_session_id, start_time, end_time, duration, status,
+                    exit_code, stdout, stderr, final_output, error_message, metadata
+             FROM executions WHERE id = ?1",
+            params![execution_id],
+            |row| {
+                Ok(ExecutionResult {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    run_no: row.get(2)?,
+                    session_code: row.get(3)?,
+                    task_session_id: row.get(4)?,
+                    start_time: row.get(5)?,
+                    end_time: row.get(6)?,
+                    duration: row.get(7)?,
+                    status: row.get(8)?,
+                    exit_code: row.get(9)?,
+                    stdout: row.get(10)?,
+                    stderr: row.get(11)?,
+                    final_output: row.get(12)?,
+                    error_message: row.get(13)?,
+                    metadata: row.get(14)?,
+                })
+            },
+        )
+    }
+
+    pub fn update_execution_session_link(&self, execution_id: &str, task_session_id: &str, session_code: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE executions SET task_session_id = ?2, session_code = ?3 WHERE id = ?1",
+            params![execution_id, task_session_id, session_code],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_task_execution_history(&self, task_id: &str) -> Result<()> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id FROM task_ai_sessions WHERE task_id = ?1"
+        )?;
+        let session_ids = stmt
+            .query_map(params![task_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>>>()?;
+
+        for session_id in session_ids {
+            self.delete_task_ai_session(&session_id)?;
+        }
+
+        self.conn.execute("DELETE FROM executions WHERE task_id = ?1", params![task_id])?;
+        self.conn.execute(
+            "UPDATE tasks SET
+                total_executions = 0,
+                success_count = 0,
+                failure_count = 0,
+                average_duration = 0,
+                last_execution_status = NULL,
+                last_execution_time = NULL,
+                updated_at = ?2
+            WHERE id = ?1",
+            params![task_id, chrono::Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn create_task_ai_session(&self, input: CreateTaskAiSessionInput) -> Result<TaskAiSession> {
+        self.conn.execute(
+            "INSERT INTO task_ai_sessions (
+                id, task_id, task_run_id, session_code, title, source_type, working_dir,
+                provider_id, model, system_prompt, created_at, updated_at, message_count, schema_version
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13)",
+            params![
+                input.id,
+                input.task_id,
+                input.task_run_id,
+                input.session_code,
+                input.title,
+                input.source_type,
+                input.working_dir,
+                input.provider_id,
+                input.model,
+                input.system_prompt,
+                input.created_at,
+                input.updated_at,
+                5u32,
+            ],
+        )?;
+
+        self.get_task_ai_session_metadata(&input.id)
+    }
+
+    pub fn get_task_ai_session_metadata(&self, session_id: &str) -> Result<TaskAiSession> {
+        self.conn.query_row(
+            "SELECT id, task_id, task_run_id, session_code, title, source_type, working_dir,
+                    provider_id, model, system_prompt, created_at, updated_at, message_count, schema_version
+             FROM task_ai_sessions WHERE id = ?1",
+            params![session_id],
+            |row| {
+                Ok(TaskAiSession {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    task_run_id: row.get(2)?,
+                    session_code: row.get(3)?,
+                    title: row.get(4)?,
+                    source_type: row.get(5)?,
+                    working_dir: row.get(6)?,
+                    provider_id: row.get(7)?,
+                    model: row.get(8)?,
+                    system_prompt: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                    message_count: row.get::<_, i64>(12)? as usize,
+                    schema_version: row.get(13)?,
+                })
+            },
+        )
+    }
+
+    pub fn load_task_ai_session(&self, session_id: &str) -> Result<LoadedSession> {
+        let session = self.get_task_ai_session_metadata(session_id)?;
+        let messages = self.load_task_ai_messages(session_id)?;
+        Ok(LoadedSession {
+            session: SessionMetadata {
+                id: session.id,
+                title: session.title,
+                created_at: session.created_at,
+                updated_at: session.updated_at,
+                message_count: session.message_count,
+                workspace: session.working_dir,
+                schema_version: session.schema_version,
+            },
+            messages,
+        })
+    }
+
+    pub fn load_task_ai_messages(&self, session_id: &str) -> Result<Vec<StoredMessage>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, role, content, timestamp, thinking, thinking_complete, status
+             FROM task_ai_messages WHERE session_id = ?1 ORDER BY timestamp ASC, id ASC"
+        )?;
+
+        let rows = stmt.query_map(params![session_id], |row| {
+            let message_id: String = row.get(0)?;
+            Ok(StoredMessage {
+                id: Some(message_id),
+                role: row.get(1)?,
+                content: row.get(2)?,
+                timestamp: row.get(3)?,
+                thinking: row.get(4)?,
+                thinking_complete: row.get(5)?,
+                tool_calls: None,
+                timeline: None,
+                status: row.get(6)?,
+            })
+        })?;
+
+        let mut messages = rows.collect::<Result<Vec<_>>>()?;
+        for message in &mut messages {
+            if let Some(message_id) = message.id.as_deref() {
+                let tool_calls = self.load_task_ai_tool_calls(message_id)?;
+                if !tool_calls.is_empty() {
+                    message.tool_calls = Some(tool_calls);
+                }
+                let timeline = self.load_task_ai_timeline_items(message_id)?;
+                if !timeline.is_empty() {
+                    message.timeline = Some(timeline);
+                }
+            }
+        }
+
+        Ok(messages)
+    }
+
+    fn load_task_ai_tool_calls(&self, message_id: &str) -> Result<Vec<StoredToolCall>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, tool, action, input, output, status, duration, start_time, end_time
+             FROM task_ai_tool_calls WHERE message_id = ?1 ORDER BY start_time ASC, id ASC"
+        )?;
+
+        let rows = stmt.query_map(params![message_id], |row| {
+            Ok(StoredToolCall {
+                id: row.get(0)?,
+                tool: row.get(1)?,
+                action: row.get(2)?,
+                input: row.get(3)?,
+                output: row.get(4)?,
+                status: row.get(5)?,
+                duration: row.get(6)?,
+                start_time: row.get(7)?,
+                end_time: row.get(8)?,
+            })
+        })?;
+
+        rows.collect()
+    }
+
+    fn load_task_ai_timeline_items(&self, message_id: &str) -> Result<Vec<StoredTimelineItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, type, sequence, content, tool_call_id, is_complete
+             FROM task_ai_message_timeline_items WHERE message_id = ?1 ORDER BY sequence ASC, id ASC"
+        )?;
+
+        let rows = stmt.query_map(params![message_id], |row| {
+            let item_type: String = row.get(1)?;
+            let id: String = row.get(0)?;
+            let sequence: i64 = row.get(2)?;
+            let content: Option<String> = row.get(3)?;
+            let tool_call_id: Option<String> = row.get(4)?;
+            let is_complete: Option<bool> = row.get(5)?;
+
+            match item_type.as_str() {
+                "thinking" => Ok(StoredTimelineItem::Thinking {
+                    id,
+                    content: content.unwrap_or_default(),
+                    sequence,
+                    is_complete,
+                }),
+                "tool" => Ok(StoredTimelineItem::Tool {
+                    id,
+                    tool_call_id: tool_call_id.unwrap_or_default(),
+                    sequence,
+                }),
+                _ => Ok(StoredTimelineItem::Text {
+                    id,
+                    content: content.unwrap_or_default(),
+                    sequence,
+                }),
+            }
+        })?;
+
+        rows.collect()
+    }
+
+    pub fn insert_task_ai_message(&self, session_id: &str, message: &StoredMessage) -> Result<()> {
+        let message_id = message.id.clone().ok_or(rusqlite::Error::InvalidQuery)?;
+        self.conn.execute(
+            "INSERT INTO task_ai_messages (id, session_id, role, content, timestamp, thinking, thinking_complete, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                message_id,
+                session_id,
+                message.role,
+                message.content,
+                message.timestamp,
+                message.thinking,
+                message.thinking_complete,
+                message.status,
+            ],
+        )?;
+        self.replace_task_ai_tool_calls(&message_id, message.tool_calls.as_deref().unwrap_or(&[]))?;
+        self.replace_task_ai_timeline_items(&message_id, message.timeline.as_deref().unwrap_or(&[]))?;
+        self.refresh_task_ai_session_metadata(session_id)
+    }
+
+    pub fn append_task_ai_message_content(&self, message_id: &str, chunk: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE task_ai_messages SET content = content || ?2 WHERE id = ?1",
+            params![message_id, chunk],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_task_ai_message_thinking(&self, message_id: &str, thinking: &str, thinking_complete: Option<bool>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE task_ai_messages SET thinking = ?2, thinking_complete = COALESCE(?3, thinking_complete) WHERE id = ?1",
+            params![message_id, thinking, thinking_complete],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_task_ai_message_status(&self, message_id: &str, status: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE task_ai_messages SET status = ?2 WHERE id = ?1",
+            params![message_id, status],
+        )?;
+        Ok(())
+    }
+
+    pub fn finalize_task_ai_message(&self, session_id: &str, message: &StoredMessage) -> Result<()> {
+        let message_id = message.id.clone().ok_or(rusqlite::Error::InvalidQuery)?;
+        self.conn.execute(
+            "UPDATE task_ai_messages SET content = ?2, thinking = ?3, thinking_complete = ?4, status = ?5, timestamp = ?6 WHERE id = ?1",
+            params![message_id, message.content, message.thinking, message.thinking_complete, message.status, message.timestamp],
+        )?;
+        self.replace_task_ai_tool_calls(&message_id, message.tool_calls.as_deref().unwrap_or(&[]))?;
+        self.replace_task_ai_timeline_items(&message_id, message.timeline.as_deref().unwrap_or(&[]))?;
+        self.refresh_task_ai_session_metadata(session_id)
+    }
+
+    pub fn delete_task_ai_session(&self, session_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE executions SET task_session_id = NULL, session_code = NULL WHERE task_session_id = ?1",
+            params![session_id],
+        )?;
+        self.conn.execute("DELETE FROM task_ai_sessions WHERE id = ?1", params![session_id])?;
+        Ok(())
+    }
+
+    pub fn clear_task_execution_history(&self, task_id: &str) -> Result<()> {
+        self.delete_task_execution_history(task_id)
+    }
+
+    fn replace_task_ai_tool_calls(&self, message_id: &str, tool_calls: &[StoredToolCall]) -> Result<()> {
+        self.conn.execute("DELETE FROM task_ai_tool_calls WHERE message_id = ?1", params![message_id])?;
+        for tool_call in tool_calls {
+            self.conn.execute(
+                "INSERT INTO task_ai_tool_calls (id, message_id, tool, action, input, output, status, duration, start_time, end_time)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    tool_call.id,
+                    message_id,
+                    tool_call.tool,
+                    tool_call.action,
+                    tool_call.input,
+                    tool_call.output,
+                    tool_call.status,
+                    tool_call.duration,
+                    tool_call.start_time,
+                    tool_call.end_time,
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    fn replace_task_ai_timeline_items(&self, message_id: &str, items: &[StoredTimelineItem]) -> Result<()> {
+        self.conn.execute("DELETE FROM task_ai_message_timeline_items WHERE message_id = ?1", params![message_id])?;
+        for item in items {
+            match item {
+                StoredTimelineItem::Thinking { id, content, sequence, is_complete } => {
+                    self.conn.execute(
+                        "INSERT INTO task_ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'thinking', ?3, ?4, NULL, ?5)",
+                        params![id, message_id, sequence, content, is_complete],
+                    )?;
+                }
+                StoredTimelineItem::Tool { id, tool_call_id, sequence } => {
+                    self.conn.execute(
+                        "INSERT INTO task_ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'tool', ?3, NULL, ?4, NULL)",
+                        params![id, message_id, sequence, tool_call_id],
+                    )?;
+                }
+                StoredTimelineItem::Text { id, content, sequence } => {
+                    self.conn.execute(
+                        "INSERT INTO task_ai_message_timeline_items (id, message_id, type, sequence, content, tool_call_id, is_complete)
+                         VALUES (?1, ?2, 'text', ?3, ?4, NULL, NULL)",
+                        params![id, message_id, sequence, content],
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn refresh_task_ai_session_metadata(&self, session_id: &str) -> Result<()> {
+        let message_count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM task_ai_messages WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+
+        let updated_at = if message_count == 0 {
+            chrono::Utc::now().timestamp()
+        } else {
+            self.conn.query_row(
+                "SELECT MAX(timestamp) FROM task_ai_messages WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )?
+        };
+
+        let title = self.conn.query_row(
+            "SELECT content FROM task_ai_messages WHERE session_id = ?1 AND role = 'user' ORDER BY timestamp ASC, id ASC LIMIT 1",
+            params![session_id],
+            |row| row.get::<_, String>(0),
+        ).optional()?.map(|content| {
+            let chars: Vec<char> = content.chars().collect();
+            if chars.len() <= 50 { content } else { chars.iter().take(50).collect::<String>() + "..." }
+        }).unwrap_or_else(|| "新会话".to_string());
+
+        self.conn.execute(
+            "UPDATE task_ai_sessions SET title = ?2, message_count = ?3, updated_at = ?4 WHERE id = ?1",
+            params![session_id, title, message_count, updated_at],
+        )?;
         Ok(())
     }
 
@@ -467,29 +1001,19 @@ impl TaskDatabase {
 
         let next_execution_time = match task.schedule_type.as_str() {
             "interval" => {
-                // Interval timer with smart catch-up logic
                 if let Some(interval_secs) = task.interval_seconds {
-                    // If there's a last execution time, calculate based on it
                     if let Some(ref last_exec_str) = task.last_execution_time {
                         if let Ok(last_exec_time) = chrono::DateTime::parse_from_rfc3339(last_exec_str) {
                             let last_exec_utc = last_exec_time.with_timezone(&chrono::Utc);
                             let time_since_last = now.signed_duration_since(last_exec_utc);
-
-                            // Calculate n = floor((now - last_execution) / interval)
-                            // This gives us the number of complete intervals that have passed
                             let n = (time_since_last.num_seconds() as f64 / interval_secs as f64).floor() as i64;
-
-                            // Next execution = last_execution + (interval * (n + 1))
-                            // This ensures the next execution time is always > current time
                             let next = last_exec_utc + chrono::Duration::seconds(interval_secs * (n + 1));
                             next.to_rfc3339()
                         } else {
-                            // Fallback: if parsing fails, use current time + interval
                             let next = now + chrono::Duration::seconds(interval_secs);
                             next.to_rfc3339()
                         }
                     } else {
-                        // No last execution: use current time + interval
                         let next = now + chrono::Duration::seconds(interval_secs);
                         next.to_rfc3339()
                     }
@@ -498,7 +1022,6 @@ impl TaskDatabase {
                 }
             }
             "cron" => {
-                // Cron timer: calculate next cron time
                 if let Some(ref schedule_str) = task.schedule {
                     Self::calculate_next_execution(schedule_str, now)?
                 } else {
@@ -630,21 +1153,28 @@ impl TaskDatabase {
     pub fn get_execution_history(&self, task_id: &str, limit: Option<i64>) -> Result<Vec<ExecutionResult>> {
         let limit = limit.unwrap_or(50);
         let mut stmt = self.conn.prepare(
-            "SELECT * FROM executions WHERE task_id = ?1 ORDER BY start_time DESC LIMIT ?2"
+            "SELECT id, task_id, run_no, session_code, task_session_id, start_time, end_time, duration, status,
+                    exit_code, stdout, stderr, final_output, error_message, metadata
+             FROM executions WHERE task_id = ?1 ORDER BY start_time DESC LIMIT ?2"
         )?;
 
         let results = stmt.query_map(params![task_id, limit], |row| {
             Ok(ExecutionResult {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                start_time: row.get(2)?,
-                end_time: row.get(3)?,
-                duration: row.get(4)?,
-                status: row.get(5)?,
-                exit_code: row.get(6)?,
-                stdout: row.get(7)?,
-                stderr: row.get(8)?,
-                metadata: row.get(9)?,
+                run_no: row.get(2)?,
+                session_code: row.get(3)?,
+                task_session_id: row.get(4)?,
+                start_time: row.get(5)?,
+                end_time: row.get(6)?,
+                duration: row.get(7)?,
+                status: row.get(8)?,
+                exit_code: row.get(9)?,
+                stdout: row.get(10)?,
+                stderr: row.get(11)?,
+                final_output: row.get(12)?,
+                error_message: row.get(13)?,
+                metadata: row.get(14)?,
             })
         })?;
 

@@ -105,6 +105,9 @@ impl TimerExecutor for PythonScriptExecutor {
             let db_result = crate::task_database::ExecutionResult {
                 id: uuid::Uuid::new_v4().to_string(),
                 task_id: task_id.to_string(),
+                run_no: None,
+                session_code: None,
+                task_session_id: None,
                 status: if success { "success".to_string() } else { "failed".to_string() },
                 stdout: stdout.clone(),
                 stderr: stderr.clone(),
@@ -112,6 +115,8 @@ impl TimerExecutor for PythonScriptExecutor {
                 end_time: end_time.to_rfc3339(),
                 duration,
                 exit_code: output.status.code().unwrap_or(if success { 0 } else { 1 }),
+                final_output: None,
+                error_message: if success { None } else { Some(stderr.clone()) },
                 metadata: None,
             };
 

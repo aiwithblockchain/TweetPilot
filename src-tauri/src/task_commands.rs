@@ -1,8 +1,17 @@
 use tauri::{AppHandle, State};
 use std::sync::Mutex;
+use crate::services::ai_storage::LoadedSession;
 use crate::task_database::{TaskDatabase, TaskConfigInput, ExecutionResult, Task};
 use crate::task_executor::TaskExecutor;
-use crate::unified_timer::{UnifiedTimerManager, Timer, TimerType, PythonScriptExecutor, LocalBridgeSyncExecutor};
+use crate::task_ai_executor::execute_task_ai_session;
+use crate::unified_timer::{
+    UnifiedTimerManager,
+    Timer,
+    TimerType,
+    PythonScriptExecutor,
+    LocalBridgeSyncExecutor,
+    TaskAiSessionExecutor,
+};
 
 use std::sync::Arc;
 
@@ -79,6 +88,12 @@ impl WorkspaceContext {
             Arc::new(PythonScriptExecutor::new(self.workspace_path.clone(), self.db.clone())),
         ).await;
 
+        log::info!("[WorkspaceContext] Registering task_ai_session executor");
+        self.timer_manager.register_executor(
+            "task_ai_session".to_string(),
+            Arc::new(TaskAiSessionExecutor::new(self.workspace_path.clone(), self.db.clone())),
+        ).await;
+
         let tasks = {
             let db = self.db.lock().map_err(|e| e.to_string())?;
             db.get_all_tasks().map_err(|e| e.to_string())?
@@ -141,11 +156,19 @@ impl WorkspaceContext {
             last_execution: task.last_execution_time.as_ref()
                 .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
                 .map(|t| t.with_timezone(&chrono::Utc)),
-            executor: "python_script".to_string(),
-            executor_config: serde_json::json!({
-                "script_path": task.script_path,
-                "timeout": task.timeout.unwrap_or(300),
-            }),
+            executor: if task.execution_mode == "ai_session" {
+                "task_ai_session".to_string()
+            } else {
+                "python_script".to_string()
+            },
+            executor_config: if task.execution_mode == "ai_session" {
+                serde_json::json!({})
+            } else {
+                serde_json::json!({
+                    "script_path": task.script_path,
+                    "timeout": task.timeout.unwrap_or(300),
+                })
+            },
         }))
     }
 }
@@ -194,14 +217,19 @@ pub async fn execute_task(
 
     ctx.db.lock().unwrap().update_task_status(&task_id, "running").map_err(|e| e.to_string())?;
 
-    let result = ctx.executor.execute_task(&task, &ctx.workspace_path).await;
+    let result = match task.execution_mode.as_str() {
+        "ai_session" => execute_task_ai_session(&task, &ctx.workspace_path, ctx.db.clone()).await,
+        _ => ctx.executor.execute_task(&task, &ctx.workspace_path).await,
+    };
 
     log::info!("[execute_task] Task execution returned, processing result");
 
     match result {
         Ok(exec_result) => {
             log::info!("[execute_task] Execution successful, saving to database");
-            ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
+            if task.execution_mode != "ai_session" {
+                ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
+            }
             log::info!("[execute_task] Updating task status to idle");
             ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
 
@@ -497,6 +525,33 @@ pub async fn get_execution_history(
 
     let result = ctx.db.lock().unwrap().get_execution_history(&task_id, limit).map_err(|e| e.to_string())?;
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_task_ai_session(
+    session_id: String,
+    state: State<'_, TaskState>,
+) -> Result<LoadedSession, String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let loaded = ctx.db.lock().unwrap().load_task_ai_session(&session_id).map_err(|e| e.to_string())?;
+    Ok(loaded)
+}
+
+#[tauri::command]
+pub async fn clear_task_execution_history(
+    task_id: String,
+    state: State<'_, TaskState>,
+) -> Result<(), String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    ctx.db.lock().unwrap().clear_task_execution_history(&task_id).map_err(|e| e.to_string())?;
+    crate::app_events::publish_task_updated(&ctx.app_handle, task_id.clone());
+    Ok(())
 }
 
 #[tauri::command]

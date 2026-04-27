@@ -9,14 +9,16 @@ interface TaskActionBarProps {
   onChanged?: () => void
   onDeleted?: () => void
   onEdit?: () => void
+  onHistoryCleared?: () => void
 }
 
-export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskActionBarProps) {
+export function TaskActionBar({ task, onChanged, onDeleted, onEdit, onHistoryCleared }: TaskActionBarProps) {
   const [executing, setExecuting] = useState(false)
   const [result, setResult] = useState<ExecutionResult | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [actionLoading, setActionLoading] = useState<'pause' | 'resume' | 'execute' | 'delete' | null>(null)
+  const [actionLoading, setActionLoading] = useState<'pause' | 'resume' | 'execute' | 'delete' | 'clear-history' | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false)
 
   const handleExecute = async () => {
     try {
@@ -79,12 +81,27 @@ export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskAction
     }
   }
 
+  const handleClearHistory = async () => {
+    try {
+      setActionError(null)
+      setActionLoading('clear-history')
+      await taskService.clearTaskExecutionHistory(task.id)
+      setShowClearHistoryConfirm(false)
+      onHistoryCleared?.()
+    } catch (error) {
+      console.error('Failed to clear task execution history:', error)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   return (
     <>
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
         <div className="text-sm font-semibold text-[var(--color-text)] mb-3">任务操作</div>
 
-        {!showDeleteConfirm ? (
+        {!showDeleteConfirm && !showClearHistoryConfirm ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -137,6 +154,15 @@ export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskAction
 
             <button
               type="button"
+              onClick={() => setShowClearHistoryConfirm(true)}
+              disabled={task.status === 'running' || task.statistics.totalExecutions === 0}
+              className="h-9 px-4 rounded border border-[#D7BA7D]/40 bg-[#D7BA7D]/12 text-[#E8D29C] text-sm hover:bg-[#D7BA7D]/20 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              清空历史
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={task.status === 'running'}
               className="h-9 px-4 rounded bg-[#F48771]/15 border border-[#F48771]/40 text-sm text-[#F48771] hover:bg-[#F48771]/25 transition-colors disabled:opacity-50 cursor-pointer"
@@ -144,7 +170,7 @@ export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskAction
               删除任务
             </button>
           </div>
-        ) : (
+        ) : showDeleteConfirm ? (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[#F48771] font-medium">确认删除此任务？</span>
             <button
@@ -158,6 +184,25 @@ export function TaskActionBar({ task, onChanged, onDeleted, onEdit }: TaskAction
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(false)}
+              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors cursor-pointer"
+            >
+              取消
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-[#D7BA7D] font-medium">确认清空该任务的全部执行历史？</span>
+            <button
+              type="button"
+              onClick={handleClearHistory}
+              disabled={actionLoading === 'clear-history'}
+              className="h-9 px-4 rounded bg-[#D7BA7D] text-[#1F1F1F] text-sm hover:bg-[#E6C98A] transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {actionLoading === 'clear-history' ? '清理中...' : '确认清空'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowClearHistoryConfirm(false)}
               className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors cursor-pointer"
             >
               取消

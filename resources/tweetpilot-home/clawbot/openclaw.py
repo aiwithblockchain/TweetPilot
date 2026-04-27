@@ -3,7 +3,7 @@
 
 import argparse
 import sys
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 from clawbot import ClawBotClient
 from clawbot.errors import ParseError
@@ -37,17 +37,45 @@ def choose_logged_in_platform(client: ClawBotClient) -> Optional[str]:
     return selected
 
 
-def ensure_x_ready(client: ClawBotClient) -> Optional[int]:
+def resolve_instance_id(client: ClawBotClient, preferred_instance_id: Optional[str] = None) -> Optional[str]:
+    if preferred_instance_id:
+        return preferred_instance_id
+
+    instances_payload: Any = client.x.status.get_instances()
+    if isinstance(instances_payload, dict):
+        instances = instances_payload.get("instances") or []
+    elif isinstance(instances_payload, list):
+        instances = instances_payload
+    else:
+        instances = []
+
+    if not instances:
+        return None
+
+    first_instance = instances[0]
+    instance_id = first_instance.get("instanceId") or first_instance.get("id")
+    return str(instance_id) if instance_id else None
+
+
+def ensure_x_ready(client: ClawBotClient, preferred_instance_id: Optional[str] = None) -> Optional[Tuple[str, int]]:
     print("\n" + "=" * 60)
     print("📍 Step 2: Testing TweetClaw Connectivity")
     print("=" * 60)
     instances = client.x.status.get_instances()
-    if not isinstance(instances, list) or not instances:
+    if isinstance(instances, list):
+        print(f"✅ Found {len(instances)} tweetClaw instance(s)")
+    elif isinstance(instances, dict):
+        print("✅ tweetClaw instances payload received")
+    else:
         print("❌ No tweetClaw instances connected")
         return None
-    print(f"✅ Found {len(instances)} tweetClaw instance(s)")
 
-    status = client.x.status.get_status()
+    instance_id = resolve_instance_id(client, preferred_instance_id=preferred_instance_id)
+    if not instance_id:
+        print("❌ Unable to resolve tweetClaw instance_id")
+        return None
+
+    status = client.x.status.get_status(instance_id=instance_id)
     if not status.is_logged_in:
         print("❌ Not logged in to X.com")
         return None
@@ -55,16 +83,16 @@ def ensure_x_ready(client: ClawBotClient) -> Optional[int]:
         print("❌ No X.com tabs open")
         return None
     tab_id = status.tabs[0].tab_id
+    print(f"✅ Using instance_id: {instance_id}")
     print(f"✅ Logged in to X.com with tab ID: {tab_id}")
-    return tab_id
+    return instance_id, tab_id
 
 
-def get_pinned_tweet(client: ClawBotClient, username: str, tab_id: Optional[int]):
+def get_pinned_tweet(client: ClawBotClient, username: str, tab_id: Optional[int], instance_id: Optional[str]):
     print("\n" + "=" * 60)
     print(f"📍 Step 3: Fetching Pinned Tweet from @{username}")
     print("=" * 60)
-    client.x.tabs.navigate(username, tab_id=tab_id)
-    tweet = client.x.users.get_pinned_tweet(username, tab_id=tab_id)
+    tweet = client.x.users.get_pinned_tweet(username, tab_id=tab_id, instance_id=instance_id)
     if not tweet or not tweet.id:
         raise ParseError(f"No pinned tweet found for @{username}")
     print(f"✅ Found pinned tweet ID: {tweet.id}")
@@ -98,13 +126,13 @@ def analyze_with_ai(client: ClawBotClient, platform: str, tweet_text: str) -> st
     return result.content
 
 
-def post_reply(client: ClawBotClient, tweet_id: str, reply_text: str):
+def post_reply(client: ClawBotClient, tweet_id: str, reply_text: str, instance_id: Optional[str] = None):
     print("\n" + "=" * 60)
     print("📍 Step 5: Posting Reply to Tweet")
     print("=" * 60)
     if len(reply_text) > 280:
         reply_text = reply_text[:277] + "..."
-    result = client.x.actions.reply(tweet_id, reply_text)
+    result = client.x.actions.reply(tweet_id, reply_text, instance_id=instance_id)
     if not result.success:
         raise ParseError(result.message or "Reply failed")
     print("✅ Reply posted successfully")
@@ -114,6 +142,7 @@ def post_reply(client: ClawBotClient, tweet_id: str, reply_text: str):
 def main() -> int:
     parser = argparse.ArgumentParser(description="OpenClaw demo built on clawbot library")
     parser.add_argument("--username", "-u", default="openclaw", help="Twitter username to fetch pinned tweet from")
+    parser.add_argument("--instance-id", help="Explicit instanceId for multi-instance routing")
     args = parser.parse_args()
 
     username = args.username
@@ -130,12 +159,13 @@ def main() -> int:
     platform = choose_logged_in_platform(client)
     if not platform:
         return 1
-    tab_id = ensure_x_ready(client)
-    if tab_id is None:
+    x_ready = ensure_x_ready(client, preferred_instance_id=args.instance_id)
+    if x_ready is None:
         return 1
-    tweet = get_pinned_tweet(client, username, tab_id)
+    instance_id, tab_id = x_ready
+    tweet = get_pinned_tweet(client, username, tab_id, instance_id)
     reply_text = analyze_with_ai(client, platform, tweet.text or "")
-    post_reply(client, tweet.id, reply_text)
+    post_reply(client, tweet.id, reply_text, instance_id=instance_id)
     print("\n✅ Workflow completed successfully!")
     return 0
 

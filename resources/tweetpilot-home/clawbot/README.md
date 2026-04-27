@@ -150,20 +150,31 @@ client = ClawBotClient()
 ### 最常用操作
 
 ```python
+from clawbot import ClawBotClient
+
+client = ClawBotClient()
+
+# 可选，多实例环境下显式选择 instance_id
+instances = client.x.status.get_instances()
+instance_id = None
+if isinstance(instances, list) and instances:
+    first_instance = instances[0]
+    instance_id = first_instance.get("instanceId") or first_instance.get("id")
+
 # 读取时间线
-tweets = client.x.timeline.list_timeline_tweets()
+tweets = client.x.timeline.list_timeline_tweets(instance_id=instance_id)
 
 # 发推
-result = client.x.actions.create_tweet("Hello World")
+result = client.x.actions.create_tweet("Hello World", instance_id=instance_id)
 
 # 回复推文
-result = client.x.actions.reply(tweet_id, "Nice tweet!")
+result = client.x.actions.reply(tweet_id, "Nice tweet!", instance_id=instance_id)
 
 # 带图发推
-result = client.media.post_tweet("Check this out", ["image.png"])
+result = client.media.post_tweet("Check this out", ["image.png"], instance_id=instance_id)
 
 # 搜索推文
-tweets = client.x.search.search_tweets("AI", count=10)
+tweets = client.x.search.search_tweets("AI", count=10, instance_id=instance_id)
 ```
 
 ---
@@ -234,29 +245,31 @@ client.x.tabs.close(tab_id)
 **使用模块：**
 - `client.x.actions` - 发推、回复、点赞、转推等
 
+说明：旧调用方式仍然可用。在多实例 bridge 环境下，建议额外传入可选的 `instance_id`，显式路由到目标实例。
+
 **常用方法：**
 
 ```python
 # 发推
-result = client.x.actions.create_tweet("Hello World")
+result = client.x.actions.create_tweet("Hello World", instance_id=instance_id)
 
 # 回复
-result = client.x.actions.reply(tweet_id, "Great post!")
+result = client.x.actions.reply(tweet_id, "Great post!", instance_id=instance_id)
 
 # 互动操作
-client.x.actions.like(tweet_id)
-client.x.actions.unlike(tweet_id)
-client.x.actions.retweet(tweet_id)
-client.x.actions.unretweet(tweet_id)
-client.x.actions.bookmark(tweet_id)
-client.x.actions.unbookmark(tweet_id)
+client.x.actions.like(tweet_id, instance_id=instance_id)
+client.x.actions.unlike(tweet_id, instance_id=instance_id)
+client.x.actions.retweet(tweet_id, instance_id=instance_id)
+client.x.actions.unretweet(tweet_id, instance_id=instance_id)
+client.x.actions.bookmark(tweet_id, instance_id=instance_id)
+client.x.actions.unbookmark(tweet_id, instance_id=instance_id)
 
 # 关注操作
-client.x.actions.follow(user_id)
-client.x.actions.unfollow(user_id)
+client.x.actions.follow(user_id, instance_id=instance_id)
+client.x.actions.unfollow(user_id, instance_id=instance_id)
 
 # 删除推文
-client.x.actions.delete_tweet(tweet_id)
+client.x.actions.delete_tweet(tweet_id, instance_id=instance_id)
 ```
 
 ### 3. 媒体上传与发布

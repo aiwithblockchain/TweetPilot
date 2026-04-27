@@ -110,6 +110,9 @@ impl TaskExecutor {
         Ok(ExecutionResult {
             id: Uuid::new_v4().to_string(),
             task_id: task.id.clone(),
+            run_no: None,
+            session_code: None,
+            task_session_id: None,
             start_time: start_time_str,
             end_time: end_time_str,
             duration,
@@ -117,6 +120,8 @@ impl TaskExecutor {
             exit_code,
             stdout,
             stderr,
+            final_output: None,
+            error_message: None,
             metadata: None,
         })
     }

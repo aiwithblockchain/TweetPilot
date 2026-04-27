@@ -115,29 +115,110 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 
 因此 task session 在前端展示时，应该优先**复用当前 AI Session 的展示模式**，而不是再发明一套完全不同的查看器。
 
-### 2.6 任务 Session 独立存储
+### 2.7 Session 授权策略需要区分普通会话与定时任务会话
 
-任务 AI Session 需要特别命名、编号，并使用不同于当前普通 AI Session 的数据库表进行存储。
+当前产品实际上存在两类 AI Session：
 
-这里的“独立存储”进一步明确为：
+1. **普通交互式 Session**
+   - 用户在前台与 AI 聊天
+   - AI 可能发起文件读写、命令执行等工具调用
+   - 这类 Session 适合走实时交互授权模型
 
-- **完全复用现有 Session 的逻辑和消息结构**
-- 只是 task session 的消息内容写入**工作区数据库中的独立 task 相关表**
-- task session 使用**独立格式的 ID**
-- 普通 AI Session 与 task AI Session 在数据层隔离
-- 但二者尽量保持相同的数据形态，便于复用加载与展示逻辑
+2. **定时任务 Session**
+   - 由调度器在后台自动触发
+   - 运行时通常没有用户实时盯着授权弹窗
+   - 这类 Session 如果仍要求逐次弹窗，会直接影响可用性
 
-原因：
+因此，这次重构除了区分数据存储与运行来源，还应明确：
 
-- 需要通过“任务执行记录”定位某次 AI 执行
-- 需要查看该任务执行的完整对话过程
-- 需要避免与普通聊天 Session 混淆
-- 便于后续做任务审计、失败排查、历史回放
-- 便于按工作区清理任务数据，而不影响普通 AI Session
+> **定时任务 Session 可以支持“预授权执行”，但不能退化成全局 `BypassPermissions`。**
 
----
+这里的关键不是“是否完全信任 AI”，而是：
 
-## 3. 推荐重构方向
+- 是否允许该 task session 跳过逐次人工确认
+- 是否允许在预设边界内自动放行工具调用
+- 是否仍然保留后端风险判断、审计和底线拒绝
+
+### 2.8 推荐增加 Session 授权策略层
+
+建议不要把“授权行为”直接混入 Session 类型本身，而是为 Session 增加独立的授权策略概念。
+
+例如可抽象为：
+
+```rust
+pub enum SessionAuthorizationPolicy {
+    InteractiveApproval,
+    PreAuthorized,
+    LockedDown,
+}
+```
+
+语义建议如下：
+
+- `InteractiveApproval`
+  - 默认用于普通聊天 Session
+  - 低风险自动允许
+  - 中高风险请求进入前端授权确认
+- `PreAuthorized`
+  - 主要用于后台定时任务 Session
+  - 允许命中预授权规则的请求自动执行
+  - 但仍必须经过后端风险判断
+- `LockedDown`
+  - 用于更严格的只读或受限场景
+  - 可作为后续扩展，不要求本期完整落地
+
+也就是说，推荐模型不是：
+
+- 普通 Session = 有约束
+- 定时任务 Session = 完全放飞
+
+而是：
+
+- 普通 Session = `InteractiveApproval`
+- 定时任务 Session = 可配置为 `InteractiveApproval` 或 `PreAuthorized`
+
+### 2.9 PreAuthorized 的边界
+
+定时任务 Session 即使采用 `PreAuthorized`，也不应等于重新打开全局权限绕过。
+
+必须明确以下边界：
+
+1. **跳过的是前端逐次弹窗，不是后端风控判断**
+   - 路径分类仍然保留
+   - 命令风险判断仍然保留
+   - 审计记录仍然保留
+
+2. **预授权必须是显式配置，不是默认行为**
+   - 不能因为“这是 scheduled task”就自动获得完全权限
+   - 必须由任务配置明确开启
+
+3. **预授权最好是任务级，而不是全局级**
+   - 用户信任的是“这个任务”
+   - 不是所有后台 AI 行为
+
+4. **仍然可以保留底线拒绝的极高风险操作**
+   - 例如 `sudo`
+   - `curl ... | sh`
+   - 对系统敏感目录的大范围递归改写或删除
+   - 无法可靠解释的高危 destructive 命令
+
+这意味着：
+
+> **PreAuthorized 的本质是“命中规则时自动放行”，不是“取消规则本身”。**
+
+### 2.10 对定时任务最合理的能力目标
+
+对于后台 task session，真正合理的目标不是“AI 可以不受任何束缚”，而是：
+
+- 用户可以把某个任务配置为 trusted / pre-authorized
+- 该任务运行时不依赖人工实时点确认
+- 系统仍然知道它调用了什么工具、操作了哪些路径、为什么被允许
+- 当操作超出预授权边界时，系统仍然可以拒绝、失败结束，或等待未来更高级的处理机制
+
+因此，本方案建议把定时任务 Session 理解为：
+
+> **一种可预授权、可审计、仍受后端策略约束的 AI 自动执行会话。**
+
 
 本次建议将能力拆成四层。
 
@@ -266,27 +347,32 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 
 这样可以通过任务执行记录直接追溯完整 AI 对话，并且最大化复用现有前端加载/展示逻辑。
 
-### 3.4 调度触发层
+### 3.5 Session 授权策略层
 
-调度器只做以下事情：
+除了任务定义、执行记录、task session 存储与调度触发之外，这次重构还应显式补上一层：
 
-1. 找到到期任务
-2. 创建执行记录
-3. 创建一个新的 task AI session
-4. 将任务描述送入现有 Session 执行链路
-5. 根据任务配置决定是否附带 persona
-6. 等待 AI 执行结束
-7. 保存最终输出与状态
+- **Session 授权策略层**
 
-调度器不负责：
+这一层的职责不是保存对话内容，而是定义：
 
-- 自己拼 system prompt
-- 自己执行业务脚本
-- 自己解释 AI 的工具调用结果
+- 当前 task session 是否要求实时人工授权
+- 是否允许命中预授权规则的工具请求自动放行
+- 是否保留更严格的锁定模式
 
----
+推荐把它视为 task session runtime 的一部分配置，而不是散落在工具逻辑里的隐式特判。
 
-## 4. Session 创建与输入组装建议
+对于 scheduled task，建议至少支持：
+
+- `InteractiveApproval`
+- `PreAuthorized`
+
+而不是只有单一默认模式。
+
+这样后续本地工具授权机制落地时，普通聊天与后台任务就能共用同一套风控框架，只是在 `AskUser` 这一步的处理方式不同：
+
+- 普通聊天 session：进入前端授权弹窗
+- `PreAuthorized` task session：命中预授权规则则自动允许，否则拒绝或按后续能力扩展处理
+
 
 ### 4.1 必须复用现有 Session 创建逻辑
 
@@ -371,6 +457,7 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 - 新增定时任务配置
 - 支持开启/关闭 persona
 - 支持 task 上保存 persona prompt
+- 支持为 task 配置 session 授权策略
 - 调度触发后创建 task 专用 AI Session
 - 复用现有 Session 创建逻辑
 - 单独存储 task Session 全量消息
@@ -408,7 +495,7 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 6. 将执行记录状态更新为 `running`
 7. 根据配置决定是否读取 `task.persona_prompt`
 8. 通过现有 Session runtime 发起任务 AI Session
-9. AI 在 Session 中根据任务描述自主调用工具、执行脚本、写文件
+9. AI 在 Session 中根据任务描述与授权策略自主调用工具、执行脚本、写文件
 10. 将执行过程中的消息 / tool calls / timeline 等持久化到 task session 表
 11. 执行结束后，系统获取最后一条字符串消息作为 `final_output`
 12. 将 `task_session_id` 回填到执行记录
@@ -440,10 +527,12 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 2. **普通 AI Session 当前已经是工作区绑定的**，因此 task session 也应以工作区为边界。
 3. **system prompt 注入已存在于当前 Session 创建流程**，task session 直接复用。
 4. **persona prompt 只是 task 表中的字符串字段**，可为空；是否启用由任务配置决定，不额外约束格式。
-5. **最终输出的判定规则**：任务执行结束后的最后一条字符串消息。
-6. **不新增单独的工具调用日志表**：执行记录表增加可空的 `task_session_id` 即可，详细过程通过 session 关联查看。
-7. **失败处理最小化**：任务失败时只记录失败状态和基本错误信息，具体原因通过关联的 task session 展示。
-8. **前端展示方式**：在任务执行记录后增加“查看过程”按钮；当存在 `task_session_id` 时，点击后优先复用现有 AI session 查看器/展示模式打开过程。
+5. **任务 session 需要独立的授权策略概念**：普通交互式 session 与 scheduled task session 不应默认共用同一种授权处理方式。
+6. **scheduled task session 可配置为 `InteractiveApproval` 或 `PreAuthorized`**，但 `PreAuthorized` 不等于恢复全局 `BypassPermissions`。
+7. **最终输出的判定规则**：任务执行结束后的最后一条字符串消息。
+8. **不新增单独的工具调用日志表**：执行记录表增加可空的 `task_session_id` 即可，详细过程通过 session 关联查看。
+9. **失败处理最小化**：任务失败时只记录失败状态和基本错误信息，具体原因通过关联的 task session 展示。
+10. **前端展示方式**：在任务执行记录后增加“查看过程”按钮；当存在 `task_session_id` 时，点击后优先复用现有 AI session 查看器/展示模式打开过程。
 
 ### 9.1 任务记录清空逻辑
 
@@ -550,19 +639,43 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 - 删除某次执行记录时，也能只删除那一次对应的 session
 - 不会出现多个 run 共享一个 session 导致的误删或残留问题
 
-### 9.3 复用旧 Session 的唯一适用场景
+### 9.4 为什么定时任务 Session 需要授权策略分层
 
-理论上，只有当未来出现这类需求时，才值得考虑复用：
+当前项目后续还要落地本地工具授权机制，因此定时任务 Session 不能简单等同于“后台运行 = 自动拥有全部权限”。
 
-- 任务要求“连续记忆”
-- 明确希望本次执行读取上一次 AI 的推理或结论
-- 任务本质上是长期 agent，而不是独立 run
+如果不提前在 session 模型里区分授权策略，后续很容易出现两种问题：
 
-但这不是当前这版定时任务系统的目标，因此本期不建议设计成可复用 Session。
+1. **后台任务不可用**
+   - 如果所有高风险工具调用都要求实时弹窗确认
+   - 那么 scheduled task 在无人值守时会频繁卡住
 
----
+2. **安全模型退化**
+   - 如果为了让 scheduled task 可用，直接恢复 `BypassPermissions`
+   - 那就会让后台 AI 再次变成无约束执行
 
-## 10. 当前代码可直接复用的关键位置
+因此，本方案明确建议：
+
+- 普通交互式 Session 默认使用 `InteractiveApproval`
+- 定时任务 Session 可按任务配置选择：
+  - `InteractiveApproval`
+  - `PreAuthorized`
+
+其中：
+
+- `InteractiveApproval` 适合测试阶段或需要人工兜底的任务
+- `PreAuthorized` 适合已经被用户明确设为 trusted 的后台自动化任务
+
+但即使是 `PreAuthorized`，也仍然必须满足：
+
+- 工具请求先经过后端风险判断
+- 命中预授权规则的请求才自动放行
+- 极高风险操作仍可拒绝
+- 所有操作都应可审计
+
+也就是说：
+
+> **定时任务 Session 的目标是“减少实时确认”，不是“取消安全边界”。**
+
 
 ### AI session 后端
 - `src-tauri/src/commands/ai.rs`
@@ -614,12 +727,16 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 - `use_persona`：是否启用 persona
 - `persona_prompt`：任务级 persona 字符串
 - `task_mode` 或等价字段：用于区分当前任务是否走 AI session 执行链路
+- `session_auth_policy`：当前 task session 的授权策略
+- `preauthorized_scope`：预授权范围描述
 
 说明：
 
 - 当前 `tasks` 表已经有 `description`
 - 当前任务模型仍偏向脚本任务（如 `script_path`、`parameters`）
 - 本次按开发早期前提处理，直接以新的目标结构重建当前工作区数据库即可，不为旧库兼容单独设计迁移逻辑
+- `session_auth_policy` 第一阶段建议只支持 `interactive_approval` / `preauthorized`
+- `preauthorized_scope` 第一阶段可先保存为 JSON 文本，不要求一开始就做成复杂规则表
 
 #### B. 扩展 `executions` 表
 
@@ -817,12 +934,19 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 - `use_persona INTEGER NOT NULL DEFAULT 0`
 - `persona_prompt TEXT NULL`
 - `execution_mode TEXT NOT NULL DEFAULT 'script'`
+- `session_auth_policy TEXT NOT NULL DEFAULT 'interactive_approval'`
+- `preauthorized_scope TEXT NULL`
 
 说明：
 
 - `execution_mode` 第一阶段只需要区分 `script` / `ai_session`
+- `session_auth_policy` 第一阶段建议只支持：
+  - `interactive_approval`
+  - `preauthorized`
 - 不建议一开始引入更多模式枚举
 - `persona_prompt` 保持 task 自有字符串，不依赖账号表动态拼装
+- `preauthorized_scope` 第一阶段可以先用 JSON 文本保存，用于表达该任务允许自动放行的范围
+- 不建议第一阶段只用一个过于模糊的 `trusted_task BOOLEAN` 字段，因为后续很难表达“哪些能力被信任”
 
 ##### executions 表建议最小新增字段
 
@@ -944,11 +1068,15 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 - 任务描述输入框
 - `use_persona` 开关
 - `persona_prompt` 多行输入框
+- session 授权策略选择：
+  - `需要运行时确认`
+  - `预授权自动执行`
 
 交互约束：
 
 - 当 `execution_mode = script` 时，保持现有脚本字段交互
-- 当 `execution_mode = ai_session` 时，优先展示 description / persona 配置
+- 当 `execution_mode = ai_session` 时，优先展示 description / persona / session 授权策略配置
+- 当 `session_auth_policy = preauthorized` 时，应显示该任务已被视为 trusted automation，并提示其会跳过逐次人工确认
 - 不要求第一阶段同时做非常复杂的双模式表单重构
 
 ##### 执行记录列表
@@ -973,7 +1101,39 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 
 这样既复用了现有 UI，又不会混淆“任务执行回放”和“人工对话”。
 
-#### D. MVP 验收标准
+#### D. 预授权范围的最小表达建议
+
+为了避免第一阶段就引入过重的权限规则系统，同时又不把 trusted task 简化成模糊布尔值，建议 `preauthorized_scope` 先采用**JSON 文本**保存最小授权范围。
+
+建议语义只覆盖第一阶段真正需要表达的内容，例如：
+
+```json
+{
+  "allow_file_read": true,
+  "allow_file_write": true,
+  "allow_file_delete": false,
+  "allow_bash": true,
+  "allow_external_paths": false,
+  "allow_destructive_commands": false,
+  "allow_network_commands": false
+}
+```
+
+这一层的作用不是替代后端完整风控，而是给后端策略层一个“本任务允许自动放行到什么程度”的输入。
+
+也就是说：
+
+- 后端仍然先做路径分类和命令风险判断
+- `preauthorized_scope` 只决定“当命中某类请求时，是否允许自动放行”
+- 超出范围的请求仍然可以拒绝，或在未来扩展为挂起等待处理
+
+这样做的好处是：
+
+1. 第一阶段结构足够简单
+2. 不会把 trusted task 退化成全有或全无
+3. 后续可以平滑扩展成更细粒度规则
+4. 与本地工具授权机制文档中的风险分类天然兼容
+
 
 做到以下几点，就可以认为第一阶段落地成功：
 
@@ -983,8 +1143,10 @@ persona prompt 应为**task 表中的一个普通字符串字段**，并且是**
 4. task session 会保存完整消息过程
 5. execution record 会保存 `final_output`
 6. 前端可以从 execution history 打开并查看完整过程
-7. 清空任务记录时，会级联删除关联 task session 数据
-8. 删除任务时，会注销 timer 并级联删除 execution + task session
+7. **任务配置可表达 session 授权策略**，至少支持 `interactive_approval` 与 `preauthorized`。
+8. **当 task 使用 `preauthorized` 时，可通过 `preauthorized_scope` 表达最小自动放行范围**，而不是退化成模糊的全信任布尔值。
+9. **清空任务记录时，会级联删除关联 task session 数据**
+10. **删除任务时，会注销 timer 并级联删除 execution + task session**
 
 ---
 

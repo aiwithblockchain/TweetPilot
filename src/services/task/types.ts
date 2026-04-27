@@ -1,21 +1,32 @@
+import type { LoadedSession } from '@/services/ai/tauri'
+
 export type TaskType = 'immediate' | 'scheduled'
 
 export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
 
 export type ScheduleType = 'cron' | 'interval'
 
+export type TaskExecutionStatus = 'pending' | 'running' | 'success' | 'failure'
+
+export type TaskExecutionMode = 'script' | 'ai_session'
+
 export interface ExecutionResult {
   id: string
   taskId: string
+  runNo?: number
+  sessionCode?: string
+  taskSessionId?: string
   startTime: string
   endTime: string
   duration: number
-  status: 'success' | 'failure'
+  status: TaskExecutionStatus
   exitCode: number
   output?: string
   error?: string
   stdout?: string
   stderr?: string
+  finalOutput?: string
+  errorMessage?: string
   metadata?: Record<string, any>
 }
 
@@ -34,6 +45,9 @@ export interface Task {
   type: TaskType
   status: TaskStatus
   enabled: boolean
+  executionMode: TaskExecutionMode
+  usePersona: boolean
+  personaPrompt?: string
   scriptPath: string
   scriptContent?: string
   scriptHash?: string
@@ -68,6 +82,9 @@ export interface TaskConfigInput {
   name: string
   description?: string
   taskType: TaskType
+  executionMode?: TaskExecutionMode
+  usePersona?: boolean
+  personaPrompt?: string
   scriptPath: string
   schedule?: string
   scheduleType?: ScheduleType
@@ -97,4 +114,6 @@ export interface TaskService {
   resumeTask(taskId: string): Promise<void>
   executeTask(taskId: string): Promise<ExecutionResult>
   getExecutionHistory(taskId: string, limit?: number): Promise<ExecutionResult[]>
+  getTaskAiSession(sessionId: string): Promise<LoadedSession>
+  clearTaskExecutionHistory(taskId: string): Promise<void>
 }

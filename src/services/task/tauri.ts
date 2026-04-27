@@ -1,25 +1,30 @@
 import { tauriInvoke } from '@/lib/tauri-api'
+import type { LoadedSession } from '@/services/ai/tauri'
 import type {
   ExecutionResult,
   ScheduleType,
   Task,
   TaskConfigInput,
   TaskDetail,
+  TaskExecutionStatus,
   TaskService,
   TaskStatus,
   TaskType,
 } from './types'
 
 interface TauriTaskConfigInput {
-  name: string
+  name?: string
   description?: string
-  type: TaskType
-  script_path: string
+  type?: TaskType
+  execution_mode?: 'script' | 'ai_session'
+  use_persona?: boolean
+  persona_prompt?: string
+  script_path?: string
   schedule?: string
   schedule_type?: string
   interval_seconds?: number
-  parameters?: Record<string, string>
-  account_id: string
+  parameters?: Record<string, any>
+  account_id?: string
   timeout?: number
   retry_count?: number
   retry_delay?: number
@@ -31,10 +36,16 @@ interface TauriTask {
   name: string
   description?: string
   type: TaskType
-  scriptPath: string
-  parameters?: Record<string, string> | string
   status: TaskStatus
-  lastExecution?: ExecutionResult
+  enabled?: boolean
+  executionMode?: 'script' | 'ai_session'
+  usePersona?: boolean
+  personaPrompt?: string
+  scriptPath: string
+  scriptContent?: string
+  scriptHash?: string
+  parameters?: Record<string, any> | string
+  lastExecution?: TauriTaskExecutionRecord
   lastExecutionStatus?: 'success' | 'failure'
   schedule?: string
   scheduleType?: string
@@ -45,13 +56,12 @@ interface TauriTask {
   accountScreenName?: string
   tweetId?: string
   text?: string
-  enabled?: boolean
   createdAt?: string
   updatedAt?: string
   timeout?: number
   retryCount?: number
   retryDelay?: number
-  tags?: string[]
+  tags?: string[] | string
   statistics?: {
     totalExecutions: number
     successCount: number
@@ -70,33 +80,35 @@ interface TauriTaskDetail {
     successRate: number
     averageDuration: number
   }
-  history: ExecutionResult[]
+  history: TauriTaskExecutionRecord[]
 }
 
 interface TauriTaskExecutionRecord {
   id: string
   taskId: string
+  runNo?: number | null
+  sessionCode?: string | null
+  taskSessionId?: string | null
   startTime: string
   endTime?: string
   duration?: number
-  status: TaskStatus
-  output?: string
+  status: string
   exitCode?: number
+  stdout?: string
+  stderr?: string
+  finalOutput?: string | null
+  errorMessage?: string | null
+  metadata?: Record<string, any> | string | null
 }
 
-function normalizeTaskParameters(parameters: unknown): Record<string, string> {
+function normalizeTaskParameters(parameters: unknown): Record<string, any> {
   if (!parameters) return {}
-
-  const toStringRecord = (value: Record<string, unknown>) =>
-    Object.fromEntries(
-      Object.entries(value).map(([key, entryValue]) => [key, entryValue == null ? '' : String(entryValue)]),
-    )
 
   if (typeof parameters === 'string') {
     try {
       const parsed = JSON.parse(parameters) as unknown
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return toStringRecord(parsed as Record<string, unknown>)
+        return parsed as Record<string, any>
       }
       return {}
     } catch {
@@ -105,10 +117,85 @@ function normalizeTaskParameters(parameters: unknown): Record<string, string> {
   }
 
   if (typeof parameters === 'object' && !Array.isArray(parameters)) {
-    return toStringRecord(parameters as Record<string, unknown>)
+    return parameters as Record<string, any>
   }
 
   return {}
+}
+
+function normalizeTags(tags: unknown): string[] {
+  if (!tags) return []
+
+  if (Array.isArray(tags)) {
+    return tags.filter((tag): tag is string => typeof tag === 'string')
+  }
+
+  if (typeof tags === 'string') {
+    try {
+      const parsed = JSON.parse(tags) as unknown
+      return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function normalizeMetadata(metadata: unknown): Record<string, any> | undefined {
+  if (!metadata) return undefined
+
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return metadata as Record<string, any>
+  }
+
+  return undefined
+}
+
+function normalizeExecutionStatus(status: string): TaskExecutionStatus {
+  if (status === 'pending' || status === 'running' || status === 'success' || status === 'failure') {
+    return status
+  }
+
+  if (status === 'failed') {
+    return 'failure'
+  }
+
+  return 'failure'
+}
+
+function mapExecution(item: TauriTaskExecutionRecord): ExecutionResult {
+  return {
+    id: item.id,
+    taskId: item.taskId,
+    runNo: item.runNo ?? undefined,
+    sessionCode: item.sessionCode ?? undefined,
+    taskSessionId: item.taskSessionId ?? undefined,
+    startTime: item.startTime,
+    endTime: item.endTime || '',
+    duration: item.duration || 0,
+    status: normalizeExecutionStatus(item.status),
+    exitCode: item.exitCode || 0,
+    output: item.finalOutput || item.stdout,
+    error: item.errorMessage || item.stderr,
+    stdout: item.stdout,
+    stderr: item.stderr,
+    finalOutput: item.finalOutput ?? undefined,
+    errorMessage: item.errorMessage ?? undefined,
+    metadata: normalizeMetadata(item.metadata),
+  }
 }
 
 function mapTask(task: TauriTask): Task {
@@ -117,10 +204,16 @@ function mapTask(task: TauriTask): Task {
     name: task.name,
     description: task.description,
     type: task.type,
-    scriptPath: task.scriptPath,
-    parameters: normalizeTaskParameters(task.parameters),
     status: task.status,
-    lastExecution: task.lastExecution,
+    enabled: task.enabled ?? true,
+    executionMode: task.executionMode || 'script',
+    usePersona: task.usePersona ?? false,
+    personaPrompt: task.personaPrompt ?? undefined,
+    scriptPath: task.scriptPath,
+    scriptContent: task.scriptContent,
+    scriptHash: task.scriptHash,
+    parameters: normalizeTaskParameters(task.parameters),
+    lastExecution: task.lastExecution ? mapExecution(task.lastExecution) : undefined,
     lastExecutionStatus: task.lastExecutionStatus,
     schedule: task.schedule,
     scheduleType: (task.scheduleType || 'cron') as ScheduleType,
@@ -135,16 +228,15 @@ function mapTask(task: TauriTask): Task {
       averageDuration: 0,
     },
     accountId: task.accountId || '',
-    accountScreenName: (task as TauriTask & { accountScreenName?: string }).accountScreenName,
-    tweetId: (task as TauriTask & { tweetId?: string }).tweetId,
-    text: (task as TauriTask & { text?: string }).text,
-    enabled: task.enabled ?? true,
+    accountScreenName: task.accountScreenName,
+    tweetId: task.tweetId,
+    text: task.text,
     createdAt: task.createdAt || new Date().toISOString(),
     updatedAt: task.updatedAt || new Date().toISOString(),
-    timeout: (task as TauriTask & { timeout?: number }).timeout,
-    retryCount: (task as TauriTask & { retryCount?: number }).retryCount,
-    retryDelay: (task as TauriTask & { retryDelay?: number }).retryDelay,
-    tags: (task as TauriTask & { tags?: string[] }).tags,
+    timeout: task.timeout,
+    retryCount: task.retryCount,
+    retryDelay: task.retryDelay,
+    tags: normalizeTags(task.tags),
   }
 }
 
@@ -152,7 +244,7 @@ function mapTaskDetail(detail: TauriTaskDetail): TaskDetail {
   return {
     task: mapTask(detail.task),
     statistics: detail.statistics,
-    history: detail.history,
+    history: detail.history.map(mapExecution),
   }
 }
 
@@ -161,6 +253,9 @@ function toTauriTaskConfig(config: Partial<TaskConfigInput>): Partial<TauriTaskC
     name: config.name,
     description: config.description,
     type: config.taskType,
+    execution_mode: config.executionMode,
+    use_persona: config.usePersona,
+    persona_prompt: config.personaPrompt,
     script_path: config.scriptPath,
     schedule: config.schedule,
     schedule_type: config.scheduleType,
@@ -212,7 +307,8 @@ export const taskTauriService: TaskService = {
   },
 
   async executeTask(taskId) {
-    return tauriInvoke<ExecutionResult>('execute_task', { taskId })
+    const result = await tauriInvoke<TauriTaskExecutionRecord>('execute_task', { taskId })
+    return mapExecution(result)
   },
 
   async getExecutionHistory(taskId, limit) {
@@ -220,15 +316,14 @@ export const taskTauriService: TaskService = {
       taskId,
       limit,
     })
-    return result.map((item): ExecutionResult => ({
-      id: item.id,
-      taskId: item.taskId,
-      startTime: item.startTime,
-      endTime: item.endTime || '',
-      duration: item.duration || 0,
-      status: item.status === 'running' ? 'success' : item.status === 'failed' ? 'failure' : 'success',
-      exitCode: item.exitCode || 0,
-      output: item.output,
-    }))
+    return result.map(mapExecution)
+  },
+
+  async getTaskAiSession(sessionId) {
+    return tauriInvoke<LoadedSession>('get_task_ai_session', { sessionId })
+  },
+
+  async clearTaskExecutionHistory(taskId) {
+    await tauriInvoke<void>('clear_task_execution_history', { taskId })
   },
 }

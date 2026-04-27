@@ -4,7 +4,10 @@ import { taskService } from '@/services'
 import { TaskActionBar } from './TaskActionBar'
 import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
 import { TaskCreatePane } from './TaskCreatePane'
+import { AssistantMessage } from './ChatInterface/AssistantMessage'
+import type { LoadedSession, StoredMessage } from '@/services/ai/tauri'
 import type { Task, TaskDetail } from '@/services/task'
+import type { AssistantTimelineItem, ChatMessage, PersistedToolCall, ToolCall } from './ChatInterface/types'
 import { convertCronToLocalTime } from '@/lib/cron-utils'
 
 interface TaskDetailContentPaneProps {
@@ -36,6 +39,9 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
   const [showAllHistory, setShowAllHistory] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [sessionLoading, setSessionLoading] = useState(false)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [selectedSession, setSelectedSession] = useState<LoadedSession | null>(null)
 
   const loadDetail = async () => {
     try {
@@ -49,6 +55,27 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleViewSession = async (sessionId: string) => {
+    try {
+      setSessionLoading(true)
+      setSessionError(null)
+      const session = await taskService.getTaskAiSession(sessionId)
+      setSelectedSession(session)
+    } catch (err) {
+      console.error('Failed to load task AI session:', err)
+      setSessionError(err instanceof Error ? err.message : '读取任务执行过程失败')
+      setSelectedSession(null)
+    } finally {
+      setSessionLoading(false)
+    }
+  }
+
+  const handleCloseSession = () => {
+    setSelectedSession(null)
+    setSessionError(null)
+    setSessionLoading(false)
   }
 
   useEffect(() => {
@@ -245,32 +272,48 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
                 <div className="space-y-2">
                   {latestHistory.map((item, index) => (
                     <div
-                      key={`${item.startTime}-${index}`}
-                      className="flex items-center justify-between text-xs p-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)]"
+                      key={item.id || `${item.startTime}-${index}`}
+                      className="flex items-center justify-between gap-3 text-xs p-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)]"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={item.status === 'success' ? 'text-[#4EC9B0]' : 'text-[#F48771]'}>
-                          {item.status === 'success' ? '✓' : '✗'}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={getExecutionTone(item.status)}>
+                          {getExecutionIcon(item.status)}
                         </span>
-                        <span className="text-[var(--color-text)]">
-                          {formatDateTime(item.startTime)}
+                        <div className="min-w-0">
+                          <div className="text-[var(--color-text)]">
+                            {formatDateTime(item.startTime)}
+                          </div>
+                          <div className="text-[10px] text-[var(--color-text-secondary)] mt-0.5">
+                            {formatExecutionStatus(item.status)}
+                            {item.sessionCode ? ` · ${item.sessionCode}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.taskSessionId && (
+                          <button
+                            onClick={() => void handleViewSession(item.taskSessionId!)}
+                            className="px-2.5 py-1 rounded border border-[#6D5BF6]/40 bg-[#6D5BF6]/10 text-[#CFC9FF] hover:bg-[#6D5BF6]/18 transition-colors cursor-pointer"
+                          >
+                            查看过程
+                          </button>
+                        )}
+                        <span
+                          className={[
+                            'px-2 py-0.5 rounded',
+                            getExecutionStatusBadge(item.status),
+                          ].join(' ')}
+                        >
+                          {item.duration.toFixed(1)}s
                         </span>
                       </div>
-                      <span
-                        className={[
-                          'px-2 py-0.5 rounded',
-                          item.status === 'success' ? 'bg-[#4EC9B0]/12 text-[#4EC9B0]' : 'bg-[#F48771]/12 text-[#F48771]',
-                        ].join(' ')}
-                      >
-                        {item.duration.toFixed(1)}s
-                      </span>
                     </div>
                   ))}
                 </div>
                 {detail.history.length > 5 && (
                   <button
                     onClick={() => setShowAllHistory(!showAllHistory)}
-                    className="text-xs text-[#6D5BF6] hover:text-[#5B4AD4] mt-3 w-full text-center"
+                    className="text-xs text-[#6D5BF6] hover:text-[#5B4AD4] mt-3 w-full text-center cursor-pointer"
                   >
                     {showAllHistory ? '收起 ↑' : `查看全部 (${detail.history.length}条) →`}
                   </button>
@@ -281,9 +324,18 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
         </div>
 
         <div className="space-y-5">
-          <TaskActionBar task={task} onChanged={() => void loadDetail()} onDeleted={onDeleted} onEdit={() => {
-            setIsEditing(true)
-          }} />
+          <TaskActionBar
+            task={task}
+            onChanged={() => void loadDetail()}
+            onDeleted={onDeleted}
+            onEdit={() => {
+              setIsEditing(true)
+            }}
+            onHistoryCleared={() => {
+              setShowAllHistory(false)
+              void loadDetail()
+            }}
+          />
 
           {task.lastExecution && (
             <SidePanel title="⏱ 最后执行">
@@ -360,6 +412,17 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
           )}
         </div>
       </div>
+      {selectedSession && (
+        <TaskAiSessionModal session={selectedSession} onClose={handleCloseSession} />
+      )}
+
+      {sessionLoading && (
+        <TaskAiSessionLoadingModal />
+      )}
+
+      {sessionError && !selectedSession && !sessionLoading && (
+        <TaskAiSessionErrorModal message={sessionError} onClose={() => setSessionError(null)} />
+      )}
     </div>
   )
 }
@@ -396,6 +459,235 @@ function CenteredMessage({ tone, message }: { tone: 'neutral' | 'error'; message
       </div>
     </div>
   )
+}
+
+function formatExecutionStatus(status: 'pending' | 'running' | 'success' | 'failure') {
+  const map: Record<'pending' | 'running' | 'success' | 'failure', string> = {
+    pending: '等待中',
+    running: '运行中',
+    success: '成功',
+    failure: '失败',
+  }
+  return map[status]
+}
+
+function getExecutionIcon(status: 'pending' | 'running' | 'success' | 'failure') {
+  const map: Record<'pending' | 'running' | 'success' | 'failure', string> = {
+    pending: '◌',
+    running: '↻',
+    success: '✓',
+    failure: '✗',
+  }
+  return map[status]
+}
+
+function getExecutionTone(status: 'pending' | 'running' | 'success' | 'failure') {
+  const map: Record<'pending' | 'running' | 'success' | 'failure', string> = {
+    pending: 'text-[#D7BA7D]',
+    running: 'text-[#569CD6]',
+    success: 'text-[#4EC9B0]',
+    failure: 'text-[#F48771]',
+  }
+  return map[status]
+}
+
+function getExecutionStatusBadge(status: 'pending' | 'running' | 'success' | 'failure') {
+  const map: Record<'pending' | 'running' | 'success' | 'failure', string> = {
+    pending: 'bg-[#D7BA7D]/12 text-[#D7BA7D]',
+    running: 'bg-[#569CD6]/12 text-[#569CD6]',
+    success: 'bg-[#4EC9B0]/12 text-[#4EC9B0]',
+    failure: 'bg-[#F48771]/12 text-[#F48771]',
+  }
+  return map[status]
+}
+
+function fromPersistedToolCall(toolCall: PersistedToolCall): ToolCall {
+  return {
+    id: toolCall.id,
+    tool: toolCall.tool,
+    action: toolCall.action,
+    input: toolCall.input ?? undefined,
+    output: toolCall.output ?? undefined,
+    status: toolCall.status === 'running'
+      ? 'running'
+      : toolCall.status === 'error' || toolCall.status === 'failed'
+        ? 'error'
+        : 'success',
+    duration: toolCall.duration ?? undefined,
+    startTime: toolCall.start_time,
+    endTime: toolCall.end_time ?? undefined,
+  }
+}
+
+function buildTimelineFromStoredMessage(message: StoredMessage): AssistantTimelineItem[] {
+  const toolCalls = message.tool_calls?.map(fromPersistedToolCall) || []
+  const toolCallMap = new Map(toolCalls.map((toolCall) => [toolCall.id, toolCall]))
+  const persistedTimeline = message.timeline || []
+
+  if (persistedTimeline.length > 0) {
+    return persistedTimeline.flatMap((item): AssistantTimelineItem[] => {
+      if (item.type === 'thinking') {
+        return [{
+          id: item.id,
+          type: 'thinking',
+          content: item.content,
+          isComplete: item.is_complete ?? true,
+          isActive: !(item.is_complete ?? true),
+        }]
+      }
+
+      if (item.type === 'tool') {
+        const toolCall = toolCallMap.get(item.tool_call_id)
+        return toolCall
+          ? [{
+              id: item.id,
+              type: 'tool',
+              toolCall,
+            }]
+          : []
+      }
+
+      return [{
+        id: item.id,
+        type: 'text',
+        content: item.content,
+      }]
+    })
+  }
+
+  const timeline: AssistantTimelineItem[] = []
+
+  if (message.thinking) {
+    timeline.push({
+      id: `${message.id ?? 'assistant'}-thinking`,
+      type: 'thinking',
+      content: message.thinking,
+      isComplete: message.thinking_complete ?? true,
+      isActive: !(message.thinking_complete ?? true),
+    })
+  }
+
+  if (toolCalls.length) {
+    timeline.push(
+      ...toolCalls.map((toolCall) => ({
+        id: `${message.id ?? 'assistant'}-tool-${toolCall.id}`,
+        type: 'tool' as const,
+        toolCall,
+      })),
+    )
+  }
+
+  if (message.content) {
+    timeline.push({
+      id: `${message.id ?? 'assistant'}-text`,
+      type: 'text',
+      content: message.content,
+    })
+  }
+
+  return timeline
+}
+
+function fromStoredMessage(message: StoredMessage, index: number): ChatMessage {
+  return {
+    id: message.id ?? `${message.role}-${message.timestamp}-${index}`,
+    role: message.role as 'user' | 'assistant',
+    content: message.content,
+    timestamp: message.timestamp,
+    thinking: message.thinking ?? undefined,
+    thinkingComplete: message.thinking_complete ?? undefined,
+    toolCalls: message.tool_calls?.map(fromPersistedToolCall),
+    status: message.status ?? undefined,
+    timeline: message.role === 'assistant' ? buildTimelineFromStoredMessage(message) : undefined,
+  }
+}
+
+function TaskAiSessionModal({ session, onClose }: { session: LoadedSession; onClose: () => void }) {
+  const messages = session.messages.map(fromStoredMessage)
+
+  return (
+    <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-50 px-4">
+      <div className="w-full max-w-5xl max-h-[88vh] rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] shadow-[0_24px_80px_rgba(0,0,0,0.45)] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-[var(--color-border)]">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-[var(--color-text)] truncate">{session.session.title}</div>
+            <div className="text-xs text-[var(--color-text-secondary)] mt-1">
+              {session.session.id} · {messages.length} 条消息
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors cursor-pointer"
+          >
+            关闭
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {messages.length === 0 ? (
+            <div className="text-sm text-[var(--color-text-secondary)]">此执行过程暂无消息。</div>
+          ) : (
+            messages.map((message) => (
+              <div key={message.id} className="space-y-2">
+                <div className="text-[11px] text-[var(--color-text-secondary)]">
+                  {message.role === 'user' ? '用户' : '助手'} · {formatMessageTime(message.timestamp)}
+                </div>
+                {message.role === 'assistant' ? (
+                  <AssistantMessage message={message} />
+                ) : (
+                  <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)] whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TaskAiSessionLoadingModal() {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-5 text-sm text-[var(--color-text)] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+        正在加载执行过程...
+      </div>
+    </div>
+  )
+}
+
+function TaskAiSessionErrorModal({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+      <div className="w-full max-w-lg rounded-xl border border-red-800/50 bg-[var(--color-bg)] shadow-[0_20px_60px_rgba(0,0,0,0.35)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-red-800/40 text-sm font-semibold text-[#F48771]">读取执行过程失败</div>
+        <div className="px-5 py-4 text-sm text-[var(--color-text)] whitespace-pre-wrap">{message}</div>
+        <div className="px-5 py-4 border-t border-[var(--color-border)] flex justify-end">
+          <button
+            onClick={onClose}
+            className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors cursor-pointer"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function formatMessageTime(timestamp: number) {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return String(timestamp)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 function formatTaskStatus(status: Task['status']) {

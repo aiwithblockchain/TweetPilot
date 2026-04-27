@@ -12,7 +12,7 @@ pub use registry::TimerRegistry;
 pub use event_loop::EventLoop;
 // DEPRECATED: AccountSyncExecutor is no longer used
 // pub use executors::{AccountSyncExecutor, PythonScriptExecutor};
-pub use executors::{LocalBridgeSyncExecutor, PythonScriptExecutor};
+pub use executors::{LocalBridgeSyncExecutor, PythonScriptExecutor, TaskAiSessionExecutor};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

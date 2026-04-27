@@ -152,7 +152,9 @@ pub struct RuntimeWorkspaceState {
 AI 会话与消息的正式持久化位置为：
 
 ```text
-<workspace>/.tweetpilot/tweetpilot.db
+<workspace>/.tweetpilot/
+  tweetpilot.db
+  logs/
 ```
 
 核心实现位于：
@@ -172,6 +174,7 @@ let db_path = working_dir.join(".tweetpilot").join("tweetpilot.db");
 - 一个 workspace 对应一份独立数据库
 - 不同 workspace 的 AI 会话天然隔离
 - AI session / message / tool timeline 属于 workspace 业务数据，而不是全局配置数据
+- workspace-local 目录下除了数据库外，还可能包含运行期生成的日志目录
 
 ---
 
