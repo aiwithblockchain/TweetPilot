@@ -433,30 +433,44 @@ function AppContent() {
 
 
   useEffect(() => {
+    let disposed = false
+    let cleanupFns: Array<() => void> = []
+
     const setupEventListeners = async () => {
-      const unlistenWorkspaceChanged = await listen<string>('workspace-changed', (event) => {
-        console.log('[App] Workspace changed via menu:', event.payload)
-        setCurrentWorkspace(event.payload)
-        setWorkspaceReady(true)
-        setTimeout(() => window.location.reload(), 100)
-      })
+      try {
+        const [unlistenWorkspaceChanged, unlistenSetInitialWorkspace] = await Promise.all([
+          listen<string>('workspace-changed', (event) => {
+            console.log('[App] Workspace changed via menu:', event.payload)
+            setCurrentWorkspace(event.payload)
+            setWorkspaceReady(true)
+            setTimeout(() => window.location.reload(), 100)
+          }),
+          listen<string>('set-initial-workspace', (event) => {
+            console.log('[App] Set initial workspace for new window:', event.payload)
+            void initializeWorkspace(event.payload).finally(() => {
+              setIsCheckingWorkspace(false)
+            })
+          }),
+        ])
 
-      const unlistenSetInitialWorkspace = await listen<string>('set-initial-workspace', (event) => {
-        console.log('[App] Set initial workspace for new window:', event.payload)
-        void initializeWorkspace(event.payload).finally(() => {
-          setIsCheckingWorkspace(false)
-        })
-      })
+        if (disposed) {
+          unlistenWorkspaceChanged()
+          unlistenSetInitialWorkspace()
+          return
+        }
 
-      return () => {
-        unlistenWorkspaceChanged()
-        unlistenSetInitialWorkspace()
+        cleanupFns = [unlistenWorkspaceChanged, unlistenSetInitialWorkspace]
+      } catch (error) {
+        console.debug('[App] Failed to register workspace event listeners', error)
       }
     }
 
-    const cleanup = setupEventListeners()
+    void setupEventListeners()
+
     return () => {
-      cleanup.then(fn => fn())
+      disposed = true
+      cleanupFns.forEach((cleanup) => cleanup())
+      cleanupFns = []
     }
   }, [initializeWorkspace])
 

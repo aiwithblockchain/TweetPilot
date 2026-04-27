@@ -56,13 +56,8 @@ fn main() {
                     .accelerator("CmdOrCtrl+O")
                     .build(app)?;
 
-                let open_new_window_item = MenuItemBuilder::with_id("open_new_window", "Open in New Window...")
-                    .accelerator("CmdOrCtrl+Shift+O")
-                    .build(app)?;
-
                 let file_menu = SubmenuBuilder::new(app, "File")
                     .item(&open_item)
-                    .item(&open_new_window_item)
                     .separator()
                     .close_window()
                     .build()?;
@@ -107,17 +102,17 @@ fn main() {
                     match event.id().as_ref() {
                         "open" => {
                             let app_handle = app.clone();
+                            let window = app
+                                .webview_windows()
+                                .into_values()
+                                .find(|window| window.is_focused().unwrap_or(false));
                             tauri::async_runtime::spawn(async move {
-                                if let Err(e) = workspace::open_folder_dialog(app_handle).await {
-                                    eprintln!("Failed to open folder: {}", e);
-                                }
-                            });
-                        }
-                        "open_new_window" => {
-                            let app_handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                if let Err(e) = workspace::open_folder_in_new_window(app_handle).await {
-                                    eprintln!("Failed to open folder in new window: {}", e);
+                                if let Some(window) = window {
+                                    if let Err(e) = workspace::open_folder_dialog(app_handle, window).await {
+                                        eprintln!("Failed to open folder: {}", e);
+                                    }
+                                } else {
+                                    eprintln!("Failed to open folder: no focused window found");
                                 }
                             });
                         }

@@ -447,6 +447,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     setIsLoading(false)
   }
 
+  const handleMissingSessionInWorkspace = async () => {
+    resetChatState()
+    setSessions([])
+    await loadSessions()
+    toast.error('当前工作区中找不到该会话，已刷新会话列表')
+  }
+
   useEffect(() => {
     if (!isConfigured) {
       resetChatState()
@@ -744,6 +751,10 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     } catch (error) {
       console.error('Failed to load session:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('Failed to load AI session metadata: Query returned no rows')) {
+        await handleMissingSessionInWorkspace()
+        return
+      }
       toast.error(`加载会话失败: ${errorMessage}`)
     }
   }

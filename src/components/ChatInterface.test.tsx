@@ -258,6 +258,37 @@ describe('ChatInterface', () => {
     })
   })
 
+  it('refreshes the workspace session list when the selected session no longer exists there', async () => {
+    mockAiService.loadSession.mockRejectedValueOnce(new Error('Failed to load AI session metadata: Query returned no rows'))
+    mockAiService.listSessions
+      .mockResolvedValueOnce([
+        {
+          id: 'session-1',
+          title: 'Test Session',
+          created_at: Date.now(),
+          updated_at: Date.now(),
+          message_count: 0,
+          workspace: '/tmp/workspace',
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    render(<ChatInterface />)
+
+    const historyButton = await screen.findByTitle('会话历史')
+    fireEvent.click(historyButton)
+
+    const sessionButton = await screen.findByText('Test Session')
+    fireEvent.click(sessionButton)
+
+    await waitFor(() => {
+      expect(mockAiService.listSessions).toHaveBeenLastCalledWith('/tmp/workspace')
+      expect(toast.error).toHaveBeenCalledWith('当前工作区中找不到该会话，已刷新会话列表')
+      expect(screen.getByText('立即开始对话').textContent).toBe('立即开始对话')
+      expect((screen.getByPlaceholderText('请先点击“立即开始对话”，或打开历史记录选择已有会话') as HTMLTextAreaElement).disabled).toBe(true)
+    })
+  })
+
   it('shows a load error when session history itself cannot be read', async () => {
     mockAiService.loadSession.mockRejectedValueOnce(new Error('session missing'))
 
@@ -408,8 +439,8 @@ describe('ChatInterface', () => {
 
     await waitFor(() => {
       expect(mockAiService.listSessions).toHaveBeenLastCalledWith('/tmp/workspace-b')
-      expect(screen.getByText('尚未选择会话').textContent).toBe('尚未选择会话')
-      expect((screen.getByPlaceholderText('请先选择历史会话，或点击右上角 + 新建会话') as HTMLTextAreaElement).disabled).toBe(true)
+      expect(screen.getByText('立即开始对话').textContent).toBe('立即开始对话')
+      expect((screen.getByPlaceholderText('请先点击“立即开始对话”，或打开历史记录选择已有会话') as HTMLTextAreaElement).disabled).toBe(true)
     })
   })
 })

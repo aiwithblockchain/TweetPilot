@@ -7,6 +7,8 @@
   - `docs/workspace-process-isolation-refactor.md`
   - `docs/workspace-timer-isolation-refactor.md`
 - **目的**: 统一整理当前工作区隔离问题、定时器隔离方案、多窗口支持限制，以及后续重构方向
+- **后续待办**:
+  - 新窗口通过 `set-initial-workspace` 打开指定工作目录时，前端仍会先短暂显示首页，再进入工作区。这个问题与多窗口初始化链路以及定时任务的多窗口支持边界有关，暂不在本次修复范围内，后续单独讨论。
 
 ---
 

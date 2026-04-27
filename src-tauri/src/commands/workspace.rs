@@ -1,6 +1,7 @@
 use crate::services::storage;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -27,22 +28,30 @@ pub struct WorkspaceHistory {
 }
 
 pub struct RuntimeWorkspaceState {
-    current_workspace: Arc<Mutex<Option<String>>>,
+    current_workspaces: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl RuntimeWorkspaceState {
     pub fn new() -> Self {
         Self {
-            current_workspace: Arc::new(Mutex::new(None)),
+            current_workspaces: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub async fn set_current_workspace(&self, path: Option<String>) {
-        *self.current_workspace.lock().await = path;
+    pub async fn set_current_workspace(&self, window_label: &str, path: Option<String>) {
+        let mut current_workspaces = self.current_workspaces.lock().await;
+        match path {
+            Some(path) => {
+                current_workspaces.insert(window_label.to_string(), path);
+            }
+            None => {
+                current_workspaces.remove(window_label);
+            }
+        }
     }
 
-    pub async fn get_current_workspace(&self) -> Option<String> {
-        self.current_workspace.lock().await.clone()
+    pub async fn get_current_workspace(&self, window_label: &str) -> Option<String> {
+        self.current_workspaces.lock().await.get(window_label).cloned()
     }
 }
 
@@ -118,6 +127,10 @@ fn update_recent_workspaces(path: &str) -> Result<(), String> {
     save_recent_workspaces(&recent_workspaces)
 }
 
+fn generate_workspace_window_label() -> String {
+    format!("workspace-{}", uuid::Uuid::new_v4())
+}
+
 fn ensure_workspace_support_files(workspace_path: &Path) -> Result<(), String> {
     let config_dir = workspace_path.join(WORKSPACE_APP_DIR);
     std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建工作目录配置目录失败: {}", e))?;
@@ -143,9 +156,10 @@ fn ensure_workspace_support_files(workspace_path: &Path) -> Result<(), String> {
 
 async fn active_workspace_root(
     runtime_state: &RuntimeWorkspaceState,
+    window_label: &str,
 ) -> Result<PathBuf, String> {
     let workspace_root = runtime_state
-        .get_current_workspace()
+        .get_current_workspace(window_label)
         .await
         .ok_or_else(|| "当前未选择工作目录".to_string())?;
 
@@ -288,8 +302,9 @@ fn map_workspace_entry(path: &Path, metadata: &std::fs::Metadata) -> Result<Work
 async fn validate_workspace_path(
     path: &Path,
     runtime_state: &RuntimeWorkspaceState,
+    window_label: &str,
 ) -> Result<(), String> {
-    let root = active_workspace_root(runtime_state).await?;
+    let root = active_workspace_root(runtime_state, window_label).await?;
     let target = path
         .canonicalize()
         .map_err(|e| format!("解析目标路径失败: {}", e))?;
@@ -322,13 +337,14 @@ fn validate_workspace_entry_name(name: &str, label: &str) -> Result<String, Stri
 async fn validate_workspace_target_path(
     path: &Path,
     runtime_state: &RuntimeWorkspaceState,
+    window_label: &str,
 ) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("目标路径无效: {}", path.display()))?;
 
     ensure_directory_path(parent)?;
-    validate_workspace_path(parent, runtime_state).await
+    validate_workspace_path(parent, runtime_state, window_label).await
 }
 
 fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> {
@@ -468,8 +484,29 @@ pub async fn set_current_workspace(
     task_state: tauri::State<'_, crate::task_commands::TaskState>,
     ai_state: tauri::State<'_, crate::commands::ai::AiState>,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
+) -> Result<(), String> {
+    set_current_workspace_for_window_label(
+        path,
+        app,
+        task_state.inner(),
+        ai_state.inner(),
+        runtime_workspace_state.inner(),
+        window.label(),
+    )
+    .await
+}
+
+async fn set_current_workspace_for_window_label(
+    path: String,
+    app: AppHandle,
+    task_state: &crate::task_commands::TaskState,
+    ai_state: &crate::commands::ai::AiState,
+    runtime_workspace_state: &RuntimeWorkspaceState,
+    window_label: &str,
 ) -> Result<(), String> {
     log::info!("[set_current_workspace] Starting workspace switch to: {}", path);
+    let window_label = window_label.to_string();
 
     if path.trim().is_empty() {
         return Err("工作目录不能为空".to_string());
@@ -498,7 +535,7 @@ pub async fn set_current_workspace(
 
     // Step 2: Cancel and clear active AI runtime state for this workspace
     {
-        crate::commands::ai::clear_runtime_state_for_workspace(ai_state.inner(), &path).await;
+        crate::commands::ai::clear_runtime_state_for_workspace(ai_state, &path).await;
         log::info!("[set_current_workspace] Cleared active AI runtime state for workspace");
     }
 
@@ -519,7 +556,7 @@ pub async fn set_current_workspace(
     // Step 6: Update runtime workspace state and recent history
     log::info!("[set_current_workspace] Updating runtime workspace state");
     runtime_workspace_state
-        .set_current_workspace(Some(path.clone()))
+        .set_current_workspace(&window_label, Some(path.clone()))
         .await;
     update_recent_workspaces(&path)
 }
@@ -555,6 +592,7 @@ pub async fn clear_current_workspace_command(
     task_state: State<'_, crate::task_commands::TaskState>,
     ai_state: State<'_, crate::commands::ai::AiState>,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<(), String> {
     {
         let mut workspace_ctx = task_state.get_context().await;
@@ -565,20 +603,21 @@ pub async fn clear_current_workspace_command(
     }
 
     {
-        if let Some(active_workspace) = runtime_workspace_state.get_current_workspace().await {
+        if let Some(active_workspace) = runtime_workspace_state.get_current_workspace(window.label()).await {
             crate::commands::ai::clear_runtime_state_for_workspace(ai_state.inner(), &active_workspace).await;
         }
     }
 
-    runtime_workspace_state.set_current_workspace(None).await;
+    runtime_workspace_state.set_current_workspace(window.label(), None).await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_current_workspace(
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<Option<String>, String> {
-    Ok(runtime_workspace_state.get_current_workspace().await)
+    Ok(runtime_workspace_state.get_current_workspace(window.label()).await)
 }
 
 #[tauri::command]
@@ -590,10 +629,11 @@ pub async fn check_directory_exists(path: String) -> Result<bool, String> {
 pub async fn list_workspace_directory(
     path: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<Vec<WorkspaceEntry>, String> {
     let directory = PathBuf::from(&path);
     ensure_directory_path(&directory)?;
-    validate_workspace_path(&directory, runtime_workspace_state.inner()).await?;
+    validate_workspace_path(&directory, runtime_workspace_state.inner(), window.label()).await?;
 
     let mut entries = Vec::new();
 
@@ -626,9 +666,10 @@ pub async fn list_workspace_directory(
 pub async fn read_workspace_file(
     path: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<WorkspaceFileContent, String> {
     let file_path = PathBuf::from(&path);
-    validate_workspace_path(&file_path, runtime_workspace_state.inner()).await?;
+    validate_workspace_path(&file_path, runtime_workspace_state.inner(), window.label()).await?;
 
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("读取文件信息失败: {}", e))?;
     if !metadata.is_file() {
@@ -693,10 +734,11 @@ pub async fn read_workspace_file(
 pub async fn get_workspace_folder_summary(
     path: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<WorkspaceFolderSummary, String> {
     let directory = PathBuf::from(&path);
     ensure_directory_path(&directory)?;
-    validate_workspace_path(&directory, runtime_workspace_state.inner()).await?;
+    validate_workspace_path(&directory, runtime_workspace_state.inner(), window.label()).await?;
 
     let mut folder_count = 0usize;
     let mut file_count = 0usize;
@@ -736,12 +778,13 @@ pub async fn create_workspace_file(
     parent_path: String,
     name: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&name, "文件名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
-    validate_workspace_path(&parent, runtime_workspace_state.inner()).await?;
+    validate_workspace_path(&parent, runtime_workspace_state.inner(), window.label()).await?;
 
     let target = parent.join(trimmed_name);
     if target.exists() {
@@ -757,12 +800,13 @@ pub async fn create_workspace_folder(
     parent_path: String,
     name: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&name, "文件夹名")?;
 
     let parent = PathBuf::from(&parent_path);
     ensure_directory_path(&parent)?;
-    validate_workspace_path(&parent, runtime_workspace_state.inner()).await?;
+    validate_workspace_path(&parent, runtime_workspace_state.inner(), window.label()).await?;
 
     let target = parent.join(trimmed_name);
     if target.exists() {
@@ -778,10 +822,11 @@ pub async fn rename_workspace_entry(
     path: String,
     new_name: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<WorkspaceEntry, String> {
     let trimmed_name = validate_workspace_entry_name(&new_name, "名称")?;
     let source = PathBuf::from(&path);
-    validate_workspace_target_path(&source, runtime_workspace_state.inner()).await?;
+    validate_workspace_target_path(&source, runtime_workspace_state.inner(), window.label()).await?;
 
     if !source.exists() {
         return Err("要重命名的项目不存在".to_string());
@@ -804,9 +849,10 @@ pub async fn rename_workspace_entry(
 pub async fn delete_workspace_entry(
     path: String,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    window: tauri::Window,
 ) -> Result<(), String> {
     let target = PathBuf::from(&path);
-    validate_workspace_target_path(&target, runtime_workspace_state.inner()).await?;
+    validate_workspace_target_path(&target, runtime_workspace_state.inner(), window.label()).await?;
 
     if !target.exists() {
         return Err("要删除的项目不存在".to_string());
@@ -827,7 +873,7 @@ pub async fn open_workspace_in_new_window(app: AppHandle) -> Result<(), String> 
 
     let _window = WebviewWindowBuilder::new(
         &app,
-        format!("workspace-{}", chrono::Utc::now().timestamp()),
+        generate_workspace_window_label(),
         tauri::WebviewUrl::App("/".into()),
     )
     .title("TweetPilot")
@@ -839,7 +885,7 @@ pub async fn open_workspace_in_new_window(app: AppHandle) -> Result<(), String> 
 }
 
 /// Open folder dialog and switch workspace in current window
-pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
+pub async fn open_folder_dialog(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
     use tauri_plugin_dialog::DialogExt;
 
     let path = app
@@ -857,10 +903,19 @@ pub async fn open_folder_dialog(app: AppHandle) -> Result<(), String> {
 
         // Use set_current_workspace to properly update all state
         let runtime_workspace_state = app.state::<RuntimeWorkspaceState>();
-        set_current_workspace(path_str.clone(), app.clone(), task_state, ai_state, runtime_workspace_state).await?;
+        set_current_workspace_for_window_label(
+            path_str.clone(),
+            app.clone(),
+            task_state.inner(),
+            ai_state.inner(),
+            runtime_workspace_state.inner(),
+            window.label(),
+        )
+        .await?;
 
         // Emit event to frontend to reload workspace
-        app.emit("workspace-changed", path_str)
+        window
+            .emit("workspace-changed", path_str)
             .map_err(|e| format!("Failed to emit workspace-changed event: {}", e))?;
     }
 
@@ -884,7 +939,7 @@ pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
         // Create new window
         let window = WebviewWindowBuilder::new(
             &app,
-            format!("workspace-{}", chrono::Utc::now().timestamp()),
+            generate_workspace_window_label(),
             tauri::WebviewUrl::App("/".into()),
         )
         .title("TweetPilot")
