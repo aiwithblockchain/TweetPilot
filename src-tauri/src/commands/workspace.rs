@@ -393,22 +393,25 @@ fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> 
     map_workspace_entry(path, &metadata)
 }
 
+fn is_ignored_workspace_internal_path(path: &Path, workspace_root: &Path) -> bool {
+    let Ok(relative_path) = path.strip_prefix(workspace_root) else {
+        return false;
+    };
+
+    matches!(
+        relative_path.components().next(),
+        Some(std::path::Component::Normal(name)) if name == WORKSPACE_APP_DIR
+    )
+}
+
 fn should_emit_workspace_fs_event(event: &Event, workspace_root: &Path) -> bool {
     if event.paths.is_empty() {
-        log::info!("[workspace_watcher] skip notify event with empty paths");
         return false;
     }
 
-    let should_emit = event.paths.iter().any(|path| path.starts_with(workspace_root));
-    log::info!(
-        "[workspace_watcher] inspect notify event kind={:?} paths={:?} workspace_root={} should_emit={}",
-        event.kind,
-        event.paths,
-        workspace_root.display(),
-        should_emit
-    );
-
-    should_emit
+    event.paths.iter().any(|path| {
+        path.starts_with(workspace_root) && !is_ignored_workspace_internal_path(path, workspace_root)
+    })
 }
 
 async fn emit_workspace_fs_changed(app: &AppHandle, window_label: &str, workspace_path: &str) {
@@ -478,11 +481,6 @@ fn create_workspace_watcher(
                         continue;
                     }
 
-                    log::info!(
-                        "[workspace_watcher] debounce notify event window={} workspace_path={} delay_ms=120",
-                        window_label,
-                        workspace_path
-                    );
                     tokio::time::sleep(Duration::from_millis(120)).await;
                     emit_workspace_fs_changed(&app, &window_label, &workspace_path).await;
                 }

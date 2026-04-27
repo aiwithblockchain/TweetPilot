@@ -156,12 +156,10 @@ export const workspaceTauriService: WorkspaceService = {
   },
 
   async startWorkspaceWatcher(path: string) {
-    console.info('[workspace_watcher/client] startWorkspaceWatcher', { path })
     await tauriInvoke<void>('start_workspace_watcher', { path })
   },
 
   async stopWorkspaceWatcher() {
-    console.info('[workspace_watcher/client] stopWorkspaceWatcher')
     await tauriInvoke<void>('stop_workspace_watcher')
   },
 }
