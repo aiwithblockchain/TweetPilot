@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { useToast } from '@/contexts/ToastContext'
 import { aiService, type SessionMetadata, type StoredMessage } from '@/services/ai/tauri'
 import { workspaceService } from '@/services/workspace'
+import { formatForLog, toSafeError } from '@/lib/safe-logging'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
 import { SessionPanel } from './ChatInterface/SessionPanel'
 import { Clock, Plus } from 'lucide-react'
@@ -418,7 +419,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         const activeProvider = settings.providers.find(p => p.id === settings.active_provider)
         setIsConfigured(!!activeProvider && !!activeProvider.api_key)
       } catch (error) {
-        console.error('Failed to check AI config:', error)
+        console.error('Failed to check AI config:', toSafeError(error))
         toast.error('Failed to load AI configuration')
       }
     }
@@ -463,7 +464,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       if (requestId !== sessionLoadRequestIdRef.current) {
         return
       }
-      console.error('Failed to load sessions:', error)
+      console.error('Failed to load sessions:', toSafeError(error))
     }
   }, [isConfigured])
 
@@ -506,7 +507,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         return next
       })
     } catch (error) {
-      console.error('Failed to refresh session metadata:', error)
+      console.error('Failed to refresh session metadata:', toSafeError(error))
     }
   }, [isConfigured])
 
@@ -536,7 +537,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       await loadSessions(loadedSession.session.id)
       return true
     } catch (error) {
-      console.error('Failed to hydrate session:', error)
+      console.error('Failed to hydrate session:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       if (errorMessage.includes('Failed to load AI session metadata: Query returned no rows')) {
         await handleMissingSessionInWorkspace()
@@ -579,7 +580,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
         resolvedUnlisten = unlisten
       } catch (error) {
-        console.debug('[ChatInterface] workspace-changed listener unavailable', error)
+        console.debug('[ChatInterface] workspace-changed listener unavailable', toSafeError(error))
       }
     }
 
@@ -621,7 +622,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
         resolvedUnlisten = unlisten
       } catch (error) {
-        console.debug('[ChatInterface] panel reopen listener unavailable', error)
+        console.debug('[ChatInterface] panel reopen listener unavailable', toSafeError(error))
       }
     }
 
@@ -656,27 +657,27 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     const registerListeners = async () => {
       const [unlistenChunk, unlistenThinkingChunk, unlistenToolStart, unlistenToolEnd, unlistenAiStatus, unlistenRequestEnd] = await Promise.all([
         aiService.onMessageChunk((data) => {
-          console.log('[ChatInterface] Received message-chunk:', data)
+          console.log('[ChatInterface] Received message-chunk:', formatForLog({ request_id: data.request_id, chunkLength: data.chunk.length }))
           appendTextChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
         }),
         aiService.onThinkingChunk((data) => {
-          console.log('[ChatInterface] Received thinking-chunk:', data)
+          console.log('[ChatInterface] Received thinking-chunk:', formatForLog({ request_id: data.request_id, chunkLength: data.chunk.length }))
           appendThinkingChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
         }),
         aiService.onToolCallStart((data) => {
-          console.log('[ChatInterface] Received tool-call-start:', data)
+          console.log('[ChatInterface] Received tool-call-start:', formatForLog(data))
           applyToolStart(data.request_id, data.tool, data.action, currentRequestIdRef.current, setMessages, setPendingEvents)
         }),
         aiService.onToolCallEnd((data) => {
-          console.log('[ChatInterface] Received tool-call-end:', data)
+          console.log('[ChatInterface] Received tool-call-end:', formatForLog({ ...data, resultLength: data.result?.length ?? 0, result: undefined }))
           applyToolEnd(data.request_id, data.tool, data.success, data.result || '', currentRequestIdRef.current, setMessages, setPendingEvents)
         }),
         aiService.onAiStatus((data) => {
-          console.log('[ChatInterface] Received ai-status:', data)
+          console.log('[ChatInterface] Received ai-status:', formatForLog(data))
           applyStatus(data.request_id, data.text, currentRequestIdRef.current, setMessages, setPendingEvents)
         }),
         aiService.onRequestEnd((data) => {
-          console.log('[ChatInterface] Received ai-request-end:', data)
+          console.log('[ChatInterface] Received ai-request-end:', formatForLog({ ...data, final_text: undefined, finalTextLength: data.final_text?.length ?? 0, error: data.error ? '[present]' : undefined }))
           if (data.request_id !== currentRequestIdRef.current) {
             setPendingRequestEnds((prev) => ({
               ...prev,
@@ -790,12 +791,12 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [currentRequestId, pendingRequestEnds, refreshCurrentSessionMetadata, toast])
 
   const handleSend = async () => {
-    console.log('[ChatInterface] handleSend called', {
+    console.log('[ChatInterface] handleSend called', formatForLog({
       valueLength: value.length,
       isLoading,
       isConfigured,
       currentSessionId,
-    })
+    }))
 
     if (!value.trim() || isLoading) return
 
@@ -833,19 +834,19 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     assistantMessageIdRef.current = assistantMessage.id
 
-    console.log('[ChatInterface] Sending message:', userMessage.content)
+    console.log('[ChatInterface] Sending message:', formatForLog({ contentLength: userMessage.content.length }))
     setMessages((prev) => [...prev, userMessage, assistantMessage])
     setValue('')
     setIsLoading(true)
     setStopRequested(false)
 
     try {
-      console.log('[ChatInterface] About to call aiService.sendMessage')
+      console.log('[ChatInterface] About to call aiService.sendMessage', formatForLog({ contentLength: userMessage.content.length, workingDir }))
       const response = await aiService.sendMessage(userMessage.content, workingDir)
-      console.log('[ChatInterface] Received request ID:', response.request_id)
+      console.log('[ChatInterface] Received request ID:', formatForLog({ requestId: response.request_id }))
       setCurrentRequestId(response.request_id)
     } catch (error) {
-      console.error('[ChatInterface] Failed to send message:', error)
+      console.error('[ChatInterface] Failed to send message:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(`发送消息失败: ${errorMessage}`, 8000)
       setIsLoading(false)
@@ -865,7 +866,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       toast.info('正在停止当前生成...')
     } catch (error) {
       setStopRequested(false)
-      console.error('Failed to cancel message:', error)
+      console.error('Failed to cancel message:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(`停止生成失败: ${errorMessage}`)
     }
@@ -901,7 +902,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       await aiService.activateSession(sessionId, workingDir)
       toast.success('会话已加载')
     } catch (error) {
-      console.error('Failed to activate session runtime:', error)
+      console.error('Failed to activate session runtime:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.warning(`会话历史已加载，但当前无法继续对话: ${errorMessage}`)
     }
@@ -922,7 +923,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       await loadSessions(sessionId)
       toast.success('新会话已创建')
     } catch (error) {
-      console.error('Failed to create session:', error)
+      console.error('Failed to create session:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(`创建会话失败: ${errorMessage}`)
     }
@@ -956,7 +957,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
       toast.success('会话已删除')
     } catch (error) {
-      console.error('Failed to delete session:', error)
+      console.error('Failed to delete session:', toSafeError(error))
       const errorMessage = error instanceof Error ? error.message : String(error)
       toast.error(`删除会话失败: ${errorMessage}`)
     }

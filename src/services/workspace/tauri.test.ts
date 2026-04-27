@@ -78,4 +78,19 @@ describe('workspaceTauriService', () => {
       path: '/tmp/workspace/src/original.ts',
     })
   })
+
+  it('maps workspace watcher commands to Tauri commands', async () => {
+    const { workspaceTauriService } = await import('./tauri')
+
+    tauriInvokeMock.mockResolvedValueOnce(undefined)
+    tauriInvokeMock.mockResolvedValueOnce(undefined)
+
+    await workspaceTauriService.startWorkspaceWatcher('/tmp/workspace')
+    await workspaceTauriService.stopWorkspaceWatcher()
+
+    expect(tauriInvokeMock).toHaveBeenNthCalledWith(1, 'start_workspace_watcher', {
+      path: '/tmp/workspace',
+    })
+    expect(tauriInvokeMock).toHaveBeenNthCalledWith(2, 'stop_workspace_watcher')
+  })
 })

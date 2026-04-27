@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { taskService, workspaceService } from '@/services'
 import type { Task } from '@/services/task'
 import { convertCronToLocalTime } from '@/lib/cron-utils'
+import { formatForLog, toSafeError } from '@/lib/safe-logging'
 
 function getTaskBadge(task: Task): { badge?: string; badgeTone?: 'default' | 'success' | 'warning' | 'danger' } {
   if (task.status === 'failed' || task.lastExecutionStatus === 'failure') {
@@ -33,7 +34,7 @@ export function useTasksSidebarItems() {
 
       console.log('[useTasksSidebarItems] Checking current workspace')
       const currentWorkspace = await workspaceService.getCurrentWorkspace()
-      console.log('[useTasksSidebarItems] Current workspace:', currentWorkspace)
+      console.log('[useTasksSidebarItems] Current workspace:', formatForLog({ currentWorkspace }))
 
       if (!currentWorkspace) {
         console.log('[useTasksSidebarItems] No workspace selected, setting empty tasks')
@@ -44,7 +45,7 @@ export function useTasksSidebarItems() {
 
       console.log('[useTasksSidebarItems] Fetching tasks from backend')
       const result = await taskService.getTasks()
-      console.log('[useTasksSidebarItems] Tasks fetched:', result.length)
+      console.log('[useTasksSidebarItems] Tasks fetched:', formatForLog({ count: result.length }))
       setTasks(result)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '读取任务失败'
@@ -55,7 +56,7 @@ export function useTasksSidebarItems() {
         setTasks([])
         setError(null)
       } else {
-        console.error('[useTasksSidebarItems] Unexpected error:', err)
+        console.error('[useTasksSidebarItems] Unexpected error:', toSafeError(err))
         setError(errorMessage)
       }
     } finally {
@@ -97,7 +98,7 @@ export function useTasksSidebarItems() {
 
       for (const messageId of messageIds) {
         const unlisten = await listen(messageId, (event) => {
-          console.log('[useTasksSidebarItems] Received event:', messageId, event.payload)
+          console.log('[useTasksSidebarItems] Received event:', formatForLog({ messageId, hasPayload: event.payload != null }))
           scheduleReload()
         })
 

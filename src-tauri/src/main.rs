@@ -27,6 +27,7 @@ fn main() {
     // Initialize task state (workspace context will be created when workspace is selected)
     let task_state = TaskState::new();
     let runtime_workspace_state = workspace::RuntimeWorkspaceState::new();
+    let workspace_watcher_state = workspace::WorkspaceWatcherState::new();
 
     // Initialize AI state
     let ai_state = ai::AiState::new();
@@ -36,6 +37,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(task_state)
         .manage(runtime_workspace_state)
+        .manage(workspace_watcher_state)
         .manage(ai_state)
         .setup(move |app| {
             if let Err(error) = services::resource_installer::ensure_bundled_home_installed(&app.path().resource_dir()?) {
@@ -138,6 +140,8 @@ fn main() {
             workspace::create_workspace_folder,
             workspace::rename_workspace_entry,
             workspace::delete_workspace_entry,
+            workspace::start_workspace_watcher,
+            workspace::stop_workspace_watcher,
             // Account commands
             account::get_instances,
             account::get_managed_accounts,

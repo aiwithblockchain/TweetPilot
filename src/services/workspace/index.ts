@@ -8,6 +8,7 @@ export type {
   WorkspaceFolderSummary,
   WorkspaceHistory,
   WorkspaceService,
+  WorkspaceWatcherEvent,
 } from './types'
 
 export const workspaceService = workspaceTauriService

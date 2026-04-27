@@ -1,11 +1,13 @@
 use crate::services::storage;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use std::time::Duration;
+use tauri::{async_runtime::JoinHandle, AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 const RECENT_WORKSPACES_FILE: &str = "recent-workspaces.json";
@@ -25,6 +27,41 @@ pub struct WorkspaceHistory {
     pub path: String,
     pub name: String,
     pub last_accessed: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceWatcherEventPayload {
+    pub workspace_path: String,
+}
+
+struct WorkspaceWatcherHandle {
+    _watcher: RecommendedWatcher,
+    task: JoinHandle<()>,
+}
+
+pub struct WorkspaceWatcherState {
+    watchers: Arc<Mutex<HashMap<String, WorkspaceWatcherHandle>>>,
+}
+
+impl WorkspaceWatcherState {
+    pub fn new() -> Self {
+        Self {
+            watchers: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn stop_for_window(&self, window_label: &str) {
+        let mut watchers = self.watchers.lock().await;
+        if let Some(handle) = watchers.remove(window_label) {
+            handle.task.abort();
+        }
+    }
+
+    async fn replace_for_window(&self, window_label: &str, handle: WorkspaceWatcherHandle) {
+        self.stop_for_window(window_label).await;
+        self.watchers.lock().await.insert(window_label.to_string(), handle);
+    }
 }
 
 pub struct RuntimeWorkspaceState {
@@ -352,6 +389,74 @@ fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> 
     map_workspace_entry(path, &metadata)
 }
 
+fn should_emit_workspace_fs_event(event: &Event, workspace_root: &Path) -> bool {
+    if event.paths.is_empty() {
+        return false;
+    }
+
+    event.paths.iter().any(|path| path.starts_with(workspace_root))
+}
+
+async fn emit_workspace_fs_changed(app: &AppHandle, window_label: &str, workspace_path: &str) {
+    if let Some(window) = app.get_webview_window(window_label) {
+        let payload = WorkspaceWatcherEventPayload {
+            workspace_path: workspace_path.to_string(),
+        };
+
+        if let Err(error) = window.emit("workspace-fs-changed", payload) {
+            log::debug!("[workspace-watcher] Failed to emit workspace-fs-changed: {}", error);
+        }
+    }
+}
+
+fn create_workspace_watcher(
+    app: AppHandle,
+    window_label: String,
+    workspace_path: String,
+) -> Result<WorkspaceWatcherHandle, String> {
+    let workspace_root = PathBuf::from(&workspace_path)
+        .canonicalize()
+        .map_err(|e| format!("解析工作目录失败: {}", e))?;
+
+    ensure_directory_path(&workspace_root)?;
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<notify::Result<Event>>();
+    let mut watcher = RecommendedWatcher::new(
+        move |result| {
+            let _ = tx.send(result);
+        },
+        Config::default(),
+    )
+    .map_err(|e| format!("创建工作区 watcher 失败: {}", e))?;
+
+    watcher
+        .watch(&workspace_root, RecursiveMode::Recursive)
+        .map_err(|e| format!("监听工作区失败: {}", e))?;
+
+    let task = tauri::async_runtime::spawn(async move {
+        while let Some(result) = rx.recv().await {
+            match result {
+                Ok(event) => {
+                    if !should_emit_workspace_fs_event(&event, &workspace_root) {
+                        continue;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(120)).await;
+                    emit_workspace_fs_changed(&app, &window_label, &workspace_path).await;
+                }
+                Err(error) => {
+                    log::debug!("[workspace-watcher] notify error: {}", error);
+                }
+            }
+        }
+    });
+
+    Ok(WorkspaceWatcherHandle {
+        _watcher: watcher,
+        task,
+    })
+}
+
 #[tauri::command]
 pub async fn select_local_directory(app: AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -592,6 +697,7 @@ pub async fn clear_current_workspace_command(
     task_state: State<'_, crate::task_commands::TaskState>,
     ai_state: State<'_, crate::commands::ai::AiState>,
     runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    workspace_watcher_state: State<'_, WorkspaceWatcherState>,
     window: tauri::Window,
 ) -> Result<(), String> {
     {
@@ -609,6 +715,7 @@ pub async fn clear_current_workspace_command(
     }
 
     runtime_workspace_state.set_current_workspace(window.label(), None).await;
+    workspace_watcher_state.stop_for_window(window.label()).await;
     Ok(())
 }
 
@@ -618,6 +725,39 @@ pub async fn get_current_workspace(
     window: tauri::Window,
 ) -> Result<Option<String>, String> {
     Ok(runtime_workspace_state.get_current_workspace(window.label()).await)
+}
+
+#[tauri::command]
+pub async fn start_workspace_watcher(
+    path: String,
+    runtime_workspace_state: State<'_, RuntimeWorkspaceState>,
+    workspace_watcher_state: State<'_, WorkspaceWatcherState>,
+    app: AppHandle,
+    window: tauri::Window,
+) -> Result<(), String> {
+    let workspace_root = active_workspace_root(runtime_workspace_state.inner(), window.label()).await?;
+    let requested_path = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|e| format!("解析工作目录失败: {}", e))?;
+
+    if requested_path != workspace_root {
+        return Err("请求监听的工作目录与当前窗口工作目录不一致".to_string());
+    }
+
+    let handle = create_workspace_watcher(app, window.label().to_string(), path)?;
+    workspace_watcher_state
+        .replace_for_window(window.label(), handle)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_workspace_watcher(
+    workspace_watcher_state: State<'_, WorkspaceWatcherState>,
+    window: tauri::Window,
+) -> Result<(), String> {
+    workspace_watcher_state.stop_for_window(window.label()).await;
+    Ok(())
 }
 
 #[tauri::command]

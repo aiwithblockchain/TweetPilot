@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen, emit } from '@tauri-apps/api/event'
 import type { AccountListItem } from '@/services/account'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
@@ -27,7 +27,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { useBlockingOverlay } from '@/contexts/BlockingOverlayContext'
 import { dataBlocksService, getManagedAccounts, getUnmanagedOnlineAccounts, workspaceService } from '@/services'
 import { layoutService } from '@/services/layout'
-import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary } from '@/services/workspace'
+import type { WorkspaceEntry, WorkspaceFileContent, WorkspaceFolderSummary, WorkspaceWatcherEvent } from '@/services/workspace'
 import type { AppInstance } from '@/types/layout'
 
 export type WorkspaceCreateKind = 'file' | 'folder'
@@ -293,6 +293,9 @@ export function useAppLayoutState() {
   })
   const [workspaceRefreshPending, setWorkspaceRefreshPending] = useState(false)
   const [workspaceRefreshError, setWorkspaceRefreshError] = useState<string | null>(null)
+  const workspaceRefreshInFlightRef = useRef(false)
+  const workspaceRefreshQueuedRef = useRef(false)
+  const workspaceFsRefreshTimerRef = useRef<number | null>(null)
   const [workspaceFileContent, setWorkspaceFileContent] = useState<WorkspaceFileContent | null>(null)
   const [workspaceFolderSummary, setWorkspaceFolderSummary] = useState<WorkspaceFolderSummary | null>(null)
   const [workspaceDetailLoading, setWorkspaceDetailLoading] = useState(false)
@@ -575,6 +578,28 @@ export function useAppLayoutState() {
     }
   }
 
+  const runWorkspaceRefresh = useCallback(async (options?: { preserveSelectionPath?: string | null }) => {
+    if (workspaceRefreshInFlightRef.current) {
+      workspaceRefreshQueuedRef.current = true
+      return null
+    }
+
+    workspaceRefreshInFlightRef.current = true
+
+    try {
+      let result = await refreshWorkspaceTree(options)
+
+      while (workspaceRefreshQueuedRef.current) {
+        workspaceRefreshQueuedRef.current = false
+        result = await refreshWorkspaceTree(options)
+      }
+
+      return result
+    } finally {
+      workspaceRefreshInFlightRef.current = false
+    }
+  }, [expandedWorkspacePaths, selectedItemsByView.workspace, workspaceRoot])
+
   const resolveWorkspaceCreateParentPath = () => {
     const selectedPath = selectedItemsByView.workspace
     if (!selectedPath) return workspaceRoot
@@ -710,7 +735,7 @@ export function useAppLayoutState() {
         path: workspaceRenameState.path,
         newName: nextName,
       })
-      await refreshWorkspaceTree({ preserveSelectionPath: renamed.path })
+      await runWorkspaceRefresh({ preserveSelectionPath: renamed.path })
       setWorkspaceRecentMutation({ path: renamed.path, kind: 'rename', timestamp: Date.now() })
       resetWorkspaceRenameState()
       toast.success('重命名成功')
@@ -753,7 +778,7 @@ export function useAppLayoutState() {
 
     try {
       await workspaceService.deleteEntry(workspaceDeleteState.path)
-      await refreshWorkspaceTree({ preserveSelectionPath: fallbackPath })
+      await runWorkspaceRefresh({ preserveSelectionPath: fallbackPath })
       closeWorkspaceDeleteDialog(true)
       toast.success('删除成功')
     } catch (error) {
@@ -831,7 +856,7 @@ export function useAppLayoutState() {
         ? await workspaceService.createFile({ parentPath: workspaceInlineCreate.parentPath, name: nextName })
         : await workspaceService.createFolder({ parentPath: workspaceInlineCreate.parentPath, name: nextName })
 
-      await refreshWorkspaceTree({ preserveSelectionPath: created.path })
+      await runWorkspaceRefresh({ preserveSelectionPath: created.path })
       setWorkspaceRecentMutation({ path: created.path, kind: 'create', timestamp: Date.now() })
       resetWorkspaceInlineCreate()
       toast.success(workspaceInlineCreate.kind === 'file' ? '文件已创建' : '文件夹已创建')
@@ -923,6 +948,84 @@ export function useAppLayoutState() {
       unlisten?.()
     }
   }, [loadWorkspaceRoot])
+
+  useEffect(() => {
+    if (!workspaceRoot) {
+      return
+    }
+
+    let disposed = false
+
+    const syncWatcher = async () => {
+      try {
+        await workspaceService.stopWorkspaceWatcher()
+        await workspaceService.startWorkspaceWatcher(workspaceRoot)
+      } catch (error) {
+        if (!disposed) {
+          console.debug('[useAppLayoutState] Failed to sync workspace watcher', error)
+        }
+      }
+    }
+
+    void syncWatcher()
+
+    return () => {
+      disposed = true
+      if (workspaceFsRefreshTimerRef.current !== null) {
+        window.clearTimeout(workspaceFsRefreshTimerRef.current)
+        workspaceFsRefreshTimerRef.current = null
+      }
+      void workspaceService.stopWorkspaceWatcher().catch((error) => {
+        console.debug('[useAppLayoutState] Failed to stop workspace watcher', error)
+      })
+    }
+  }, [workspaceRoot])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: null | (() => void) = null
+
+    const bindWorkspaceFsChanged = async () => {
+      try {
+        const cleanup = await listen<WorkspaceWatcherEvent>('workspace-fs-changed', (event) => {
+          if (!workspaceRoot || event.payload.workspacePath !== workspaceRoot) {
+            return
+          }
+
+          if (workspaceFsRefreshTimerRef.current !== null) {
+            window.clearTimeout(workspaceFsRefreshTimerRef.current)
+          }
+
+          workspaceFsRefreshTimerRef.current = window.setTimeout(() => {
+            workspaceFsRefreshTimerRef.current = null
+            void runWorkspaceRefresh().catch((error) => {
+              setWorkspaceError(error instanceof Error ? error.message : '工作区加载失败')
+            })
+          }, 200)
+        })
+
+        if (disposed) {
+          cleanup()
+          return
+        }
+
+        unlisten = cleanup
+      } catch (error) {
+        console.debug('[useAppLayoutState] Failed to register workspace fs listener', error)
+      }
+    }
+
+    void bindWorkspaceFsChanged()
+
+    return () => {
+      disposed = true
+      unlisten?.()
+      if (workspaceFsRefreshTimerRef.current !== null) {
+        window.clearTimeout(workspaceFsRefreshTimerRef.current)
+        workspaceFsRefreshTimerRef.current = null
+      }
+    }
+  }, [runWorkspaceRefresh, workspaceRoot])
 
   useEffect(() => {
     let cancelled = false
@@ -1258,7 +1361,7 @@ export function useAppLayoutState() {
     if (actionId === 'refresh-workspace') {
       if (workspaceRoot) {
         try {
-          await refreshWorkspaceTree()
+          await runWorkspaceRefresh()
           toast.success('工作区已刷新')
         } catch (error) {
           toast.error(getWorkspaceCreateErrorMessage(error, '刷新失败'))

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { AiSettings, ProviderConfig } from '@/types/ai-settings'
 import type { PersistedAssistantTimelineItem } from '@/components/ChatInterface/types'
+import { formatForLog, toSafeError } from '@/lib/safe-logging'
 
 export interface Message {
   id: string
@@ -59,13 +60,13 @@ export const aiService = {
   },
 
   async sendMessage(message: string, workingDir: string): Promise<{ request_id: string }> {
-    console.log('[aiService] Invoking send_ai_message', { messageLength: message.length, workingDir })
+    console.log('[aiService] Invoking send_ai_message', formatForLog({ messageLength: message.length, workingDir }))
     try {
       const response = await invoke<{ request_id: string }>('send_ai_message', { message, workingDir })
-      console.log('[aiService] send_ai_message resolved', response)
+      console.log('[aiService] send_ai_message resolved', formatForLog(response))
       return response
     } catch (error) {
-      console.error('[aiService] send_ai_message failed', error)
+      console.error('[aiService] send_ai_message failed', toSafeError(error))
       throw error
     }
   },

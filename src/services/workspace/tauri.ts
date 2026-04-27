@@ -158,4 +158,12 @@ export const workspaceTauriService: WorkspaceService = {
   async deleteEntry(path: string) {
     await tauriInvoke<void>('delete_workspace_entry', { path })
   },
+
+  async startWorkspaceWatcher(path: string) {
+    await tauriInvoke<void>('start_workspace_watcher', { path })
+  },
+
+  async stopWorkspaceWatcher() {
+    await tauriInvoke<void>('stop_workspace_watcher')
+  },
 }

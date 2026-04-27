@@ -1,17 +1,20 @@
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { listen } from '@tauri-apps/api/event'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { BlockingOverlayProvider } from '@/contexts/BlockingOverlayContext'
 import { useAppLayoutState } from './useAppLayoutState'
-import type { WorkspaceEntry } from '@/services/workspace'
+import type { WorkspaceEntry, WorkspaceWatcherEvent } from '@/services/workspace'
 
 const workspaceChangedListeners: Array<(event: { payload: string }) => void> = []
+const workspaceFsChangedListeners: Array<(event: { payload: WorkspaceWatcherEvent }) => void> = []
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async (eventName: string, callback: (event: { payload: string }) => void) => {
+  listen: vi.fn(async (eventName: string, callback: (event: { payload: string | WorkspaceWatcherEvent }) => void) => {
     if (eventName === 'workspace-changed') {
-      workspaceChangedListeners.push(callback)
+      workspaceChangedListeners.push(callback as (event: { payload: string }) => void)
+    }
+    if (eventName === 'workspace-fs-changed') {
+      workspaceFsChangedListeners.push(callback as (event: { payload: WorkspaceWatcherEvent }) => void)
     }
     return () => {}
   }),
@@ -27,6 +30,8 @@ const mocks = vi.hoisted(() => ({
     deleteEntry: vi.fn(),
     getFolderSummary: vi.fn(),
     readFile: vi.fn(),
+    startWorkspaceWatcher: vi.fn(),
+    stopWorkspaceWatcher: vi.fn(),
   },
   getManagedAccounts: vi.fn(),
   getUnmanagedOnlineAccounts: vi.fn(),
@@ -148,7 +153,7 @@ afterEach(() => {
 describe('useAppLayoutState workspace explorer flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    workspaceChangedListeners.length = 0
+    workspaceFsChangedListeners.length = 0
     mocks.workspaceService.getCurrentWorkspace.mockResolvedValue('/workspace')
     mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
       if (path === '/workspace') return initialRootEntries
@@ -175,12 +180,8 @@ describe('useAppLayoutState workspace explorer flow', () => {
       folderCount: 1,
       fileCount: 0,
     })
-    mocks.workspaceService.readFile.mockResolvedValue({
-      path: '/workspace/src/index.ts',
-      name: 'index.ts',
-      contentType: 'text',
-      textContent: 'console.log("hi")',
-    })
+    mocks.workspaceService.startWorkspaceWatcher.mockResolvedValue(undefined)
+    mocks.workspaceService.stopWorkspaceWatcher.mockResolvedValue(undefined)
     mocks.getManagedAccounts.mockResolvedValue([])
     mocks.getUnmanagedOnlineAccounts.mockResolvedValue([])
     mocks.layoutGetInstances.mockResolvedValue([])
@@ -301,6 +302,50 @@ describe('useAppLayoutState workspace explorer flow', () => {
       expect(mocks.workspaceService.deleteEntry).toHaveBeenCalledWith('/workspace/src')
       expect(screen.getByTestId('delete-open').textContent).toBe('false')
       expect(screen.getByTestId('selected-id').textContent).toBe('/workspace')
+    })
+  })
+
+  it('starts and stops workspace watcher with the active workspace', async () => {
+    renderHarness()
+
+    await waitFor(() => {
+      expect(mocks.workspaceService.startWorkspaceWatcher).toHaveBeenCalledWith('/workspace')
+    })
+  })
+
+  it('refreshes workspace tree after workspace fs change events', async () => {
+    let rootEntries = initialRootEntries
+
+    mocks.workspaceService.listDirectory.mockImplementation(async (path: string) => {
+      if (path === '/workspace') return rootEntries
+      if (path === '/workspace/src') return initialSrcEntries
+      if (path === '/workspace/docs') return []
+      return []
+    })
+
+    renderHarness()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tree-items').textContent).toContain('/workspace/src')
+      expect(workspaceFsChangedListeners.length).toBeGreaterThan(0)
+    })
+
+    rootEntries = [
+      ...initialRootEntries,
+      {
+        path: '/workspace/docs',
+        name: 'docs',
+        kind: 'directory',
+        hasChildren: false,
+      },
+    ]
+
+    workspaceFsChangedListeners[workspaceFsChangedListeners.length - 1]({
+      payload: { workspacePath: '/workspace' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tree-items').textContent).toContain('/workspace/docs')
     })
   })
 

@@ -46,6 +46,10 @@ export interface RenameWorkspaceEntryInput {
   newName: string
 }
 
+export interface WorkspaceWatcherEvent {
+  workspacePath: string
+}
+
 export interface WorkspaceService {
   selectLocalDirectory(): Promise<string | null>
   cloneFromGithub(repositoryUrl: string, targetPath: string): Promise<string>
@@ -63,4 +67,6 @@ export interface WorkspaceService {
   createFolder(input: CreateWorkspaceEntryInput): Promise<WorkspaceEntry>
   renameEntry(input: RenameWorkspaceEntryInput): Promise<WorkspaceEntry>
   deleteEntry(path: string): Promise<void>
+  startWorkspaceWatcher(path: string): Promise<void>
+  stopWorkspaceWatcher(): Promise<void>
 }

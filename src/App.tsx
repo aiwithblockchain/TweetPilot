@@ -17,6 +17,7 @@ import { BlockingOverlayProvider } from './contexts/BlockingOverlayContext'
 import { taskService } from './services'
 import { useAppLayoutState } from './hooks/useAppLayoutState'
 import { settingsService } from './services'
+import { formatForLog, toSafeError } from './lib/safe-logging'
 import type { AppSettings } from './services/settings'
 import './styles/vscode-theme.css'
 
@@ -389,11 +390,11 @@ function AppContent() {
     }
 
     if (initializingWorkspacePathsRef.current.has(normalizedPath)) {
-      console.log('[App] Skipping duplicate workspace initialization:', normalizedPath)
+      console.log('[App] Skipping duplicate workspace initialization:', formatForLog({ path: normalizedPath }))
       return false
     }
 
-    console.log('[App] Initializing workspace:', normalizedPath)
+    console.log('[App] Initializing workspace:', formatForLog({ path: normalizedPath }))
     initializingWorkspacePathsRef.current.add(normalizedPath)
     setIsInitializingWorkspace(true)
 
@@ -404,7 +405,7 @@ function AppContent() {
       setWorkspaceReady(true)
       return true
     } catch (error) {
-      console.error('[App] Failed to initialize workspace:', error)
+      console.error('[App] Failed to initialize workspace:', toSafeError(error))
       return false
     } finally {
       initializingWorkspacePathsRef.current.delete(normalizedPath)
@@ -418,7 +419,7 @@ function AppContent() {
         const runtimeWorkspace = await invoke<string | null>('get_current_workspace')
 
         if (runtimeWorkspace) {
-          console.log('[App] Restoring runtime workspace after reload:', runtimeWorkspace)
+          console.log('[App] Restoring runtime workspace after reload:', formatForLog({ path: runtimeWorkspace }))
           setCurrentWorkspace(runtimeWorkspace)
           setWorkspaceReady(true)
           return
@@ -426,7 +427,7 @@ function AppContent() {
 
         console.log('[App] Starting app, will show workspace selector')
       } catch (error) {
-        console.error('[App] Failed to read runtime workspace:', error)
+        console.error('[App] Failed to read runtime workspace:', toSafeError(error))
       } finally {
         setIsCheckingWorkspace(false)
       }
@@ -444,12 +445,12 @@ function AppContent() {
       try {
         const [unlistenWorkspaceChanged, unlistenSetInitialWorkspace] = await Promise.all([
           listen<string>('workspace-changed', (event) => {
-            console.log('[App] Workspace changed via menu:', event.payload)
+            console.log('[App] Workspace changed via menu:', formatForLog({ path: event.payload }))
             setCurrentWorkspace(event.payload)
             setWorkspaceReady(true)
           }),
           listen<string>('set-initial-workspace', (event) => {
-            console.log('[App] Set initial workspace for new window:', event.payload)
+            console.log('[App] Set initial workspace for new window:', formatForLog({ path: event.payload }))
             void initializeWorkspace(event.payload).finally(() => {
               setIsCheckingWorkspace(false)
             })
@@ -464,7 +465,7 @@ function AppContent() {
 
         cleanupFns = [unlistenWorkspaceChanged, unlistenSetInitialWorkspace]
       } catch (error) {
-        console.debug('[App] Failed to register workspace event listeners', error)
+        console.debug('[App] Failed to register workspace event listeners', toSafeError(error))
       }
     }
 
@@ -478,7 +479,7 @@ function AppContent() {
   }, [initializeWorkspace])
 
   const handleWorkspaceSelected = useCallback(async (path: string) => {
-    console.log('[App] Workspace selected:', path)
+    console.log('[App] Workspace selected:', formatForLog({ path }))
     await initializeWorkspace(path)
   }, [initializeWorkspace])
 
@@ -507,7 +508,7 @@ function App() {
         const settings = await settingsService.getSettings()
         applyTheme(settings.theme)
       } catch (error) {
-        console.error('Failed to load theme settings:', error)
+        console.error('Failed to load theme settings:', toSafeError(error))
         // Fallback to dark theme
         applyTheme('dark')
       }
