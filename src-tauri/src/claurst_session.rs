@@ -31,9 +31,14 @@ fn collect_final_text_from_message(msg: &Message) -> String {
 }
 
 fn to_runtime_message(message: StoredMessage) -> Option<Message> {
+    let content = message.content.trim();
+    if content.is_empty() {
+        return None;
+    }
+
     match message.role.as_str() {
-        "user" => Some(Message::user(message.content)),
-        "assistant" => Some(Message::assistant(message.content)),
+        "user" => Some(Message::user(content.to_string())),
+        "assistant" => Some(Message::assistant(content.to_string())),
         _ => None,
     }
 }

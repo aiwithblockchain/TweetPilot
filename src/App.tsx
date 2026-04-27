@@ -315,10 +315,14 @@ function AppShell() {
           </div>
         </div>
 
-        {rightPanelVisible && !isCompactLayout && (
+        {!isCompactLayout && (
           <>
-            <ResizableDivider side="right" onResize={persistRightWidth} isVisible={rightPanelVisible} />
-            <RightPanel width={rightWidth} onToggle={() => persistRightPanelVisible(false)} onOpenSettings={openSettingsDialog} />
+            {rightPanelVisible && (
+              <ResizableDivider side="right" onResize={persistRightWidth} isVisible={rightPanelVisible} />
+            )}
+            <div className={rightPanelVisible ? 'flex' : 'hidden'}>
+              <RightPanel width={rightWidth} onToggle={() => persistRightPanelVisible(false)} onOpenSettings={openSettingsDialog} />
+            </div>
           </>
         )}
       </div>
@@ -443,7 +447,6 @@ function AppContent() {
             console.log('[App] Workspace changed via menu:', event.payload)
             setCurrentWorkspace(event.payload)
             setWorkspaceReady(true)
-            setTimeout(() => window.location.reload(), 100)
           }),
           listen<string>('set-initial-workspace', (event) => {
             console.log('[App] Set initial workspace for new window:', event.payload)

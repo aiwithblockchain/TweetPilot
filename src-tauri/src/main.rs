@@ -17,8 +17,6 @@ use commands::{workspace, account, data_blocks, preferences, ai};
 use task_commands::TaskState;
 
 fn main() {
-    use std::sync::Arc;
-
     // Initialize logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
@@ -31,9 +29,7 @@ fn main() {
     let runtime_workspace_state = workspace::RuntimeWorkspaceState::new();
 
     // Initialize AI state
-    let ai_state = ai::AiState {
-        windows: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-    };
+    let ai_state = ai::AiState::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

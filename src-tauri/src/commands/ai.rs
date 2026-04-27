@@ -8,6 +8,12 @@ use crate::services::ai_config::{self, AiSettings, ProviderConfig};
 use crate::services::ai_storage::{AiStorage, CreateSessionInput, LoadedSession, SessionMetadata};
 use crate::services::{resource_installer, session_constraints};
 
+#[derive(Clone)]
+struct InFlightRequestContext {
+    cancel_token: CancellationToken,
+    request_id: String,
+}
+
 fn build_session_system_prompt(working_dir: &std::path::Path) -> Result<session_constraints::SessionConstraints, String> {
     session_constraints::build_session_constraints(working_dir, None)
 }
@@ -73,16 +79,27 @@ pub struct WindowAiRuntimeState {
 
 pub struct AiState {
     pub windows: Arc<Mutex<HashMap<String, WindowAiRuntimeState>>>,
+    in_flight_requests: Arc<Mutex<HashMap<String, InFlightRequestContext>>>,
+}
+
+impl AiState {
+    pub fn new() -> Self {
+        Self {
+            windows: Arc::new(Mutex::new(HashMap::new())),
+            in_flight_requests: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
 }
 
 pub async fn reset_runtime_state(state: &AiState, window_label: &str) {
     state.windows.lock().await.remove(window_label);
+    state.in_flight_requests.lock().await.remove(window_label);
 }
 
 pub async fn clear_runtime_state_for_workspace(state: &AiState, working_dir: &str) {
-    let removed_states = {
-        let mut windows = state.windows.lock().await;
-        let labels_to_clear: Vec<String> = windows
+    let labels_to_clear = {
+        let windows = state.windows.lock().await;
+        windows
             .iter()
             .filter_map(|(label, runtime)| {
                 if runtime.active_working_dir.as_deref() == Some(working_dir) {
@@ -91,11 +108,22 @@ pub async fn clear_runtime_state_for_workspace(state: &AiState, working_dir: &st
                     None
                 }
             })
-            .collect();
+            .collect::<Vec<_>>()
+    };
 
+    let removed_states = {
+        let mut windows = state.windows.lock().await;
         labels_to_clear
-            .into_iter()
-            .filter_map(|label| windows.remove(&label))
+            .iter()
+            .filter_map(|label| windows.remove(label))
+            .collect::<Vec<_>>()
+    };
+
+    let removed_requests = {
+        let mut requests = state.in_flight_requests.lock().await;
+        labels_to_clear
+            .iter()
+            .filter_map(|label| requests.remove(label))
             .collect::<Vec<_>>()
     };
 
@@ -103,6 +131,10 @@ pub async fn clear_runtime_state_for_workspace(state: &AiState, working_dir: &st
         if let Some(token) = runtime.cancel_token {
             token.cancel();
         }
+    }
+
+    for request in removed_requests {
+        request.cancel_token.cancel();
     }
 }
 
@@ -364,11 +396,30 @@ pub async fn send_ai_message(
     let cancel_token = CancellationToken::new();
     let request_id = uuid::Uuid::new_v4().to_string();
 
+    {
+        let mut requests = state.in_flight_requests.lock().await;
+        requests.insert(
+            window_label.clone(),
+            InFlightRequestContext {
+                cancel_token: cancel_token.clone(),
+                request_id: request_id.clone(),
+            },
+        );
+    }
+
     let mut runtime = {
         let mut windows = state.windows.lock().await;
-        windows
+        let runtime = windows
             .remove(&window_label)
-            .ok_or_else(|| "No active AI session. Please create or reload a session before sending a message.".to_string())?
+            .ok_or_else(|| "No active AI session. Please create or reload a session before sending a message.".to_string())?;
+
+        if runtime.active_request_id.is_some() {
+            windows.insert(window_label.clone(), runtime);
+            state.in_flight_requests.lock().await.remove(&window_label);
+            return Err("Another AI request is already in progress".to_string());
+        }
+
+        runtime
     };
 
     runtime.cancel_token = Some(cancel_token.clone());
@@ -378,6 +429,7 @@ pub async fn send_ai_message(
 
     let request_id_clone = request_id.clone();
     let windows_arc = state.windows.clone();
+    let in_flight_requests_arc = state.in_flight_requests.clone();
     let window_label_for_task = window_label.clone();
 
     tokio::spawn(async move {
@@ -402,6 +454,7 @@ pub async fn send_ai_message(
         runtime.cancel_token = None;
         runtime.active_request_id = None;
         windows_arc.lock().await.insert(window_label_for_task.clone(), runtime);
+        in_flight_requests_arc.lock().await.remove(&window_label_for_task);
         log::info!("[ai] send_ai_message task finished: request_id={}, window={}", request_id_clone, window_label_for_task);
     });
 
@@ -417,21 +470,17 @@ pub async fn cancel_ai_message(
     window: Window,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    let windows = state.windows.lock().await;
-    let runtime = windows
+    let requests = state.in_flight_requests.lock().await;
+    let request = requests
         .get(&window_label)
         .ok_or_else(|| "No active message to cancel".to_string())?;
 
-    if runtime.active_request_id.is_none() {
+    if request.request_id.is_empty() {
         return Err("No active message to cancel".to_string());
     }
 
-    if let Some(token) = runtime.cancel_token.as_ref() {
-        token.cancel();
-        Ok(())
-    } else {
-        Err("No active message to cancel".to_string())
-    }
+    request.cancel_token.cancel();
+    Ok(())
 }
 
 #[tauri::command]
@@ -531,16 +580,16 @@ mod tests {
     use super::{
         activate_ai_session_impl, build_session_system_prompt, clear_ai_session_impl,
         create_new_session_impl, delete_ai_session_impl, reset_runtime_state,
-        resolve_provider, AiState,
+        resolve_provider, set_active_runtime_session, AiState, InFlightRequestContext,
+        WindowAiRuntimeState,
     };
+    use crate::claurst_session::ClaurstSession;
     use crate::services::ai_config::{self, AiSettings, ProviderConfig};
     use crate::services::ai_storage::AiStorage;
     use crate::services::test_home_guard::home_test_lock;
     use crate::task_database::TaskDatabase;
-    use std::collections::HashMap;
     use std::fs;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
+    use tokio_util::sync::CancellationToken;
     use uuid::Uuid;
 
     fn with_test_home_and_workspace<T>(
@@ -583,9 +632,7 @@ mod tests {
     }
 
     fn create_test_state() -> AiState {
-        AiState {
-            windows: Arc::new(Mutex::new(HashMap::new())),
-        }
+        AiState::new()
     }
 
     #[test]
@@ -630,6 +677,84 @@ mod tests {
             error,
             "Configured provider 'provider-1' for this session no longer exists"
         );
+    }
+
+    #[tokio::test]
+    async fn set_active_runtime_session_clears_request_tracking() {
+        let state = create_test_state();
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-ai-command-tests-active-runtime-{}",
+            Uuid::new_v4()
+        ));
+        let workspace_dir = temp_root.join("workspace");
+        let workspace_tweetpilot = workspace_dir.join(".tweetpilot");
+        fs::create_dir_all(&workspace_tweetpilot).expect("create workspace tweetpilot dir");
+        let db_path = workspace_tweetpilot.join("tweetpilot.db");
+        TaskDatabase::new(db_path).expect("initialize workspace database schema");
+
+        let session = ClaurstSession::new(
+            "session-1".to_string(),
+            workspace_dir.clone(),
+            "test-key".to_string(),
+            "claude-sonnet-4-6".to_string(),
+            None,
+            Some("system prompt".to_string()),
+            Vec::new(),
+        )
+        .expect("create session");
+
+        {
+            let mut windows = state.windows.lock().await;
+            windows.insert(
+                "window-a".to_string(),
+                WindowAiRuntimeState {
+                    session: None,
+                    cancel_token: Some(CancellationToken::new()),
+                    active_request_id: Some("request-1".to_string()),
+                    active_session_id: None,
+                    active_working_dir: None,
+                },
+            );
+        }
+
+        set_active_runtime_session(
+            &state,
+            "window-a",
+            session,
+            "session-1".to_string(),
+            workspace_dir.to_string_lossy().to_string(),
+        )
+        .await;
+
+        let windows = state.windows.lock().await;
+        let runtime = windows.get("window-a").expect("runtime present");
+        assert!(runtime.session.is_some());
+        assert!(runtime.cancel_token.is_none());
+        assert!(runtime.active_request_id.is_none());
+        assert_eq!(runtime.active_session_id.as_deref(), Some("session-1"));
+
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[tokio::test]
+    async fn cancel_tracking_is_cleared_by_reset_runtime_state() {
+        let state = create_test_state();
+
+        {
+            let mut requests = state.in_flight_requests.lock().await;
+            requests.insert(
+                "window-a".to_string(),
+                InFlightRequestContext {
+                    cancel_token: CancellationToken::new(),
+                    request_id: "request-1".to_string(),
+                },
+            );
+        }
+
+        reset_runtime_state(&state, "window-a").await;
+
+        let requests = state.in_flight_requests.lock().await;
+        assert!(requests.get("window-a").is_none());
     }
 
     #[tokio::test]

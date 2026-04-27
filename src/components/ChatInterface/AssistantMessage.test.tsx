@@ -1,7 +1,11 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { AssistantMessage } from './AssistantMessage'
 import type { ChatMessage } from './types'
+
+afterEach(() => {
+  cleanup()
+})
 
 function createAssistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -95,7 +99,7 @@ describe('AssistantMessage', () => {
     expect(screen.getByText('Run command').textContent).toBe('Run command')
   })
 
-  it('shows fallback status only when streaming without timeline items', () => {
+  it('shows fallback status without timeline and localized processing status with timeline', () => {
     const { rerender } = render(
       <AssistantMessage
         message={createAssistantMessage({
@@ -106,7 +110,8 @@ describe('AssistantMessage', () => {
       />,
     )
 
-    expect(screen.getByText('Waiting for response').textContent).toBe('Waiting for response')
+    expect(screen.getByText('AI 正在继续处理…').textContent).toBe('AI 正在继续处理…')
+    expect(screen.queryByText('处理中')).toBeNull()
 
     rerender(
       <AssistantMessage
@@ -124,7 +129,54 @@ describe('AssistantMessage', () => {
       />,
     )
 
-    expect(screen.queryByText('Waiting for response')).toBeNull()
+    const statusText = screen.getByText('AI 正在继续处理…')
+    expect(screen.getByText('处理中').textContent).toBe('处理中')
+    expect(statusText.textContent).toBe('AI 正在继续处理…')
     expect(screen.getByText('partial answer').textContent).toBe('partial answer')
+  })
+
+  it('uses a write-specific status heading and localized copy', () => {
+    render(
+      <AssistantMessage
+        message={createAssistantMessage({
+          isStreaming: true,
+          status: 'Preparing Write tool call',
+          timeline: [
+            {
+              id: 'thinking-1',
+              type: 'thinking',
+              content: 'I should create a file in the workspace',
+              isActive: false,
+              isComplete: true,
+            },
+          ],
+        })}
+      />,
+    )
+
+    const statusText = screen.getByText('正在整理待写入内容…')
+    expect(screen.getByText('文件写入中').textContent).toBe('文件写入中')
+    expect(statusText.textContent).toBe('正在整理待写入内容…')
+  })
+
+  it('uses a bash-specific status heading and localized copy', () => {
+    render(
+      <AssistantMessage
+        message={createAssistantMessage({
+          isStreaming: true,
+          status: 'Running Bash tool',
+          timeline: [
+            {
+              id: 'text-1',
+              type: 'text',
+              content: 'partial answer',
+            },
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('命令执行中').textContent).toBe('命令执行中')
+    expect(screen.getByText('正在执行命令…').textContent).toBe('正在执行命令…')
   })
 })

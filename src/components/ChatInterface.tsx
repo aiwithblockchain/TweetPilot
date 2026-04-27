@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { useToast } from '@/contexts/ToastContext'
@@ -13,6 +13,8 @@ import type {
   PersistedToolCall,
   ToolCall,
 } from './ChatInterface/types'
+
+const PANEL_REOPEN_EVENT = 'tweetpilot-ai-panel-reopened'
 
 interface ChatInterfaceProps {
   onOpenSettings?: () => void
@@ -333,7 +335,7 @@ function finalizeStreamingRequest(
   setCurrentRequestId(null)
 
   if (data.result === 'error' || data.result === 'cancelled') {
-    if (data.error) {
+    if (data.error && data.result !== 'cancelled') {
       toast.error(data.error, 8000)
     }
     setMessages((prev) => prev.filter((message) => message.id !== assistantMessageId))
@@ -364,11 +366,13 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionMetadata[]>([])
   const [showSessionPanel, setShowSessionPanel] = useState(false)
+  const [stopRequested, setStopRequested] = useState(false)
   const [pendingEvents, setPendingEvents] = useState<Record<string, PendingEvent[]>>({})
   const [pendingRequestEnds, setPendingRequestEnds] = useState<Record<string, RequestEndPayload>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
   const currentRequestIdRef = useRef<string | null>(null)
+  const currentSessionIdRef = useRef<string | null>(null)
   const sessionLoadRequestIdRef = useRef(0)
   const isComposingRef = useRef(false)
   const lastCompositionEndAtRef = useRef(0)
@@ -398,7 +402,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [toast])
 
   // Load sessions list
-  const loadSessions = async (preferredSessionId?: string | null) => {
+  const loadSessions = useCallback(async (preferredSessionId?: string | null) => {
     if (!isConfigured) return
 
     const requestId = ++sessionLoadRequestIdRef.current
@@ -437,15 +441,18 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       }
       console.error('Failed to load sessions:', error)
     }
-  }
+  }, [isConfigured])
 
-  const resetChatState = () => {
+  const resetChatState = useCallback(() => {
     sessionLoadRequestIdRef.current += 1
+    assistantMessageIdRef.current = null
+    currentRequestIdRef.current = null
     setMessages([])
     setCurrentSessionId(null)
     setCurrentRequestId(null)
     setIsLoading(false)
-  }
+    setStopRequested(false)
+  }, [])
 
   const handleMissingSessionInWorkspace = async () => {
     resetChatState()
@@ -453,6 +460,35 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     await loadSessions()
     toast.error('当前工作区中找不到该会话，已刷新会话列表')
   }
+
+  const hydrateSession = useCallback(async (sessionId: string, options?: { showHistoryOnComplete?: boolean }) => {
+    const workingDir = await workspaceService.getCurrentWorkspace()
+    if (!workingDir) {
+      resetChatState()
+      setSessions([])
+      return false
+    }
+
+    try {
+      const loadedSession = await aiService.loadSession(workingDir, sessionId)
+      const loadedMessages = loadedSession.messages.map(fromStoredMessage)
+      setMessages(loadedMessages)
+      setCurrentSessionId(loadedSession.session.id)
+      setStopRequested(false)
+      setShowSessionPanel(options?.showHistoryOnComplete ?? false)
+      await loadSessions(loadedSession.session.id)
+      return true
+    } catch (error) {
+      console.error('Failed to hydrate session:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('Failed to load AI session metadata: Query returned no rows')) {
+        await handleMissingSessionInWorkspace()
+        return false
+      }
+      toast.error(`加载会话失败: ${errorMessage}`)
+      return false
+    }
+  }, [loadSessions, resetChatState, toast])
 
   useEffect(() => {
     if (!isConfigured) {
@@ -499,10 +535,52 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [isConfigured])
 
   useEffect(() => {
+    let disposed = false
+    let resolvedUnlisten: null | (() => void) = null
+
+    const setupPanelReopenedListener = async () => {
+      try {
+        const unlisten = await listen(PANEL_REOPEN_EVENT, () => {
+          setShowSessionPanel(true)
+
+          if (currentSessionIdRef.current) {
+            void hydrateSession(currentSessionIdRef.current, { showHistoryOnComplete: true })
+          }
+        })
+
+        if (disposed) {
+          unlisten()
+          return
+        }
+
+        resolvedUnlisten = unlisten
+      } catch (error) {
+        console.debug('[ChatInterface] panel reopen listener unavailable', error)
+      }
+    }
+
+    void setupPanelReopenedListener()
+    return () => {
+      disposed = true
+      resolvedUnlisten?.()
+      resolvedUnlisten = null
+    }
+  }, [])
+
+  useEffect(() => {
     currentRequestIdRef.current = currentRequestId
   }, [currentRequestId])
 
-  // Set up event listeners
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId
+  }, [currentSessionId])
+
+  useEffect(() => {
+    if (!currentSessionId) {
+      setShowSessionPanel(false)
+    }
+  }, [currentSessionId])
+
   useEffect(() => {
     console.log('[ChatInterface] Setting up event listeners')
 
@@ -549,6 +627,9 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
             setMessages,
             toast,
           )
+          assistantMessageIdRef.current = null
+          currentRequestIdRef.current = null
+          setStopRequested(false)
         }),
       ])
 
@@ -629,6 +710,9 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       setMessages,
       toast,
     )
+    assistantMessageIdRef.current = null
+    currentRequestIdRef.current = null
+    setStopRequested(false)
 
     setPendingRequestEnds((prev) => {
       const next = { ...prev }
@@ -685,6 +769,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     setMessages((prev) => [...prev, userMessage, assistantMessage])
     setValue('')
     setIsLoading(true)
+    setStopRequested(false)
 
     try {
       console.log('[ChatInterface] About to call aiService.sendMessage')
@@ -702,12 +787,19 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   const handleCancel = async () => {
+    if (!currentRequestIdRef.current || stopRequested) {
+      return
+    }
+
     try {
+      setStopRequested(true)
       await aiService.cancelMessage()
-      setIsLoading(false)
-      setCurrentRequestId(null)
+      toast.info('正在停止当前生成...')
     } catch (error) {
+      setStopRequested(false)
       console.error('Failed to cancel message:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      toast.error(`停止生成失败: ${errorMessage}`)
     }
   }
 
@@ -726,6 +818,11 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   const handleSelectSession = async (sessionId: string) => {
+    const hydrated = await hydrateSession(sessionId)
+    if (!hydrated) {
+      return
+    }
+
     try {
       const workingDir = await workspaceService.getCurrentWorkspace()
       if (!workingDir) {
@@ -733,29 +830,12 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
         return
       }
 
-      const loadedSession = await aiService.loadSession(workingDir, sessionId)
-      const loadedMessages = loadedSession.messages.map(fromStoredMessage)
-      setMessages(loadedMessages)
-      setCurrentSessionId(loadedSession.session.id)
-      setShowSessionPanel(false)
-      await loadSessions(loadedSession.session.id)
-
-      try {
-        await aiService.activateSession(sessionId, workingDir)
-        toast.success('会话已加载')
-      } catch (error) {
-        console.error('Failed to activate session runtime:', error)
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        toast.warning(`会话历史已加载，但当前无法继续对话: ${errorMessage}`)
-      }
+      await aiService.activateSession(sessionId, workingDir)
+      toast.success('会话已加载')
     } catch (error) {
-      console.error('Failed to load session:', error)
+      console.error('Failed to activate session runtime:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
-      if (errorMessage.includes('Failed to load AI session metadata: Query returned no rows')) {
-        await handleMissingSessionInWorkspace()
-        return
-      }
-      toast.error(`加载会话失败: ${errorMessage}`)
+      toast.warning(`会话历史已加载，但当前无法继续对话: ${errorMessage}`)
     }
   }
 
@@ -890,7 +970,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
                 立即开始对话
               </button>
               <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
-                创建会话后即可开始提问或继续 AI 工作。
+                创建会话后即可开始提问。
               </p>
             </div>
           </div>
@@ -943,9 +1023,10 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
             {isLoading && (
               <button
                 onClick={handleCancel}
-                className="h-7 px-3 rounded bg-[var(--color-bg)] text-[var(--color-text)] text-xs hover:bg-[var(--color-border)] transition-colors"
+                disabled={stopRequested}
+                className="inline-flex h-7 items-center rounded border border-[#C96B00] bg-[#3A2A12] px-3 text-xs font-medium text-[#F5C17A] transition-colors duration-200 hover:bg-[#4A3416] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                取消
+                {stopRequested ? '停止中...' : '停止生成'}
               </button>
             )}
             <button

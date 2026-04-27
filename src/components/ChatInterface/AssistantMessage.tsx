@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Brain, ChevronRight, Wrench } from 'lucide-react'
+import { BookOpenText, Brain, ChevronRight, FilePenLine, FilePlus2, LoaderCircle, Terminal, Wrench } from 'lucide-react'
 import type { AssistantTimelineItem, ChatMessage } from './types'
 
 interface AssistantMessageProps {
@@ -43,6 +43,85 @@ function renderMarkdown(content: string) {
       {content}
     </ReactMarkdown>
   )
+}
+
+function formatStreamingStatus(status: string) {
+  const trimmed = status.trim()
+  if (!trimmed) {
+    return 'AI 正在继续处理…'
+  }
+
+  const normalized = trimmed.toLowerCase()
+
+  if (normalized.includes('waiting for response')) {
+    return 'AI 正在继续处理…'
+  }
+
+  if (normalized.includes('write')) {
+    if (normalized.includes('prepar')) {
+      return '正在整理待写入内容…'
+    }
+
+    if (normalized.includes('running') || normalized.includes('execut') || normalized.includes('invok')) {
+      return '正在写入文件…'
+    }
+
+    return '正在准备写入文件…'
+  }
+
+  if (normalized.includes('bash')) {
+    if (normalized.includes('prepar')) {
+      return '正在整理即将执行的命令…'
+    }
+
+    if (normalized.includes('running') || normalized.includes('execut') || normalized.includes('invok')) {
+      return '正在执行命令…'
+    }
+
+    return '正在准备执行命令…'
+  }
+
+  if (normalized.includes('read')) {
+    if (normalized.includes('prepar')) {
+      return '正在整理待读取内容…'
+    }
+
+    if (normalized.includes('running') || normalized.includes('execut') || normalized.includes('invok')) {
+      return '正在读取内容…'
+    }
+
+    return '正在准备读取内容…'
+  }
+
+  if (normalized.includes('edit')) {
+    if (normalized.includes('prepar')) {
+      return '正在整理待修改内容…'
+    }
+
+    if (normalized.includes('running') || normalized.includes('execut') || normalized.includes('invok')) {
+      return '正在修改内容…'
+    }
+
+    return '正在准备修改内容…'
+  }
+
+  if (normalized.includes('tool')) {
+    if (normalized.includes('prepar')) {
+      return '正在整理即将调用的工具…'
+    }
+
+    if (normalized.includes('running') || normalized.includes('execut') || normalized.includes('invok')) {
+      return '正在调用工具…'
+    }
+
+    return '正在准备调用工具…'
+  }
+
+  if (normalized.includes('thinking')) {
+    return '正在继续思考…'
+  }
+
+  return trimmed
 }
 
 function TimelineThinkingItem({ item }: { item: Extract<AssistantTimelineItem, { type: 'thinking' }> }) {
@@ -127,11 +206,96 @@ function TimelineTextItem({ item }: { item: Extract<AssistantTimelineItem, { typ
   )
 }
 
+function getStreamingStatusPresentation(status: string) {
+  const normalized = status.trim().toLowerCase()
+
+  if (normalized.includes('write')) {
+    return {
+      label: '文件写入中',
+      color: '#4EC9B0',
+      Icon: FilePlus2,
+    }
+  }
+
+  if (normalized.includes('bash')) {
+    return {
+      label: '命令执行中',
+      color: '#D7BA7D',
+      Icon: Terminal,
+    }
+  }
+
+  if (normalized.includes('read')) {
+    return {
+      label: '内容读取中',
+      color: '#4FC3F7',
+      Icon: BookOpenText,
+    }
+  }
+
+  if (normalized.includes('edit')) {
+    return {
+      label: '内容修改中',
+      color: '#C586C0',
+      Icon: FilePenLine,
+    }
+  }
+
+  if (normalized.includes('thinking')) {
+    return {
+      label: '思考中',
+      color: '#569CD6',
+      Icon: Brain,
+    }
+  }
+
+  if (normalized.includes('tool')) {
+    return {
+      label: '工具处理中',
+      color: '#DCDCAA',
+      Icon: Wrench,
+    }
+  }
+
+  return {
+    label: '处理中',
+    color: '#569CD6',
+    Icon: LoaderCircle,
+  }
+}
+
+function TimelineStatusItem({ status }: { status: string }) {
+  const { label, color, Icon } = getStreamingStatusPresentation(status)
+
+  return (
+    <div
+      className="rounded-md border overflow-hidden"
+      style={{
+        borderColor: color,
+        backgroundColor: 'var(--color-surface)',
+      }}
+    >
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <Icon size={14} className="animate-spin" style={{ color }} />
+        <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{label}</span>
+        <div className="flex gap-0.5" aria-hidden="true">
+          <span className="inline-block h-1 w-1 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: color }}></span>
+          <span className="inline-block h-1 w-1 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: color }}></span>
+          <span className="inline-block h-1 w-1 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: color }}></span>
+        </div>
+      </div>
+      <div className="px-3 py-2 text-xs whitespace-pre-wrap" style={{ color: 'var(--color-text-secondary)' }}>
+        {formatStreamingStatus(status)}
+      </div>
+    </div>
+  )
+}
+
 function TimelineFallback({ status }: { status?: string }) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
       <ChevronRight size={14} style={{ color: '#569CD6' }} />
-      <span className="italic">{status || 'AI is thinking...'}</span>
+      <span className="italic">{status ? formatStreamingStatus(status) : 'AI is thinking...'}</span>
     </div>
   )
 }
@@ -140,6 +304,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
   const timeline = message.timeline || []
   const hasTimeline = timeline.length > 0
   const showFallback = Boolean(message.isStreaming) && !hasTimeline
+  const showStatus = Boolean(message.isStreaming && message.status && hasTimeline)
 
   return (
     <div className="space-y-3">
@@ -153,6 +318,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
         return <TimelineTextItem key={item.id} item={item} />
       })}
 
+      {showStatus && <TimelineStatusItem status={message.status!} />}
       {showFallback && <TimelineFallback status={message.status} />}
     </div>
   )

@@ -92,6 +92,7 @@ export function useTasksSidebarItems() {
         'task-paused',
         'task-resumed',
         'task-executed',
+        'workspace-changed',
       ] as const
 
       for (const messageId of messageIds) {

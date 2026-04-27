@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { listen } from '@tauri-apps/api/event'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { listen, emit } from '@tauri-apps/api/event'
 import type { AccountListItem } from '@/services/account'
 import { DATA_BLOCK_CATALOG } from '@/config/data-blocks'
 import { useTasksSidebarItems } from './useTasksSidebarItems'
@@ -264,7 +264,6 @@ export function useAppLayoutState() {
   const [workspaceTree, setWorkspaceTree] = useState<Record<string, WorkspaceEntry[]>>({})
   const [expandedWorkspacePaths, setExpandedWorkspacePaths] = useState<Record<string, boolean>>({})
   const [workspaceLoadingPaths, setWorkspaceLoadingPaths] = useState<Record<string, boolean>>({})
-  const [workspaceRefreshKey] = useState(0)
   const [workspaceInlineCreate, setWorkspaceInlineCreate] = useState<WorkspaceInlineCreateState>({
     active: false,
     kind: null,
@@ -373,6 +372,76 @@ export function useAppLayoutState() {
 
     return currentSidebarItems.find((item) => item.id === selectedSidebarItemId) ?? null
   }, [activeView, currentSidebarItems, selectedSidebarItemId, workspaceEntryByPath, workspaceRoot, workspaceRootName])
+
+  const resetWorkspaceViewState = useCallback((nextWorkspace: string | null) => {
+    const nextWorkspaceName = nextWorkspace
+      ? nextWorkspace.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? nextWorkspace
+      : 'Workspace'
+
+    setWorkspaceRoot(nextWorkspace)
+    setWorkspaceRootName(nextWorkspaceName)
+    setWorkspaceTree({})
+    setExpandedWorkspacePaths(nextWorkspace ? { [nextWorkspace]: true } : {})
+    setWorkspaceLoadingPaths({})
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      workspace: nextWorkspace,
+    }))
+    setWorkspaceFileContent(null)
+    setWorkspaceFolderSummary(null)
+    setWorkspaceDetailLoading(false)
+    setWorkspaceError(null)
+    setWorkspaceRefreshPending(false)
+    setWorkspaceRefreshError(null)
+    setWorkspaceInlineCreate({
+      active: false,
+      kind: null,
+      parentPath: null,
+      value: '',
+      pending: false,
+      error: null,
+    })
+    setWorkspaceRenameState({
+      active: false,
+      path: null,
+      value: '',
+      pending: false,
+      error: null,
+    })
+    setWorkspaceDeleteState({
+      open: false,
+      path: null,
+      label: '',
+      pending: false,
+      error: null,
+    })
+    setCenterMode((prev) => {
+      if (activeView !== 'workspace') {
+        return prev
+      }
+
+      return nextWorkspace ? 'detail' : 'empty'
+    })
+  }, [activeView])
+
+  const loadWorkspaceRoot = useCallback(async () => {
+    const currentWorkspace = await workspaceService.getCurrentWorkspace()
+
+    if (!currentWorkspace) {
+      resetWorkspaceViewState(null)
+      return
+    }
+
+    resetWorkspaceViewState(currentWorkspace)
+    const entries = await workspaceService.listDirectory(currentWorkspace)
+
+    setWorkspaceTree({ [currentWorkspace]: entries })
+    setSelectedItemsByView((prev) => ({
+      ...prev,
+      workspace: currentWorkspace,
+    }))
+    setWorkspaceError(null)
+  }, [resetWorkspaceViewState])
 
   const reloadAccounts = async () => {
     setAccountsLoading(true)
@@ -806,47 +875,54 @@ export function useAppLayoutState() {
   useEffect(() => {
     let cancelled = false
 
-    const loadWorkspaceRoot = async () => {
+    const syncWorkspaceRoot = async () => {
       try {
-        const currentWorkspace = await workspaceService.getCurrentWorkspace()
-        if (cancelled) return
-
-        if (!currentWorkspace) {
-          setWorkspaceRoot(null)
-          setWorkspaceTree({})
-          setExpandedWorkspacePaths({})
-          setSelectedItemsByView((prev) => ({ ...prev, workspace: null }))
-          setCenterMode(activeView === 'workspace' ? 'empty' : centerMode)
-          return
-        }
-
-        const normalizedName = currentWorkspace.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? currentWorkspace
-        setWorkspaceRoot(currentWorkspace)
-        setWorkspaceRootName(normalizedName)
-        setExpandedWorkspacePaths({ [currentWorkspace]: true })
-        const entries = await workspaceService.listDirectory(currentWorkspace)
-        if (cancelled) return
-
-        setWorkspaceTree({ [currentWorkspace]: entries })
-        setSelectedItemsByView((prev) => ({
-          ...prev,
-          workspace: prev.workspace ?? currentWorkspace,
-        }))
-        if (activeView === 'workspace') {
-          setCenterMode('detail')
-        }
+        await loadWorkspaceRoot()
       } catch (error) {
         if (cancelled) return
         setWorkspaceError(error instanceof Error ? error.message : '工作区加载失败')
       }
     }
 
-    void loadWorkspaceRoot()
+    void syncWorkspaceRoot()
 
     return () => {
       cancelled = true
     }
-  }, [workspaceRefreshKey])
+  }, [loadWorkspaceRoot])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: null | (() => void) = null
+
+    const bindWorkspaceChanged = async () => {
+      try {
+        const cleanup = await listen<string>('workspace-changed', async () => {
+          try {
+            await loadWorkspaceRoot()
+          } catch (error) {
+            setWorkspaceError(error instanceof Error ? error.message : '工作区加载失败')
+          }
+        })
+
+        if (disposed) {
+          cleanup()
+          return
+        }
+
+        unlisten = cleanup
+      } catch (error) {
+        console.debug('[useAppLayoutState] Failed to register workspace listener', error)
+      }
+    }
+
+    void bindWorkspaceChanged()
+
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [loadWorkspaceRoot])
 
   useEffect(() => {
     let cancelled = false
@@ -1312,7 +1388,12 @@ export function useAppLayoutState() {
   }
 
   const toggleRightPanelVisible = () => {
-    persistRightPanelVisible(!rightPanelVisible)
+    const nextVisible = !rightPanelVisible
+    persistRightPanelVisible(nextVisible)
+
+    if (nextVisible) {
+      void emit('tweetpilot-ai-panel-reopened')
+    }
   }
 
   return {
