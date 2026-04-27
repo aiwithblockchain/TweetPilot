@@ -958,11 +958,15 @@ export function useAppLayoutState() {
 
     const syncWatcher = async () => {
       try {
+        console.info('[workspace_watcher/client] sync watcher start', { workspaceRoot })
         await workspaceService.stopWorkspaceWatcher()
         await workspaceService.startWorkspaceWatcher(workspaceRoot)
+        if (!disposed) {
+          console.info('[workspace_watcher/client] sync watcher ready', { workspaceRoot })
+        }
       } catch (error) {
         if (!disposed) {
-          console.debug('[useAppLayoutState] Failed to sync workspace watcher', error)
+          console.debug('[workspace_watcher/client] Failed to sync workspace watcher', error)
         }
       }
     }
@@ -975,8 +979,9 @@ export function useAppLayoutState() {
         window.clearTimeout(workspaceFsRefreshTimerRef.current)
         workspaceFsRefreshTimerRef.current = null
       }
+      console.info('[workspace_watcher/client] cleanup watcher', { workspaceRoot })
       void workspaceService.stopWorkspaceWatcher().catch((error) => {
-        console.debug('[useAppLayoutState] Failed to stop workspace watcher', error)
+        console.debug('[workspace_watcher/client] Failed to stop workspace watcher', error)
       })
     }
   }, [workspaceRoot])
@@ -988,7 +993,16 @@ export function useAppLayoutState() {
     const bindWorkspaceFsChanged = async () => {
       try {
         const cleanup = await listen<WorkspaceWatcherEvent>('workspace-fs-changed', (event) => {
+          console.info('[workspace_watcher/client] receive workspace-fs-changed', {
+            currentWorkspaceRoot: workspaceRoot,
+            payloadWorkspacePath: event.payload.workspacePath,
+          })
+
           if (!workspaceRoot || event.payload.workspacePath !== workspaceRoot) {
+            console.info('[workspace_watcher/client] ignore workspace-fs-changed', {
+              currentWorkspaceRoot: workspaceRoot,
+              payloadWorkspacePath: event.payload.workspacePath,
+            })
             return
           }
 
@@ -996,8 +1010,13 @@ export function useAppLayoutState() {
             window.clearTimeout(workspaceFsRefreshTimerRef.current)
           }
 
+          console.info('[workspace_watcher/client] schedule workspace refresh', {
+            workspaceRoot,
+            delayMs: 200,
+          })
           workspaceFsRefreshTimerRef.current = window.setTimeout(() => {
             workspaceFsRefreshTimerRef.current = null
+            console.info('[workspace_watcher/client] run scheduled workspace refresh', { workspaceRoot })
             void runWorkspaceRefresh().catch((error) => {
               setWorkspaceError(error instanceof Error ? error.message : '工作区加载失败')
             })
@@ -1011,7 +1030,7 @@ export function useAppLayoutState() {
 
         unlisten = cleanup
       } catch (error) {
-        console.debug('[useAppLayoutState] Failed to register workspace fs listener', error)
+        console.debug('[workspace_watcher/client] Failed to register workspace fs listener', error)
       }
     }
 

@@ -54,11 +54,15 @@ impl WorkspaceWatcherState {
     async fn stop_for_window(&self, window_label: &str) {
         let mut watchers = self.watchers.lock().await;
         if let Some(handle) = watchers.remove(window_label) {
+            log::info!("[workspace_watcher] stop watcher for window={}", window_label);
             handle.task.abort();
+        } else {
+            log::info!("[workspace_watcher] stop watcher skipped for window={} (no active watcher)", window_label);
         }
     }
 
     async fn replace_for_window(&self, window_label: &str, handle: WorkspaceWatcherHandle) {
+        log::info!("[workspace_watcher] replace watcher for window={}", window_label);
         self.stop_for_window(window_label).await;
         self.watchers.lock().await.insert(window_label.to_string(), handle);
     }
@@ -391,10 +395,20 @@ fn map_workspace_entry_from_path(path: &Path) -> Result<WorkspaceEntry, String> 
 
 fn should_emit_workspace_fs_event(event: &Event, workspace_root: &Path) -> bool {
     if event.paths.is_empty() {
+        log::info!("[workspace_watcher] skip notify event with empty paths");
         return false;
     }
 
-    event.paths.iter().any(|path| path.starts_with(workspace_root))
+    let should_emit = event.paths.iter().any(|path| path.starts_with(workspace_root));
+    log::info!(
+        "[workspace_watcher] inspect notify event kind={:?} paths={:?} workspace_root={} should_emit={}",
+        event.kind,
+        event.paths,
+        workspace_root.display(),
+        should_emit
+    );
+
+    should_emit
 }
 
 async fn emit_workspace_fs_changed(app: &AppHandle, window_label: &str, workspace_path: &str) {
@@ -403,9 +417,20 @@ async fn emit_workspace_fs_changed(app: &AppHandle, window_label: &str, workspac
             workspace_path: workspace_path.to_string(),
         };
 
+        log::info!(
+            "[workspace_watcher] emit workspace-fs-changed window={} workspace_path={}",
+            window_label,
+            workspace_path
+        );
+
         if let Err(error) = window.emit("workspace-fs-changed", payload) {
-            log::debug!("[workspace-watcher] Failed to emit workspace-fs-changed: {}", error);
+            log::debug!("[workspace_watcher] Failed to emit workspace-fs-changed: {}", error);
         }
+    } else {
+        log::info!(
+            "[workspace_watcher] skip emit workspace-fs-changed because window={} not found",
+            window_label
+        );
     }
 }
 
@@ -419,6 +444,12 @@ fn create_workspace_watcher(
         .map_err(|e| format!("解析工作目录失败: {}", e))?;
 
     ensure_directory_path(&workspace_root)?;
+    log::info!(
+        "[workspace_watcher] create watcher window={} requested_path={} canonical_path={}",
+        window_label,
+        workspace_path,
+        workspace_root.display()
+    );
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<notify::Result<Event>>();
     let mut watcher = RecommendedWatcher::new(
@@ -433,6 +464,12 @@ fn create_workspace_watcher(
         .watch(&workspace_root, RecursiveMode::Recursive)
         .map_err(|e| format!("监听工作区失败: {}", e))?;
 
+    log::info!(
+        "[workspace_watcher] watch registered window={} root={}",
+        window_label,
+        workspace_root.display()
+    );
+
     let task = tauri::async_runtime::spawn(async move {
         while let Some(result) = rx.recv().await {
             match result {
@@ -441,14 +478,25 @@ fn create_workspace_watcher(
                         continue;
                     }
 
+                    log::info!(
+                        "[workspace_watcher] debounce notify event window={} workspace_path={} delay_ms=120",
+                        window_label,
+                        workspace_path
+                    );
                     tokio::time::sleep(Duration::from_millis(120)).await;
                     emit_workspace_fs_changed(&app, &window_label, &workspace_path).await;
                 }
                 Err(error) => {
-                    log::debug!("[workspace-watcher] notify error: {}", error);
+                    log::debug!("[workspace_watcher] notify error: {}", error);
                 }
             }
         }
+
+        log::info!(
+            "[workspace_watcher] channel closed window={} workspace_path={}",
+            window_label,
+            workspace_path
+        );
     });
 
     Ok(WorkspaceWatcherHandle {
@@ -740,7 +788,18 @@ pub async fn start_workspace_watcher(
         .canonicalize()
         .map_err(|e| format!("解析工作目录失败: {}", e))?;
 
+    log::info!(
+        "[workspace_watcher] start requested window={} requested_path={} active_workspace_root={}",
+        window.label(),
+        requested_path.display(),
+        workspace_root.display()
+    );
+
     if requested_path != workspace_root {
+        log::info!(
+            "[workspace_watcher] reject start for window={} because requested_path != active_workspace_root",
+            window.label()
+        );
         return Err("请求监听的工作目录与当前窗口工作目录不一致".to_string());
     }
 
@@ -756,6 +815,7 @@ pub async fn stop_workspace_watcher(
     workspace_watcher_state: State<'_, WorkspaceWatcherState>,
     window: tauri::Window,
 ) -> Result<(), String> {
+    log::info!("[workspace_watcher] stop requested window={}", window.label());
     workspace_watcher_state.stop_for_window(window.label()).await;
     Ok(())
 }

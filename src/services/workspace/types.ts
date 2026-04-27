@@ -58,7 +58,6 @@ export interface WorkspaceService {
   setCurrentWorkspace(path: string): Promise<void>
   clearCurrentWorkspace(): Promise<void>
   getCurrentWorkspace(): Promise<string | null>
-  openWorkspaceInNewWindow(): Promise<void>
   checkDirectoryExists(path: string): Promise<boolean>
   listDirectory(path: string): Promise<WorkspaceEntry[]>
   readFile(path: string): Promise<WorkspaceFileContent>

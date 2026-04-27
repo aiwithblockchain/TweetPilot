@@ -117,10 +117,6 @@ export const workspaceTauriService: WorkspaceService = {
     return tauriInvoke<string | null>('get_current_workspace')
   },
 
-  async openWorkspaceInNewWindow() {
-    await tauriInvoke<void>('open_workspace_in_new_window')
-  },
-
   async checkDirectoryExists(path: string) {
     return tauriInvoke<boolean>('check_directory_exists', { path })
   },
@@ -160,10 +156,12 @@ export const workspaceTauriService: WorkspaceService = {
   },
 
   async startWorkspaceWatcher(path: string) {
+    console.info('[workspace_watcher/client] startWorkspaceWatcher', { path })
     await tauriInvoke<void>('start_workspace_watcher', { path })
   },
 
   async stopWorkspaceWatcher() {
+    console.info('[workspace_watcher/client] stopWorkspaceWatcher')
     await tauriInvoke<void>('stop_workspace_watcher')
   },
 }

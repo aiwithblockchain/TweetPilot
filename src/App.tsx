@@ -439,44 +439,35 @@ function AppContent() {
 
   useEffect(() => {
     let disposed = false
-    let cleanupFns: Array<() => void> = []
+    let cleanup: null | (() => void) = null
 
-    const setupEventListeners = async () => {
+    const setupWorkspaceChangedListener = async () => {
       try {
-        const [unlistenWorkspaceChanged, unlistenSetInitialWorkspace] = await Promise.all([
-          listen<string>('workspace-changed', (event) => {
-            console.log('[App] Workspace changed via menu:', formatForLog({ path: event.payload }))
-            setCurrentWorkspace(event.payload)
-            setWorkspaceReady(true)
-          }),
-          listen<string>('set-initial-workspace', (event) => {
-            console.log('[App] Set initial workspace for new window:', formatForLog({ path: event.payload }))
-            void initializeWorkspace(event.payload).finally(() => {
-              setIsCheckingWorkspace(false)
-            })
-          }),
-        ])
+        const unlisten = await listen<string>('workspace-changed', (event) => {
+          console.log('[App] Workspace changed via menu:', formatForLog({ path: event.payload }))
+          setCurrentWorkspace(event.payload)
+          setWorkspaceReady(true)
+        })
 
         if (disposed) {
-          unlistenWorkspaceChanged()
-          unlistenSetInitialWorkspace()
+          unlisten()
           return
         }
 
-        cleanupFns = [unlistenWorkspaceChanged, unlistenSetInitialWorkspace]
+        cleanup = unlisten
       } catch (error) {
-        console.debug('[App] Failed to register workspace event listeners', toSafeError(error))
+        console.debug('[App] Failed to register workspace event listener', toSafeError(error))
       }
     }
 
-    void setupEventListeners()
+    void setupWorkspaceChangedListener()
 
     return () => {
       disposed = true
-      cleanupFns.forEach((cleanup) => cleanup())
-      cleanupFns = []
+      cleanup?.()
+      cleanup = null
     }
-  }, [initializeWorkspace])
+  }, [])
 
   const handleWorkspaceSelected = useCallback(async (path: string) => {
     console.log('[App] Workspace selected:', formatForLog({ path }))

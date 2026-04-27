@@ -157,6 +157,8 @@ describe('App runtime workspace flow', () => {
 
     await waitFor(() => {
       expect(tauriMocks.invoke).toHaveBeenCalledWith('get_current_workspace')
+      expect(tauriMocks.listen).toHaveBeenCalledTimes(1)
+      expect(tauriMocks.listen).toHaveBeenCalledWith('workspace-changed', expect.any(Function))
       expect(screen.getByTestId('workspace-selector').textContent).toBe('selector')
     })
   })

@@ -93,4 +93,10 @@ describe('workspaceTauriService', () => {
     })
     expect(tauriInvokeMock).toHaveBeenNthCalledWith(2, 'stop_workspace_watcher')
   })
+
+  it('does not expose open workspace in new window on the frontend service boundary', async () => {
+    const { workspaceTauriService } = await import('./tauri')
+
+    expect('openWorkspaceInNewWindow' in workspaceTauriService).toBe(false)
+  })
 })
