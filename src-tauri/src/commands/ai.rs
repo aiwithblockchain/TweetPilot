@@ -1,4 +1,5 @@
 use tauri::{State, Window};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -61,25 +62,64 @@ fn resolve_provider(settings: &AiSettings, provider_id: Option<&str>) -> Result<
     }
 }
 
-async fn reset_runtime_state(state: &AiState) {
-    *state.session.lock().await = None;
-    *state.cancel_token.lock().await = None;
-    *state.active_request_id.lock().await = None;
-    *state.active_session_id.lock().await = None;
-    *state.active_working_dir.lock().await = None;
+#[derive(Default)]
+pub struct WindowAiRuntimeState {
+    pub session: Option<ClaurstSession>,
+    pub cancel_token: Option<CancellationToken>,
+    pub active_request_id: Option<String>,
+    pub active_session_id: Option<String>,
+    pub active_working_dir: Option<String>,
+}
+
+pub struct AiState {
+    pub windows: Arc<Mutex<HashMap<String, WindowAiRuntimeState>>>,
+}
+
+pub async fn reset_runtime_state(state: &AiState, window_label: &str) {
+    state.windows.lock().await.remove(window_label);
+}
+
+pub async fn clear_runtime_state_for_workspace(state: &AiState, working_dir: &str) {
+    let removed_states = {
+        let mut windows = state.windows.lock().await;
+        let labels_to_clear: Vec<String> = windows
+            .iter()
+            .filter_map(|(label, runtime)| {
+                if runtime.active_working_dir.as_deref() == Some(working_dir) {
+                    Some(label.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        labels_to_clear
+            .into_iter()
+            .filter_map(|label| windows.remove(&label))
+            .collect::<Vec<_>>()
+    };
+
+    for runtime in removed_states {
+        if let Some(token) = runtime.cancel_token {
+            token.cancel();
+        }
+    }
 }
 
 async fn set_active_runtime_session(
     state: &AiState,
+    window_label: &str,
     session: ClaurstSession,
     session_id: String,
     working_dir: String,
 ) {
-    *state.session.lock().await = Some(session);
-    *state.cancel_token.lock().await = None;
-    *state.active_request_id.lock().await = None;
-    *state.active_session_id.lock().await = Some(session_id);
-    *state.active_working_dir.lock().await = Some(working_dir);
+    let mut windows = state.windows.lock().await;
+    let runtime = windows.entry(window_label.to_string()).or_default();
+    runtime.session = Some(session);
+    runtime.cancel_token = None;
+    runtime.active_request_id = None;
+    runtime.active_session_id = Some(session_id);
+    runtime.active_working_dir = Some(working_dir);
 }
 
 async fn build_runtime_session(
@@ -111,16 +151,9 @@ async fn build_runtime_session(
     .map_err(|e| format!("Failed to activate AI session: {}", e))
 }
 
-pub struct AiState {
-    pub session: Arc<Mutex<Option<ClaurstSession>>>,
-    pub cancel_token: Arc<Mutex<Option<CancellationToken>>>,
-    pub active_request_id: Arc<Mutex<Option<String>>>,
-    pub active_session_id: Arc<Mutex<Option<String>>>,
-    pub active_working_dir: Arc<Mutex<Option<String>>>,
-}
-
 async fn create_new_session_impl(
     working_dir: String,
+    window_label: &str,
     state: &AiState,
 ) -> Result<String, String> {
     log::info!("[ai] create_new_session called: workspace={}", working_dir);
@@ -163,7 +196,7 @@ async fn create_new_session_impl(
         Vec::new(),
     ).map_err(|e| format!("Failed to create AI session: {}", e))?;
 
-    set_active_runtime_session(state, session, session_id.clone(), working_dir.clone()).await;
+    set_active_runtime_session(state, window_label, session, session_id.clone(), working_dir.clone()).await;
     log::info!(
         "[ai] create_new_session completed: workspace={}, session_id={}",
         working_dir,
@@ -176,6 +209,7 @@ async fn create_new_session_impl(
 async fn activate_ai_session_impl(
     session_id: String,
     working_dir: String,
+    window_label: &str,
     state: &AiState,
 ) -> Result<(), String> {
     log::info!(
@@ -184,7 +218,7 @@ async fn activate_ai_session_impl(
         session_id
     );
     let session = build_runtime_session(&working_dir, &session_id).await?;
-    set_active_runtime_session(state, session, session_id.clone(), working_dir.clone()).await;
+    set_active_runtime_session(state, window_label, session, session_id.clone(), working_dir.clone()).await;
     log::info!(
         "[ai] activate_ai_session completed: workspace={}, session_id={}",
         working_dir,
@@ -196,6 +230,7 @@ async fn activate_ai_session_impl(
 async fn clear_ai_session_impl(
     working_dir: String,
     session_id: String,
+    window_label: &str,
     state: &AiState,
 ) -> Result<(), String> {
     log::info!(
@@ -206,13 +241,20 @@ async fn clear_ai_session_impl(
     let storage = storage_for_workspace(&working_dir)?;
     storage.clear_session_messages(&session_id)?;
 
-    let active_session_id = state.active_session_id.lock().await.clone();
-    let active_working_dir = state.active_working_dir.lock().await.clone();
-    if active_session_id.as_deref() == Some(session_id.as_str())
-        && active_working_dir.as_deref() == Some(working_dir.as_str())
+    let active_runtime_matches = {
+        let windows = state.windows.lock().await;
+        windows
+            .get(window_label)
+            .map(|runtime| {
+                runtime.active_session_id.as_deref() == Some(session_id.as_str())
+                    && runtime.active_working_dir.as_deref() == Some(working_dir.as_str())
+            })
+            .unwrap_or(false)
+    };
+    if active_runtime_matches
     {
         let session = build_runtime_session(&working_dir, &session_id).await?;
-        set_active_runtime_session(state, session, session_id.clone(), working_dir.clone()).await;
+        set_active_runtime_session(state, window_label, session, session_id.clone(), working_dir.clone()).await;
     }
 
     log::info!(
@@ -226,6 +268,7 @@ async fn clear_ai_session_impl(
 async fn delete_ai_session_impl(
     working_dir: String,
     session_id: String,
+    window_label: &str,
     state: &AiState,
 ) -> Result<(), String> {
     log::info!(
@@ -236,12 +279,19 @@ async fn delete_ai_session_impl(
     let storage = storage_for_workspace(&working_dir)?;
     storage.delete_session(&session_id)?;
 
-    let active_session_id = state.active_session_id.lock().await.clone();
-    let active_working_dir = state.active_working_dir.lock().await.clone();
-    if active_session_id.as_deref() == Some(session_id.as_str())
-        && active_working_dir.as_deref() == Some(working_dir.as_str())
+    let should_reset_runtime = {
+        let windows = state.windows.lock().await;
+        windows
+            .get(window_label)
+            .map(|runtime| {
+                runtime.active_session_id.as_deref() == Some(session_id.as_str())
+                    && runtime.active_working_dir.as_deref() == Some(working_dir.as_str())
+            })
+            .unwrap_or(false)
+    };
+    if should_reset_runtime
     {
-        reset_runtime_state(state).await;
+        reset_runtime_state(state, window_label).await;
     }
 
     log::info!(
@@ -256,8 +306,9 @@ async fn delete_ai_session_impl(
 pub async fn init_ai_session(
     working_dir: String,
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<String, String> {
-    create_new_session(working_dir, state).await
+    create_new_session_impl(working_dir, window.label(), state.inner()).await
 }
 
 #[tauri::command]
@@ -267,12 +318,23 @@ pub async fn send_ai_message(
     state: State<'_, AiState>,
     window: Window,
 ) -> Result<serde_json::Value, String> {
-    let active_working_dir = state.active_working_dir.lock().await.clone();
-    let active_session_id = state.active_session_id.lock().await.clone();
-    let session_present = state.session.lock().await.is_some();
-    let request_in_flight = state.active_request_id.lock().await.is_some();
+    let window_label = window.label().to_string();
+    let (session_present, active_session_id, active_working_dir, request_in_flight) = {
+        let windows = state.windows.lock().await;
+        if let Some(runtime) = windows.get(&window_label) {
+            (
+                runtime.session.is_some(),
+                runtime.active_session_id.clone(),
+                runtime.active_working_dir.clone(),
+                runtime.active_request_id.is_some(),
+            )
+        } else {
+            (false, None, None, false)
+        }
+    };
     log::info!(
-        "[ai] send_ai_message called: message_len={}, session_present={}, active_session_id={:?}, active_working_dir={:?}",
+        "[ai] send_ai_message called: window={}, message_len={}, session_present={}, active_session_id={:?}, active_working_dir={:?}",
+        window_label,
         message.chars().count(),
         session_present,
         active_session_id,
@@ -280,7 +342,7 @@ pub async fn send_ai_message(
     );
 
     if !session_present || active_session_id.is_none() {
-        log::error!("[ai] send_ai_message rejected: no active session");
+        log::error!("[ai] send_ai_message rejected: no active session for window={}", window_label);
         return Err("No active AI session. Please create or reload a session before sending a message.".to_string());
     }
 
@@ -290,53 +352,60 @@ pub async fn send_ai_message(
 
     if active_working_dir.as_deref() != Some(working_dir.as_str()) {
         log::error!(
-            "[ai] send_ai_message rejected: active workspace mismatch; active={:?}, requested={}",
+            "[ai] send_ai_message rejected: active workspace mismatch for window={}; active={:?}, requested={}",
+            window_label,
             active_working_dir,
             working_dir
         );
-        reset_runtime_state(&state).await;
+        reset_runtime_state(&state, &window_label).await;
         return Err("Active AI session does not belong to the current workspace. Please reload or create a session in this workspace.".to_string());
     }
 
     let cancel_token = CancellationToken::new();
     let request_id = uuid::Uuid::new_v4().to_string();
 
-    *state.cancel_token.lock().await = Some(cancel_token.clone());
-    *state.active_request_id.lock().await = Some(request_id.clone());
+    let mut runtime = {
+        let mut windows = state.windows.lock().await;
+        windows
+            .remove(&window_label)
+            .ok_or_else(|| "No active AI session. Please create or reload a session before sending a message.".to_string())?
+    };
 
-    log::info!("[ai] send_ai_message prepared request_id={}", request_id);
+    runtime.cancel_token = Some(cancel_token.clone());
+    runtime.active_request_id = Some(request_id.clone());
+
+    log::info!("[ai] send_ai_message prepared request_id={} for window={}", request_id, window_label);
 
     let request_id_clone = request_id.clone();
-    let session_arc = state.session.clone();
-    let cancel_token_arc = state.cancel_token.clone();
-    let active_request_id_arc = state.active_request_id.clone();
+    let windows_arc = state.windows.clone();
+    let window_label_for_task = window_label.clone();
 
     tokio::spawn(async move {
-        log::info!("[ai] send_ai_message task started: request_id={}", request_id_clone);
+        log::info!("[ai] send_ai_message task started: request_id={}, window={}", request_id_clone, window_label_for_task);
         tokio::task::yield_now().await;
 
-        let mut session_guard = session_arc.lock().await;
-        if let Some(session) = session_guard.as_mut() {
-            log::info!("[ai] send_ai_message entering session.send_message: request_id={}", request_id_clone);
+        if let Some(session) = runtime.session.as_mut() {
+            log::info!("[ai] send_ai_message entering session.send_message: request_id={}, window={}", request_id_clone, window_label_for_task);
             let result = session.send_message(&message, &request_id_clone, window, cancel_token.clone()).await;
             match result {
                 Ok(_) => {
-                    log::info!("[ai] send_ai_message session.send_message completed: request_id={}", request_id_clone);
+                    log::info!("[ai] send_ai_message session.send_message completed: request_id={}, window={}", request_id_clone, window_label_for_task);
                 }
                 Err(error) => {
-                    log::error!("[ai] send_ai_message session.send_message failed: request_id={}, error={}", request_id_clone, error);
+                    log::error!("[ai] send_ai_message session.send_message failed: request_id={}, window={}, error={}", request_id_clone, window_label_for_task, error);
                 }
             }
         } else {
-            log::error!("[ai] send_ai_message aborted: no active session for request_id={}", request_id_clone);
+            log::error!("[ai] send_ai_message aborted: no active session for request_id={}, window={}", request_id_clone, window_label_for_task);
         }
 
-        *cancel_token_arc.lock().await = None;
-        *active_request_id_arc.lock().await = None;
-        log::info!("[ai] send_ai_message task finished: request_id={}", request_id_clone);
+        runtime.cancel_token = None;
+        runtime.active_request_id = None;
+        windows_arc.lock().await.insert(window_label_for_task.clone(), runtime);
+        log::info!("[ai] send_ai_message task finished: request_id={}, window={}", request_id_clone, window_label_for_task);
     });
 
-    log::info!("[ai] send_ai_message returning request_id={}", request_id);
+    log::info!("[ai] send_ai_message returning request_id={} for window={}", request_id, window_label);
     Ok(serde_json::json!({
         "request_id": request_id,
     }))
@@ -345,14 +414,19 @@ pub async fn send_ai_message(
 #[tauri::command]
 pub async fn cancel_ai_message(
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<(), String> {
-    let active_request_id = state.active_request_id.lock().await.clone();
-    if active_request_id.is_none() {
+    let window_label = window.label().to_string();
+    let windows = state.windows.lock().await;
+    let runtime = windows
+        .get(&window_label)
+        .ok_or_else(|| "No active message to cancel".to_string())?;
+
+    if runtime.active_request_id.is_none() {
         return Err("No active message to cancel".to_string());
     }
 
-    let cancel_token_guard = state.cancel_token.lock().await;
-    if let Some(token) = cancel_token_guard.as_ref() {
+    if let Some(token) = runtime.cancel_token.as_ref() {
         token.cancel();
         Ok(())
     } else {
@@ -365,8 +439,9 @@ pub async fn clear_ai_session(
     working_dir: String,
     session_id: String,
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<(), String> {
-    clear_ai_session_impl(working_dir, session_id, state.inner()).await
+    clear_ai_session_impl(working_dir, session_id, window.label(), state.inner()).await
 }
 
 #[tauri::command]
@@ -427,8 +502,9 @@ pub async fn activate_ai_session(
     session_id: String,
     working_dir: String,
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<(), String> {
-    activate_ai_session_impl(session_id, working_dir, state.inner()).await
+    activate_ai_session_impl(session_id, working_dir, window.label(), state.inner()).await
 }
 
 #[tauri::command]
@@ -436,29 +512,32 @@ pub async fn delete_ai_session(
     working_dir: String,
     session_id: String,
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<(), String> {
-    delete_ai_session_impl(working_dir, session_id, state.inner()).await
+    delete_ai_session_impl(working_dir, session_id, window.label(), state.inner()).await
 }
 
 #[tauri::command]
 pub async fn create_new_session(
     working_dir: String,
     state: State<'_, AiState>,
+    window: Window,
 ) -> Result<String, String> {
-    create_new_session_impl(working_dir, state.inner()).await
+    create_new_session_impl(working_dir, window.label(), state.inner()).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         activate_ai_session_impl, build_session_system_prompt, clear_ai_session_impl,
-        create_new_session_impl, delete_ai_session_impl, resolve_provider, reset_runtime_state,
-        AiState,
+        create_new_session_impl, delete_ai_session_impl, reset_runtime_state,
+        resolve_provider, AiState,
     };
     use crate::services::ai_config::{self, AiSettings, ProviderConfig};
     use crate::services::ai_storage::AiStorage;
     use crate::services::test_home_guard::home_test_lock;
     use crate::task_database::TaskDatabase;
+    use std::collections::HashMap;
     use std::fs;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -505,11 +584,7 @@ mod tests {
 
     fn create_test_state() -> AiState {
         AiState {
-            session: Arc::new(Mutex::new(None)),
-            cancel_token: Arc::new(Mutex::new(None)),
-            active_request_id: Arc::new(Mutex::new(None)),
-            active_session_id: Arc::new(Mutex::new(None)),
-            active_working_dir: Arc::new(Mutex::new(None)),
+            windows: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -594,7 +669,7 @@ mod tests {
         })
         .expect("save ai config");
 
-        let session_id = create_new_session_impl(working_dir.clone(), &state)
+        let session_id = create_new_session_impl(working_dir.clone(), "window-a", &state)
             .await
             .expect("create session");
 
@@ -696,20 +771,28 @@ mod tests {
         assert_eq!(loaded.messages[1].tool_calls.as_ref().map(|calls| calls.len()), Some(1));
         assert_eq!(loaded.messages[1].timeline.as_ref().map(|items| items.len()), Some(4));
 
-        activate_ai_session_impl(session_id.clone(), working_dir.clone(), &state)
+        activate_ai_session_impl(session_id.clone(), working_dir.clone(), "window-a", &state)
             .await
             .expect("activate session from persisted history");
-        assert_eq!(state.active_session_id.lock().await.as_deref(), Some(session_id.as_str()));
-        assert_eq!(state.active_working_dir.lock().await.as_deref(), Some(working_dir.as_str()));
-        assert!(state.session.lock().await.is_some());
+        {
+            let windows = state.windows.lock().await;
+            let runtime = windows.get("window-a").expect("window runtime should exist");
+            assert_eq!(runtime.active_session_id.as_deref(), Some(session_id.as_str()));
+            assert_eq!(runtime.active_working_dir.as_deref(), Some(working_dir.as_str()));
+            assert!(runtime.session.is_some());
+        }
 
-        clear_ai_session_impl(working_dir.clone(), session_id.clone(), &state)
+        clear_ai_session_impl(working_dir.clone(), session_id.clone(), "window-a", &state)
             .await
             .expect("clear session messages");
         let cleared = storage.load_session(&session_id).expect("reload cleared session");
         assert_eq!(cleared.messages.len(), 0);
         assert_eq!(cleared.session.message_count, 0);
-        assert!(state.session.lock().await.is_some());
+        {
+            let windows = state.windows.lock().await;
+            let runtime = windows.get("window-a").expect("window runtime should still exist");
+            assert!(runtime.session.is_some());
+        }
 
         let delete_user_message = crate::services::ai_storage::StoredMessage {
             id: Some(format!("user-{}", Uuid::new_v4())),
@@ -726,15 +809,91 @@ mod tests {
             .insert_message(&session_id, &delete_user_message)
             .expect("reinsert message before delete");
 
-        delete_ai_session_impl(working_dir.clone(), session_id.clone(), &state)
+        delete_ai_session_impl(working_dir.clone(), session_id.clone(), "window-a", &state)
             .await
             .expect("delete session");
         assert!(storage.load_session(&session_id).is_err());
-        assert!(state.session.lock().await.is_none());
-        assert!(state.active_session_id.lock().await.is_none());
-        assert!(state.active_working_dir.lock().await.is_none());
+        {
+            let windows = state.windows.lock().await;
+            assert!(windows.get("window-a").is_none());
+        }
 
-        reset_runtime_state(&state).await;
+        reset_runtime_state(&state, "window-a").await;
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[tokio::test]
+    async fn runtime_state_isolated_per_window() {
+        let _guard = home_test_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-ai-command-tests-window-isolation-{}",
+            Uuid::new_v4()
+        ));
+        let home_dir = temp_root.join("home");
+        let workspace_dir = temp_root.join("workspace");
+        let tweetpilot_home = home_dir.join(".tweetpilot");
+        let workspace_tweetpilot = workspace_dir.join(".tweetpilot");
+
+        let previous_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", &home_dir);
+
+        fs::create_dir_all(&tweetpilot_home).expect("create tweetpilot home dir");
+        fs::create_dir_all(&workspace_tweetpilot).expect("create workspace tweetpilot dir");
+        fs::write(tweetpilot_home.join("skill.md"), "global skill").expect("write skill");
+        let db_path = workspace_tweetpilot.join("tweetpilot.db");
+        TaskDatabase::new(db_path).expect("initialize workspace database schema");
+
+        let state = create_test_state();
+        let working_dir = workspace_dir.to_string_lossy().to_string();
+
+        ai_config::save_config(&AiSettings {
+            active_provider: "provider-1".to_string(),
+            providers: vec![ProviderConfig {
+                id: "provider-1".to_string(),
+                name: "Provider 1".to_string(),
+                api_key: "test-key".to_string(),
+                base_url: None,
+                model: "claude-sonnet-4-6".to_string(),
+                enabled: true,
+            }],
+        })
+        .expect("save ai config");
+
+        let session_a = create_new_session_impl(working_dir.clone(), "window-a", &state)
+            .await
+            .expect("create session for window a");
+        let session_b = create_new_session_impl(working_dir.clone(), "window-b", &state)
+            .await
+            .expect("create session for window b");
+
+        {
+            let windows = state.windows.lock().await;
+            let runtime_a = windows.get("window-a").expect("window a runtime should exist");
+            let runtime_b = windows.get("window-b").expect("window b runtime should exist");
+            assert_eq!(runtime_a.active_session_id.as_deref(), Some(session_a.as_str()));
+            assert_eq!(runtime_b.active_session_id.as_deref(), Some(session_b.as_str()));
+            assert_ne!(runtime_a.active_session_id, runtime_b.active_session_id);
+        }
+
+        delete_ai_session_impl(working_dir.clone(), session_a.clone(), "window-a", &state)
+            .await
+            .expect("delete session for window a");
+
+        {
+            let windows = state.windows.lock().await;
+            assert!(windows.get("window-a").is_none());
+            let runtime_b = windows.get("window-b").expect("window b runtime should remain");
+            assert_eq!(runtime_b.active_session_id.as_deref(), Some(session_b.as_str()));
+            assert_eq!(runtime_b.active_working_dir.as_deref(), Some(working_dir.as_str()));
+            assert!(runtime_b.session.is_some());
+        }
 
         if let Some(home) = previous_home {
             std::env::set_var("HOME", home);

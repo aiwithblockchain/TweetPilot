@@ -496,20 +496,10 @@ pub async fn set_current_workspace(
         }
     }
 
-    // Step 2: Cancel and clear active AI runtime state
+    // Step 2: Cancel and clear active AI runtime state for this workspace
     {
-        let cancel_token = ai_state.cancel_token.lock().await.clone();
-        if let Some(token) = cancel_token {
-            log::info!("[set_current_workspace] Cancelling in-flight AI request before workspace switch");
-            token.cancel();
-        }
-
-        *ai_state.session.lock().await = None;
-        *ai_state.cancel_token.lock().await = None;
-        *ai_state.active_request_id.lock().await = None;
-        *ai_state.active_session_id.lock().await = None;
-        *ai_state.active_working_dir.lock().await = None;
-        log::info!("[set_current_workspace] Cleared active AI runtime state");
+        crate::commands::ai::clear_runtime_state_for_workspace(ai_state.inner(), &path).await;
+        log::info!("[set_current_workspace] Cleared active AI runtime state for workspace");
     }
 
     // Step 3: Create new workspace context
@@ -575,16 +565,9 @@ pub async fn clear_current_workspace_command(
     }
 
     {
-        let cancel_token = ai_state.cancel_token.lock().await.clone();
-        if let Some(token) = cancel_token {
-            token.cancel();
+        if let Some(active_workspace) = runtime_workspace_state.get_current_workspace().await {
+            crate::commands::ai::clear_runtime_state_for_workspace(ai_state.inner(), &active_workspace).await;
         }
-
-        *ai_state.session.lock().await = None;
-        *ai_state.cancel_token.lock().await = None;
-        *ai_state.active_request_id.lock().await = None;
-        *ai_state.active_session_id.lock().await = None;
-        *ai_state.active_working_dir.lock().await = None;
     }
 
     runtime_workspace_state.set_current_workspace(None).await;

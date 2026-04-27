@@ -25,6 +25,13 @@ type PendingEvent =
   | { type: 'text'; chunk: string }
   | { type: 'status'; text: string }
 
+interface RequestEndPayload {
+  request_id: string
+  result: string
+  final_text?: string
+  error?: string
+}
+
 function fromPersistedToolCall(toolCall: PersistedToolCall): ToolCall {
   return {
     id: toolCall.id,
@@ -313,6 +320,40 @@ function applyStatus(targetRequestId: string, text: string, activeRequestId: str
   }))
 }
 
+function finalizeStreamingRequest(
+  data: RequestEndPayload,
+  assistantMessageId: string | null,
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  setCurrentRequestId: React.Dispatch<React.SetStateAction<string | null>>,
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
+  toast: ReturnType<typeof useToast>,
+) {
+  console.log('[ChatInterface] Request completed, cleaning up')
+  setIsLoading(false)
+  setCurrentRequestId(null)
+
+  if (data.result === 'error' || data.result === 'cancelled') {
+    if (data.error) {
+      toast.error(data.error, 8000)
+    }
+    setMessages((prev) => prev.filter((message) => message.id !== assistantMessageId))
+    return
+  }
+
+  setMessages((prev) => {
+    const lastMessage = prev[prev.length - 1]
+    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+      const timeline = (lastMessage.timeline || []).map((item) =>
+        item.type === 'thinking' && item.isActive
+          ? { ...item, isActive: false, isComplete: true }
+          : item,
+      )
+      return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined, thinkingComplete: true, timeline }]
+    }
+    return prev
+  })
+}
+
 export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const toast = useToast()
   const [value, setValue] = useState('')
@@ -324,6 +365,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   const [sessions, setSessions] = useState<SessionMetadata[]>([])
   const [showSessionPanel, setShowSessionPanel] = useState(false)
   const [pendingEvents, setPendingEvents] = useState<Record<string, PendingEvent[]>>({})
+  const [pendingRequestEnds, setPendingRequestEnds] = useState<Record<string, RequestEndPayload>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const assistantMessageIdRef = useRef<string | null>(null)
   const currentRequestIdRef = useRef<string | null>(null)
@@ -417,6 +459,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
   useEffect(() => {
     let disposed = false
+    let resolvedUnlisten: null | (() => void) = null
 
     const setupWorkspaceChangedListener = async () => {
       try {
@@ -431,19 +474,20 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
         if (disposed) {
           unlisten()
+          return
         }
 
-        return unlisten
+        resolvedUnlisten = unlisten
       } catch (error) {
         console.debug('[ChatInterface] workspace-changed listener unavailable', error)
-        return () => {}
       }
     }
 
-    const cleanup = setupWorkspaceChangedListener()
+    void setupWorkspaceChangedListener()
     return () => {
       disposed = true
-      cleanup.then(unlisten => unlisten())
+      resolvedUnlisten?.()
+      resolvedUnlisten = null
     }
   }, [isConfigured])
 
@@ -455,70 +499,77 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   useEffect(() => {
     console.log('[ChatInterface] Setting up event listeners')
 
-    const unlistenChunk = aiService.onMessageChunk((data) => {
-      console.log('[ChatInterface] Received message-chunk:', data)
-      appendTextChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
-    })
+    let disposed = false
+    const cleanupFns: Array<() => void> = []
 
-    const unlistenThinkingChunk = aiService.onThinkingChunk((data) => {
-      console.log('[ChatInterface] Received thinking-chunk:', data)
-      appendThinkingChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
-    })
-
-    const unlistenToolStart = aiService.onToolCallStart((data) => {
-      console.log('[ChatInterface] Received tool-call-start:', data)
-      applyToolStart(data.request_id, data.tool, data.action, currentRequestIdRef.current, setMessages, setPendingEvents)
-    })
-
-    const unlistenToolEnd = aiService.onToolCallEnd((data) => {
-      console.log('[ChatInterface] Received tool-call-end:', data)
-      applyToolEnd(data.request_id, data.tool, data.success, data.result || '', currentRequestIdRef.current, setMessages, setPendingEvents)
-    })
-
-    const unlistenAiStatus = aiService.onAiStatus((data) => {
-      console.log('[ChatInterface] Received ai-status:', data)
-      applyStatus(data.request_id, data.text, currentRequestIdRef.current, setMessages, setPendingEvents)
-    })
-
-    const unlistenRequestEnd = aiService.onRequestEnd((data) => {
-      console.log('[ChatInterface] Received ai-request-end:', data)
-      if (data.request_id === currentRequestIdRef.current) {
-        console.log('[ChatInterface] Request completed, cleaning up')
-        setIsLoading(false)
-        setCurrentRequestId(null)
-
-        if (data.result === 'error' || data.result === 'cancelled') {
-          if (data.error) {
-            toast.error(data.error, 8000)
+    const registerListeners = async () => {
+      const [unlistenChunk, unlistenThinkingChunk, unlistenToolStart, unlistenToolEnd, unlistenAiStatus, unlistenRequestEnd] = await Promise.all([
+        aiService.onMessageChunk((data) => {
+          console.log('[ChatInterface] Received message-chunk:', data)
+          appendTextChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
+        }),
+        aiService.onThinkingChunk((data) => {
+          console.log('[ChatInterface] Received thinking-chunk:', data)
+          appendThinkingChunk(data.request_id, data.chunk, currentRequestIdRef.current, setMessages, setPendingEvents)
+        }),
+        aiService.onToolCallStart((data) => {
+          console.log('[ChatInterface] Received tool-call-start:', data)
+          applyToolStart(data.request_id, data.tool, data.action, currentRequestIdRef.current, setMessages, setPendingEvents)
+        }),
+        aiService.onToolCallEnd((data) => {
+          console.log('[ChatInterface] Received tool-call-end:', data)
+          applyToolEnd(data.request_id, data.tool, data.success, data.result || '', currentRequestIdRef.current, setMessages, setPendingEvents)
+        }),
+        aiService.onAiStatus((data) => {
+          console.log('[ChatInterface] Received ai-status:', data)
+          applyStatus(data.request_id, data.text, currentRequestIdRef.current, setMessages, setPendingEvents)
+        }),
+        aiService.onRequestEnd((data) => {
+          console.log('[ChatInterface] Received ai-request-end:', data)
+          if (data.request_id !== currentRequestIdRef.current) {
+            setPendingRequestEnds((prev) => ({
+              ...prev,
+              [data.request_id]: data,
+            }))
+            return
           }
-          setMessages((prev) => prev.filter((message) => message.id !== assistantMessageIdRef.current))
-          return
-        }
 
-        setMessages((prev) => {
-          const lastMessage = prev[prev.length - 1]
-          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            const timeline = (lastMessage.timeline || []).map((item) =>
-              item.type === 'thinking' && item.isActive
-                ? { ...item, isActive: false, isComplete: true }
-                : item,
-            )
-            return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined, thinkingComplete: true, timeline }]
-          }
-          return prev
-        })
+          finalizeStreamingRequest(
+            data,
+            assistantMessageIdRef.current,
+            setIsLoading,
+            setCurrentRequestId,
+            setMessages,
+            toast,
+          )
+        }),
+      ])
+
+      if (disposed) {
+        unlistenChunk()
+        unlistenThinkingChunk()
+        unlistenToolStart()
+        unlistenToolEnd()
+        unlistenAiStatus()
+        unlistenRequestEnd()
+        return
       }
-    })
 
-    return () => {
-      Promise.all([
+      cleanupFns.push(
         unlistenChunk,
         unlistenThinkingChunk,
         unlistenToolStart,
         unlistenToolEnd,
         unlistenAiStatus,
         unlistenRequestEnd,
-      ]).then(fns => fns.forEach(fn => fn()))
+      )
+    }
+
+    void registerListeners()
+
+    return () => {
+      disposed = true
+      cleanupFns.splice(0).forEach((cleanup) => cleanup())
     }
   }, [toast])
 
@@ -553,6 +604,32 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     })
   }, [currentRequestId, pendingEvents])
 
+  useEffect(() => {
+    if (!currentRequestId) {
+      return
+    }
+
+    const pendingEnd = pendingRequestEnds[currentRequestId]
+    if (!pendingEnd) {
+      return
+    }
+
+    finalizeStreamingRequest(
+      pendingEnd,
+      assistantMessageIdRef.current,
+      setIsLoading,
+      setCurrentRequestId,
+      setMessages,
+      toast,
+    )
+
+    setPendingRequestEnds((prev) => {
+      const next = { ...prev }
+      delete next[currentRequestId]
+      return next
+    })
+  }, [currentRequestId, pendingRequestEnds, toast])
+
   const handleSend = async () => {
     console.log('[ChatInterface] handleSend called', {
       valueLength: value.length,
@@ -569,7 +646,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     }
 
     if (!currentSessionId) {
-      toast.error('请先从历史会话中选择，或点击右上角 + 新建会话')
+      toast.error('请先点击“立即开始对话”，或从历史会话中选择一个已有会话')
       return
     }
 
@@ -693,7 +770,14 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm('确定要删除这个会话吗？')) return
+    const confirmed = await toast.confirm({
+      title: '删除会话',
+      message: '确定要删除这个会话吗？该操作不可恢复。',
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true,
+    })
+    if (!confirmed) return
 
     try {
       const workingDir = await workspaceService.getCurrentWorkspace()
@@ -785,9 +869,19 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       {/* Messages */}
       <div className="flex-1 overflow-auto p-3 space-y-3">
         {!currentSessionId ? (
-          <div className="text-xs text-[var(--color-text-secondary)] text-center py-8 space-y-2">
-            <div>尚未选择会话</div>
-            <div>点击右上角 + 新建会话，或打开历史记录选择一个已有会话。</div>
+          <div className="h-full flex items-center justify-center px-4">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <button
+                type="button"
+                onClick={handleNewSession}
+                className="inline-flex min-h-[44px] items-center justify-center rounded border border-[#1177BB] bg-[#007ACC] px-4 py-2 text-sm font-medium text-white cursor-pointer transition-colors duration-200 hover:bg-[#1485D1] focus:outline-none focus:ring-2 focus:ring-[#007ACC] focus:ring-offset-2 focus:ring-offset-[var(--color-surface)]"
+              >
+                立即开始对话
+              </button>
+              <p className="text-xs leading-5 text-[var(--color-text-secondary)]">
+                创建会话后即可开始提问或继续 AI 工作。
+              </p>
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="text-xs text-[var(--color-text-secondary)] text-center py-8">
@@ -828,7 +922,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
             lastCompositionEndAtRef.current = Date.now()
           }}
           onKeyDown={handleKeyDown}
-          placeholder={currentSessionId ? '输入消息...' : '请先选择历史会话，或点击右上角 + 新建会话'}
+          placeholder={currentSessionId ? '输入消息...' : '请先点击“立即开始对话”，或打开历史记录选择已有会话'}
           disabled={isLoading || !currentSessionId}
           className="w-full min-h-[84px] resize-none rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-secondary)] outline-none focus:border-[#007ACC] disabled:opacity-50"
         />

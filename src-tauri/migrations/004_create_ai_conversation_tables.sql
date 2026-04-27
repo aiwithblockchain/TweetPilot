@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS ai_sessions (
     provider_id TEXT,
     model TEXT NOT NULL,
     system_prompt TEXT,
-    schema_version INTEGER NOT NULL DEFAULT 3
+    schema_version INTEGER NOT NULL DEFAULT 5
 );
 
 CREATE TABLE IF NOT EXISTS ai_messages (

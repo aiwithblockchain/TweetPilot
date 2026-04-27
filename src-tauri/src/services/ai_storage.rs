@@ -2,6 +2,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+const AI_SESSION_SCHEMA_VERSION: u32 = 5;
+const DEFAULT_SESSION_TITLE: &str = "新会话";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredToolCall {
     pub id: String,
@@ -136,7 +139,7 @@ impl AiStorage {
         );
         conn.execute(
             "INSERT INTO ai_sessions (id, title, created_at, updated_at, message_count, provider_id, model, system_prompt, schema_version)
-             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, 5)",
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8)",
             params![
                 input.id,
                 input.title,
@@ -145,6 +148,7 @@ impl AiStorage {
                 input.provider_id,
                 input.model,
                 input.system_prompt,
+                AI_SESSION_SCHEMA_VERSION,
             ],
         )
         .map_err(|e| format!("Failed to create AI session: {}", e))?;
@@ -577,9 +581,10 @@ impl AiStorage {
             .map_err(|e| format!("Failed to count AI session messages: {}", e))?;
 
         if message_count == 0 {
+            let cleared_at = chrono::Utc::now().timestamp();
             conn.execute(
-                "UPDATE ai_sessions SET message_count = 0, updated_at = created_at WHERE id = ?1",
-                params![session_id],
+                "UPDATE ai_sessions SET title = ?2, message_count = 0, updated_at = ?3 WHERE id = ?1",
+                params![session_id, DEFAULT_SESSION_TITLE, cleared_at],
             )
             .map_err(|e| format!("Failed to update empty AI session metadata: {}", e))?;
             return Ok(());
@@ -602,7 +607,7 @@ impl AiStorage {
             .optional()
             .map_err(|e| format!("Failed to derive AI session title: {}", e))?
             .map(|content| generate_title(&content))
-            .unwrap_or_else(|| "新会话".to_string());
+            .unwrap_or_else(|| DEFAULT_SESSION_TITLE.to_string());
 
         conn.execute(
             "UPDATE ai_sessions
@@ -620,7 +625,7 @@ fn generate_title(first_message: &str) -> String {
     const MAX_LEN: usize = 50;
     let chars: Vec<char> = first_message.chars().collect();
     if chars.is_empty() {
-        return "新会话".to_string();
+        return DEFAULT_SESSION_TITLE.to_string();
     }
     if chars.len() <= MAX_LEN {
         first_message.to_string()
@@ -631,7 +636,10 @@ fn generate_title(first_message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{AiStorage, CreateSessionInput, StoredMessage, StoredTimelineItem, StoredToolCall};
+    use super::{
+        AiStorage, CreateSessionInput, StoredMessage, StoredTimelineItem, StoredToolCall,
+        AI_SESSION_SCHEMA_VERSION, DEFAULT_SESSION_TITLE,
+    };
     use crate::task_database::TaskDatabase;
     use std::fs;
     use uuid::Uuid;
@@ -653,6 +661,86 @@ mod tests {
         let result = test(storage, workspace_dir.clone());
         let _ = fs::remove_dir_all(&temp_root);
         result
+    }
+
+    #[test]
+    fn create_session_persists_current_schema_version() {
+        with_workspace_db("schema-version", |storage, _workspace_dir| {
+            let session_id = format!("session-{}", Uuid::new_v4());
+
+            storage
+                .create_session(CreateSessionInput {
+                    id: session_id.clone(),
+                    title: DEFAULT_SESSION_TITLE.to_string(),
+                    created_at: 100,
+                    updated_at: 100,
+                    provider_id: Some("provider-1".to_string()),
+                    model: "claude-sonnet-4-6".to_string(),
+                    system_prompt: Some("system prompt".to_string()),
+                })
+                .expect("create session");
+
+            let metadata = storage
+                .get_session_metadata(&session_id)
+                .expect("load session metadata");
+
+            assert_eq!(metadata.schema_version, Some(AI_SESSION_SCHEMA_VERSION));
+        });
+    }
+
+    #[test]
+    fn clear_session_messages_resets_title_and_advances_updated_at() {
+        with_workspace_db("clear-session-metadata", |storage, _workspace_dir| {
+            let session_id = format!("session-{}", Uuid::new_v4());
+            let user_message_id = format!("user-{}", Uuid::new_v4());
+
+            storage
+                .create_session(CreateSessionInput {
+                    id: session_id.clone(),
+                    title: DEFAULT_SESSION_TITLE.to_string(),
+                    created_at: 100,
+                    updated_at: 100,
+                    provider_id: Some("provider-1".to_string()),
+                    model: "claude-sonnet-4-6".to_string(),
+                    system_prompt: Some("system prompt".to_string()),
+                })
+                .expect("create session");
+
+            storage
+                .insert_message(
+                    &session_id,
+                    &StoredMessage {
+                        id: Some(user_message_id),
+                        role: "user".to_string(),
+                        content: "帮我写一个很长很长的标题，让会话名不再是默认值".to_string(),
+                        timestamp: 200,
+                        thinking: None,
+                        thinking_complete: None,
+                        tool_calls: None,
+                        timeline: None,
+                        status: Some("completed".to_string()),
+                    },
+                )
+                .expect("insert user message");
+
+            let metadata_before_clear = storage
+                .get_session_metadata(&session_id)
+                .expect("load session metadata before clear");
+            assert_ne!(metadata_before_clear.title, DEFAULT_SESSION_TITLE);
+            assert_eq!(metadata_before_clear.updated_at, 200);
+            assert_eq!(metadata_before_clear.message_count, 1);
+
+            storage
+                .clear_session_messages(&session_id)
+                .expect("clear session messages");
+
+            let metadata_after_clear = storage
+                .get_session_metadata(&session_id)
+                .expect("load session metadata after clear");
+            assert_eq!(metadata_after_clear.title, DEFAULT_SESSION_TITLE);
+            assert_eq!(metadata_after_clear.message_count, 0);
+            assert!(metadata_after_clear.updated_at >= metadata_before_clear.updated_at);
+        });
     }
 
     #[test]

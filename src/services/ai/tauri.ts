@@ -46,7 +46,10 @@ export interface SessionMetadata {
   created_at: number
   updated_at: number
   message_count: number
+  // Derived from the active workspace argument used for the query.
+  // It is returned by the backend for UI convenience, not read from an ai_sessions column.
   workspace: string
+  // Snapshot of the persisted ai_sessions.schema_version value.
   schema_version?: number | null
 }
 

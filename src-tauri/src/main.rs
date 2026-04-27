@@ -32,11 +32,7 @@ fn main() {
 
     // Initialize AI state
     let ai_state = ai::AiState {
-        session: Arc::new(tokio::sync::Mutex::new(None)),
-        cancel_token: Arc::new(tokio::sync::Mutex::new(None)),
-        active_request_id: Arc::new(tokio::sync::Mutex::new(None)),
-        active_session_id: Arc::new(tokio::sync::Mutex::new(None)),
-        active_working_dir: Arc::new(tokio::sync::Mutex::new(None)),
+        windows: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     tauri::Builder::default()

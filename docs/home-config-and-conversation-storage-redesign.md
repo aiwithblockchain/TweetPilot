@@ -730,9 +730,15 @@ src-tauri/src/services/
 - 优先解决“入口统一”和“存储集中”，避免一次性引入过多字段重命名
 
 ### 8. conversations 需要明确 workspace 归属与文档边界
-当前 metadata 中 `workspace` 为空字符串，数据库化时建议在 session 维度真实存储 workspace，避免继续丢失上下文。
+当前 AI session 已经落在每个 workspace 自己的 SQLite 中，也就是：
+- `<workspace>/.tweetpilot/tweetpilot.db`
+- `ai_sessions` / `ai_messages` / `ai_tool_calls` / `ai_message_timeline_items` 都在这个 workspace-local DB 里
 
-同时应注意：
+当前返回给前端的 `SessionMetadata.workspace` 不是 `ai_sessions` 表里的真实列，而是后端在读取当前 workspace 数据库后补上的派生字段，用来告诉 UI“这批 session 属于哪个 workspace 查询上下文”。
+
+因此这里的边界应该明确成：
+- workspace 归属当前已经通过“按 workspace 分库”成立，不依赖额外的全局 conversations 目录
+- 如果后续需要更强的导出、诊断或跨库校验能力，再单独评估是否值得把 workspace 路径作为真实列落库
 - 本文档只定义全局存储与会话存储的总体方向
 - 更细的 AI/session 数据模型应与 `docs/ai-workspace-bound-session-db-redesign.md` 保持一致
 
