@@ -334,25 +334,49 @@ function finalizeStreamingRequest(
   setIsLoading(false)
   setCurrentRequestId(null)
 
-  if (data.result === 'error' || data.result === 'cancelled') {
-    if (data.error && data.result !== 'cancelled') {
-      toast.error(data.error, 8000)
-    }
-    setMessages((prev) => prev.filter((message) => message.id !== assistantMessageId))
-    return
-  }
-
   setMessages((prev) => {
     const lastMessage = prev[prev.length - 1]
-    if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-      const timeline = (lastMessage.timeline || []).map((item) =>
-        item.type === 'thinking' && item.isActive
-          ? { ...item, isActive: false, isComplete: true }
-          : item,
-      )
-      return [...prev.slice(0, -1), { ...lastMessage, isStreaming: false, status: undefined, thinkingComplete: true, timeline }]
+    if (!lastMessage || lastMessage.role !== 'assistant' || lastMessage.id !== assistantMessageId) {
+      return prev
     }
-    return prev
+
+    if (data.result === 'error') {
+      if (data.error) {
+        toast.error(data.error, 8000)
+      }
+      return prev.filter((message) => message.id !== assistantMessageId)
+    }
+
+    if (!lastMessage.isStreaming) {
+      return prev
+    }
+
+    const timeline = (lastMessage.timeline || []).map((item) =>
+      item.type === 'thinking' && item.isActive
+        ? { ...item, isActive: false, isComplete: data.result !== 'cancelled' }
+        : item,
+    )
+
+    const hasVisibleContent = Boolean(
+      lastMessage.content.trim()
+      || lastMessage.thinking?.trim()
+      || lastMessage.toolCalls?.length
+      || timeline.length,
+    )
+
+    if (data.result === 'cancelled' && !hasVisibleContent) {
+      return prev.filter((message) => message.id !== assistantMessageId)
+    }
+
+    const nextMessage: ChatMessage = {
+      ...lastMessage,
+      isStreaming: false,
+      status: data.result === 'cancelled' ? 'cancelled' : undefined,
+      thinkingComplete: data.result === 'cancelled' ? false : true,
+      timeline,
+    }
+
+    return [...prev.slice(0, -1), nextMessage]
   })
 }
 
@@ -454,6 +478,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
     setStopRequested(false)
   }, [])
 
+
   const handleMissingSessionInWorkspace = async () => {
     resetChatState()
     setSessions([])
@@ -540,12 +565,21 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
 
     const setupPanelReopenedListener = async () => {
       try {
-        const unlisten = await listen(PANEL_REOPEN_EVENT, () => {
-          setShowSessionPanel(true)
-
-          if (currentSessionIdRef.current) {
-            void hydrateSession(currentSessionIdRef.current, { showHistoryOnComplete: true })
+        const unlisten = await listen(PANEL_REOPEN_EVENT, async () => {
+          if (currentRequestIdRef.current || currentSessionIdRef.current) {
+            setShowSessionPanel(false)
+            return
           }
+
+          const workingDir = await workspaceService.getCurrentWorkspace()
+          if (!workingDir) {
+            setShowSessionPanel(false)
+            return
+          }
+
+          const sessionList = await aiService.listSessions(workingDir)
+          setSessions(sessionList)
+          setShowSessionPanel(sessionList.length > 0)
         })
 
         if (disposed) {
@@ -565,7 +599,7 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
       resolvedUnlisten?.()
       resolvedUnlisten = null
     }
-  }, [])
+  }, [isConfigured])
 
   useEffect(() => {
     currentRequestIdRef.current = currentRequestId

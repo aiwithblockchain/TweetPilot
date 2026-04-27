@@ -922,42 +922,6 @@ pub async fn open_folder_dialog(app: AppHandle, window: tauri::WebviewWindow) ->
     Ok(())
 }
 
-/// Open folder dialog and open in new window
-pub async fn open_folder_in_new_window(app: AppHandle) -> Result<(), String> {
-    use tauri_plugin_dialog::DialogExt;
-    use tauri::WebviewWindowBuilder;
-
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Open Folder in New Window")
-        .blocking_pick_folder();
-
-    if let Some(folder_path) = path {
-        let path_str = folder_path.to_string();
-
-        // Create new window
-        let window = WebviewWindowBuilder::new(
-            &app,
-            generate_workspace_window_label(),
-            tauri::WebviewUrl::App("/".into()),
-        )
-        .title("TweetPilot")
-        .inner_size(1280.0, 800.0)
-        .decorations(false)
-        .build()
-        .map_err(|e| format!("Failed to create window: {}", e))?;
-
-        // Wait for window to be ready, then emit workspace path
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-        window.emit("set-initial-workspace", path_str)
-            .map_err(|e| format!("Failed to emit set-initial-workspace event: {}", e))?;
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::{initialize_workspace, CONTENT_RULES_FILE_NAME, PRODUCT_FILE_NAME, WORKSPACE_APP_DIR, WORKSPACE_MARKER_FILE};

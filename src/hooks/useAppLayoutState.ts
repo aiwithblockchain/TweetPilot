@@ -424,8 +424,8 @@ export function useAppLayoutState() {
     })
   }, [activeView])
 
-  const loadWorkspaceRoot = useCallback(async () => {
-    const currentWorkspace = await workspaceService.getCurrentWorkspace()
+  const loadWorkspaceRoot = useCallback(async (nextWorkspaceOverride?: string | null) => {
+    const currentWorkspace = nextWorkspaceOverride ?? await workspaceService.getCurrentWorkspace()
 
     if (!currentWorkspace) {
       resetWorkspaceViewState(null)
@@ -897,9 +897,9 @@ export function useAppLayoutState() {
 
     const bindWorkspaceChanged = async () => {
       try {
-        const cleanup = await listen<string>('workspace-changed', async () => {
+        const cleanup = await listen<string>('workspace-changed', async (event) => {
           try {
-            await loadWorkspaceRoot()
+            await loadWorkspaceRoot(event.payload)
           } catch (error) {
             setWorkspaceError(error instanceof Error ? error.message : '工作区加载失败')
           }

@@ -458,9 +458,19 @@ describe('ChatInterface', () => {
     expect(await screen.findByRole('button', { name: '停止生成' })).toBeTruthy()
   })
 
-  it('waits for request-end before fully recovering after stop is requested', async () => {
+  it('preserves partial assistant content when a request is cancelled', async () => {
+    let onThinkingChunk: ((data: { request_id: string; chunk: string }) => void) | undefined
+    let onMessageChunk: ((data: { request_id: string; chunk: string }) => void) | undefined
     let onRequestEnd: ((data: { request_id: string; result: string; error?: string }) => void) | undefined
 
+    mockAiService.onThinkingChunk.mockImplementation(async (callback: typeof onThinkingChunk) => {
+      onThinkingChunk = callback
+      return () => {}
+    })
+    mockAiService.onMessageChunk.mockImplementation(async (callback: typeof onMessageChunk) => {
+      onMessageChunk = callback
+      return () => {}
+    })
     mockAiService.onRequestEnd.mockImplementation(async (callback: typeof onRequestEnd) => {
       onRequestEnd = callback
       return () => {}
@@ -470,26 +480,38 @@ describe('ChatInterface', () => {
     fireEvent.change(input, { target: { value: 'hello' } })
     fireEvent.keyDown(input, { key: 'Enter', keyCode: 13, which: 13 })
 
-    const stopButton = await screen.findByRole('button', { name: '停止生成' })
-    fireEvent.click(stopButton)
-
     await waitFor(() => {
-      expect(mockAiService.cancelMessage).toHaveBeenCalledTimes(1)
-      expect(toast.info).toHaveBeenCalledWith('正在停止当前生成...')
-      expect(screen.getByRole('button', { name: '停止中...' }).hasAttribute('disabled')).toBe(true)
-      expect((screen.getByPlaceholderText('输入消息...') as HTMLTextAreaElement).disabled).toBe(true)
+      expect(mockAiService.sendMessage).toHaveBeenCalledWith('hello', '/tmp/workspace')
     })
 
+    onThinkingChunk?.({ request_id: 'request-1', chunk: 'half thought' })
+    onMessageChunk?.({ request_id: 'request-1', chunk: 'half answer' })
     onRequestEnd?.({ request_id: 'request-1', result: 'cancelled', error: 'Request cancelled' })
 
     await waitFor(() => {
+      expect(screen.getByText('half answer').textContent).toBe('half answer')
+      expect(screen.getByText('thinking:half thought').textContent).toBe('thinking:half thought')
       expect(screen.queryByRole('button', { name: '停止生成' })).toBeNull()
-      expect(screen.queryByRole('button', { name: '停止中...' })).toBeNull()
       expect((screen.getByPlaceholderText('输入消息...') as HTMLTextAreaElement).disabled).toBe(false)
     })
   })
 
-  it('reopens history and restores the active session after the AI panel is shown again', async () => {
+  it('shows history on panel reopen when there is no active session but workspace has saved sessions', async () => {
+    render(<ChatInterface />)
+
+    await waitFor(() => {
+      expect(panelReopenedListeners.length).toBeGreaterThan(0)
+    })
+
+    panelReopenedListeners[panelReopenedListeners.length - 1]()
+
+    await waitFor(() => {
+      expect(mockAiService.listSessions).toHaveBeenCalledWith('/tmp/workspace')
+      expect(screen.getByText('Test Session').textContent).toBe('Test Session')
+    })
+  })
+
+  it('does not show history on panel reopen when there is an active session', async () => {
     await openHistoryAndSelectSession('Test Session')
 
     await waitFor(() => {
@@ -500,10 +522,10 @@ describe('ChatInterface', () => {
     panelReopenedListeners[panelReopenedListeners.length - 1]()
 
     await waitFor(() => {
-      expect(mockAiService.loadSession).toHaveBeenCalledTimes(2)
-      expect(screen.getAllByText('Test Session').length).toBeGreaterThan(0)
+      expect(mockAiService.loadSession).toHaveBeenCalledTimes(1)
       expect(screen.getByText('restored assistant').textContent).toBe('restored assistant')
       expect((screen.getByPlaceholderText('输入消息...') as HTMLTextAreaElement).disabled).toBe(false)
     })
   })
+
 })

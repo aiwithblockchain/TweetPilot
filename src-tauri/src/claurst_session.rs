@@ -372,6 +372,18 @@ impl ClaurstSession {
         )
         .await;
 
+        let partial_text = self
+            .storage
+            .load_messages(&self.session_id)
+            .ok()
+            .and_then(|messages| {
+                messages
+                    .into_iter()
+                    .find(|message| message.id.as_deref() == Some(assistant_message_id.as_str()))
+                    .map(|message| message.content)
+            })
+            .unwrap_or_default();
+
         let final_text = match outcome {
             QueryOutcome::EndTurn { message: msg, .. } => collect_final_text_from_message(&msg),
             QueryOutcome::MaxTokens { partial_message, .. } => collect_final_text_from_message(&partial_message),
@@ -379,7 +391,7 @@ impl ClaurstSession {
                 let cancelled_message = StoredMessage {
                     id: Some(assistant_message_id.clone()),
                     role: "assistant".to_string(),
-                    content: String::new(),
+                    content: partial_text.clone(),
                     timestamp: chrono::Utc::now().timestamp(),
                     thinking: Some(thinking_buffer.lock().await.clone()).filter(|value| !value.is_empty()),
                     thinking_complete: Some(false),
