@@ -195,7 +195,17 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-input)] px-3 py-1 text-[11px] text-[var(--color-text)]">
                 任务详情
               </div>
-              <h2 className="text-2xl font-semibold text-[var(--color-text)] mt-4">{task.name}</h2>
+              <div className="flex flex-wrap items-center gap-2 mt-4">
+                <h2 className="text-2xl font-semibold text-[var(--color-text)]">{task.name}</h2>
+                <div className={[
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] whitespace-nowrap',
+                  task.executionMode === 'ai_session'
+                    ? 'border-[#6D5BF6]/35 bg-[#6D5BF6]/10 text-[#CFC9FF]'
+                    : 'border-[#4EC9B0]/30 bg-[#4EC9B0]/10 text-[#4EC9B0]',
+                ].join(' ')}>
+                  {task.executionMode === 'ai_session' ? 'AI 任务' : 'Python 脚本任务'}
+                </div>
+              </div>
               <p className="text-sm text-[var(--color-text-secondary)] mt-2 leading-6 max-w-2xl">{task.description || '当前任务暂无详细描述。'}</p>
             </div>
             <div className={[
@@ -212,8 +222,9 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-6">
             <HeroStat label="任务类型" value={task.type === 'scheduled' ? '定时任务' : '即时任务'} />
+            <HeroStat label="执行模式" value={task.executionMode === 'ai_session' ? 'AI 任务' : 'Python 脚本任务'} />
             <HeroStat
               label={task.type === 'scheduled' ? '下次执行' : '最近执行'}
               value={

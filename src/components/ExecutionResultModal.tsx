@@ -23,7 +23,7 @@ export default function ExecutionResultModal({ result, onClose }: ExecutionResul
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-4">
-          <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <section className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <DetailCard
               label="执行状态"
               value={result.status === 'success' ? '成功' : '失败'}
@@ -31,7 +31,6 @@ export default function ExecutionResultModal({ result, onClose }: ExecutionResul
             />
             <DetailCard label="退出码" value={String(result.exitCode)} />
             <DetailCard label="耗时" value={`${result.duration.toFixed(2)}s`} />
-            <DetailCard label="执行编号" value={result.runNo ? String(result.runNo) : '-'} />
           </section>
 
           {result.error && (
