@@ -1,11 +1,93 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { taskService } from '@/services'
 import type { Task } from '@/services'
+
+const taskStore: Task[] = []
+const executionStore = new Map<string, number>()
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(async (command: string, args?: Record<string, any>) => {
+    switch (command) {
+      case 'get_tasks':
+        return taskStore
+      case 'create_task': {
+        const config = (args?.config ?? {}) as Record<string, any>
+        const now = new Date().toISOString()
+        const createdTask: Task = {
+          id: `task-${taskStore.length + 1}`,
+          name: config.name ?? '',
+          description: config.description,
+          type: config.type ?? 'immediate',
+          status: 'idle',
+          enabled: true,
+          executionMode: config.execution_mode ?? 'script',
+          usePersona: config.use_persona ?? false,
+          personaPrompt: config.persona_prompt,
+          scriptPath: config.script_path ?? '',
+          parameters: config.parameters ?? {},
+          schedule: config.schedule,
+          scheduleType: config.schedule_type ?? 'cron',
+          intervalSeconds: config.interval_seconds,
+          accountId: config.account_id ?? '',
+          accountScreenName: undefined,
+          statistics: {
+            totalExecutions: 0,
+            successCount: 0,
+            failureCount: 0,
+            successRate: 0,
+            averageDuration: 0,
+          },
+          createdAt: now,
+          updatedAt: now,
+          timeout: config.timeout,
+          retryCount: config.retry_count,
+          retryDelay: config.retry_delay,
+          tags: config.tags ?? [],
+        }
+        taskStore.push(createdTask)
+        return createdTask
+      }
+      case 'execute_task': {
+        const taskId = args?.taskId as string
+        const task = taskStore.find(item => item.id === taskId)
+        if (!task) {
+          throw new Error(`Task not found: ${taskId}`)
+        }
+        const executions = (executionStore.get(taskId) ?? 0) + 1
+        executionStore.set(taskId, executions)
+        task.statistics.totalExecutions = executions
+        task.statistics.successCount = executions
+        task.statistics.successRate = 100
+        task.lastExecutionStatus = 'success'
+        task.lastExecutionTime = new Date().toISOString()
+
+        return {
+          id: `exec-${taskId}-${executions}`,
+          taskId,
+          runNo: executions,
+          startTime: new Date().toISOString(),
+          endTime: new Date().toISOString(),
+          duration: 1,
+          status: 'success',
+          exitCode: 0,
+          stdout: 'ok',
+          stderr: '',
+          finalOutput: 'ok',
+          errorMessage: null,
+          metadata: null,
+        }
+      }
+      default:
+        throw new Error(`Unhandled invoke command in test: ${command}`)
+    }
+  }),
+}))
 
 // Integration test: verify task service operations work end-to-end
 describe('TaskManagement service integration', () => {
   beforeEach(() => {
-    // Tests run against mock service in test environment
+    taskStore.length = 0
+    executionStore.clear()
   })
 
   it('loads task list', async () => {
@@ -48,10 +130,13 @@ describe('TaskManagement service integration', () => {
     const task = (await taskService.getTasks())[0]
 
     // Execute the task
-    await taskService.executeTask(task.id)
+    const result = await taskService.executeTask(task.id)
 
-    // In a real integration test, we'd verify execution records
-    // For now, just verify the call succeeds
-    expect(task.id).toBeDefined()
+    expect(result.status).toBe('success')
+    expect(result.taskId).toBe(task.id)
+
+    const updatedTask = (await taskService.getTasks())[0]
+    expect(updatedTask.statistics.totalExecutions).toBe(1)
+    expect(updatedTask.lastExecutionStatus).toBe('success')
   })
 })

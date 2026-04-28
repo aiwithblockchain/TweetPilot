@@ -1,7 +1,7 @@
-import { Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
+import { Bot, Clock3, PlayCircle, Sparkles, TimerReset } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { taskService, getManagedAccountsForTaskSelection, type ManagedAccountForTask } from '@/services'
-import type { Task, TaskConfigInput, TaskType } from '@/services'
+import type { Task, TaskConfigInput, TaskExecutionMode, TaskType } from '@/services'
 import { ScriptSelector } from './ScriptSelector'
 import { ParameterEditor } from './ParameterEditor'
 
@@ -11,6 +11,9 @@ function buildTaskFormState(task?: Task) {
     name: task?.name || '',
     description: task?.description || '',
     taskType: (task?.type || 'immediate') as TaskType,
+    executionMode: (task?.executionMode || 'script') as TaskExecutionMode,
+    usePersona: task?.usePersona || false,
+    personaPrompt: task?.personaPrompt || '',
     scheduleType: scheduleType as 'interval' | 'cron',
     scriptPath: task?.scriptPath || '',
     parameters: ((task?.parameters || {}) as Record<string, string>),
@@ -69,6 +72,9 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [taskType, setTaskType] = useState<TaskType>('immediate')
+  const [executionMode, setExecutionMode] = useState<TaskExecutionMode>('script')
+  const [usePersona, setUsePersona] = useState(false)
+  const [personaPrompt, setPersonaPrompt] = useState('')
   const [scheduleType, setScheduleType] = useState<'interval' | 'cron'>('interval')
   const [scriptPath, setScriptPath] = useState('')
   const [parameters, setParameters] = useState<Record<string, string>>({})
@@ -99,6 +105,9 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     setName(nextState.name)
     setDescription(nextState.description)
     setTaskType(nextState.taskType)
+    setExecutionMode(nextState.executionMode)
+    setUsePersona(nextState.usePersona)
+    setPersonaPrompt(nextState.personaPrompt)
     setScheduleType(nextState.scheduleType)
     setScriptPath(nextState.scriptPath)
     setParameters(nextState.parameters)
@@ -149,11 +158,16 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     return scriptPath.split('/').pop() || scriptPath
   }, [scriptPath])
 
+  const executionModeLabel = executionMode === 'ai_session' ? 'AI Session' : 'Python 脚本'
+
   const formSnapshot = useMemo(
     () => JSON.stringify({
       name,
       description,
       taskType,
+      executionMode,
+      usePersona,
+      personaPrompt,
       scheduleType,
       scriptPath,
       parameters,
@@ -162,7 +176,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
       intervalUnit,
       cronFields,
     }),
-    [name, description, taskType, scheduleType, scriptPath, parameters, accountId, intervalValue, intervalUnit, cronFields],
+    [name, description, taskType, executionMode, usePersona, personaPrompt, scheduleType, scriptPath, parameters, accountId, intervalValue, intervalUnit, cronFields],
   )
 
   const isDirty = formSnapshot !== baselineSnapshot
@@ -183,7 +197,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
 
   const validateForm = () => {
     if (!name.trim()) return '请输入任务名称'
-    if (!scriptPath.trim()) return '请选择 Python 脚本'
+    if (executionMode === 'script' && !scriptPath.trim()) return '请选择 Python 脚本'
     if (taskType === 'scheduled') {
       if (scheduleType === 'interval' && intervalValue < 1) {
         return '执行间隔必须大于 0'
@@ -206,6 +220,9 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     setName('')
     setDescription('')
     setTaskType('immediate')
+    setExecutionMode('script')
+    setUsePersona(false)
+    setPersonaPrompt('')
     setScheduleType('interval')
     setScriptPath('')
     setParameters({})
@@ -236,6 +253,9 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     name: name.trim(),
     description: description.trim() || undefined,
     taskType,
+    executionMode,
+    usePersona,
+    personaPrompt: usePersona && accountId ? personaPrompt.trim() || undefined : undefined,
     scriptPath: scriptPath.trim(),
     scheduleType: taskType === 'scheduled' ? scheduleType : undefined,
     schedule: taskType === 'scheduled' && scheduleType === 'cron' ? getCronFromTemplate() : undefined,
@@ -297,8 +317,8 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
               <h2 className="text-2xl font-semibold text-white mt-4">{isEditMode ? '任务编辑工作台' : '任务创建工作台'}</h2>
               <p className="text-sm text-[#D4D4D4] mt-2 leading-6 max-w-2xl">
                 {isEditMode
-                  ? '修改任务脚本路径与现有配置，保存后立即执行和后续调度都会使用新配置。'
-                  : '保留之前的即时任务 / 定时任务能力，但把它放进新的主显示区工作流，让创建体验更完整也更稳定。'}
+                  ? '修改任务执行方式、任务描述与调度配置，保存后后续执行都会使用新设置。'
+                  : '在这里创建即时或定时任务，并选择由脚本直接执行，或交给 AI Session 完成任务。'}
               </p>
             </div>
             <div className="hidden md:flex w-20 h-20 rounded-2xl border border-white/10 bg-black/20 items-center justify-center shadow-inner">
@@ -307,8 +327,8 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
-            <HeroStat label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
-            <HeroStat label="脚本文件" value={scriptFileName} />
+            <HeroStat label="任务类型" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
+            <HeroStat label="执行引擎" value={executionModeLabel} />
             <HeroStat label="目标账号" value={selectedAccountDisplay} />
           </div>
         </div>
@@ -336,14 +356,53 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
             </div>
           </div>
 
-          <Field label="Python 脚本">
-            <ScriptSelector value={scriptPath} onChange={setScriptPath} />
-          </Field>
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-4">
+            <div className="text-sm font-semibold text-[var(--color-text)]">执行引擎</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <ModeCard
+                active={executionMode === 'script'}
+                title="Python 脚本"
+                description="直接执行指定脚本，适合已有自动化逻辑。"
+                icon={<PlayCircle className="w-5 h-5" />}
+                onClick={() => setExecutionMode('script')}
+              />
+              <ModeCard
+                active={executionMode === 'ai_session'}
+                title="AI Session"
+                description="把任务描述交给 AI 执行，并保存完整执行过程与最终输出。"
+                icon={<Bot className="w-5 h-5" />}
+                onClick={() => setExecutionMode('ai_session')}
+              />
+            </div>
+          </div>
 
-          <Field label="执行账号（可选）">
+          {executionMode === 'script' ? (
+            <Field label="Python 脚本">
+              <ScriptSelector value={scriptPath} onChange={setScriptPath} />
+            </Field>
+          ) : (
+            <div className="rounded-xl border border-[#6D5BF6]/25 bg-[#6D5BF6]/8 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-[#CFC9FF]">
+                <Bot className="w-4 h-4" />
+                AI Session 模式说明
+              </div>
+              <div className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                AI 会基于下方任务名称、任务描述、可选参数与账号人格提示词来执行任务，并把执行过程保存到任务历史中。
+              </div>
+            </div>
+          )}
+
+          <Field label="执行账号（可选)">
             <select
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => {
+                const nextAccountId = e.target.value
+                setAccountId(nextAccountId)
+                if (!nextAccountId) {
+                  setUsePersona(false)
+                  setPersonaPrompt('')
+                }
+              }}
               disabled={accountsLoading || accounts.length === 0}
               className="w-full h-10 rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] disabled:opacity-60"
             >
@@ -355,9 +414,48 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
               ))}
             </select>
             <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
-              账号信息当前仅随任务配置一起保存，脚本执行链路暂不通过环境变量注入。
+              {executionMode === 'ai_session'
+                ? '选择账号后可决定是否把账号对应的人格提示词一起带入本次 AI 任务。'
+                : '账号信息当前仅随任务配置一起保存，脚本执行链路暂不通过环境变量注入。'}
             </div>
           </Field>
+
+          {executionMode === 'ai_session' && accountId && (
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)] p-4 space-y-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={usePersona}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    setUsePersona(checked)
+                    if (!checked) {
+                      setPersonaPrompt('')
+                    }
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-[var(--color-border)] bg-[var(--color-surface)] text-[#6D5BF6] focus:ring-[#6D5BF6]"
+                />
+                <div>
+                  <div className="text-sm font-medium text-[var(--color-text)]">附加账号人格提示词</div>
+                  <div className="text-xs leading-5 text-[var(--color-text-secondary)] mt-1">
+                    勾选后，任务执行时会把这里填写的人格提示词一并提供给 AI。
+                  </div>
+                </div>
+              </label>
+
+              {usePersona && (
+                <Field label="人格提示词">
+                  <textarea
+                    value={personaPrompt}
+                    onChange={(e) => setPersonaPrompt(e.target.value)}
+                    placeholder="输入该账号的人格设定、语气偏好、内容边界等"
+                    rows={4}
+                    className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] resize-y"
+                  />
+                </Field>
+              )}
+            </div>
+          )}
 
           <Field label="任务名称">
             <input
@@ -373,8 +471,8 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="说明这个脚本的用途或执行目标"
-              rows={2}
+              placeholder={executionMode === 'ai_session' ? '描述你希望 AI 完成什么任务、可以使用哪些工具、结果输出要求是什么' : '说明这个脚本的用途或执行目标'}
+              rows={executionMode === 'ai_session' ? 4 : 2}
               className="w-full rounded border border-[var(--color-border)] bg-[var(--color-input)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] resize-none"
             />
           </Field>
@@ -503,15 +601,28 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
 
         <aside className="space-y-4">
           <SidePanel title="当前任务形态">
-            <InfoLine label="执行方式" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
-            <InfoLine label="脚本文件" value={scriptFileName} />
+            <InfoLine label="任务类型" value={taskType === 'scheduled' ? '定时任务' : '即时任务'} />
+            <InfoLine label="执行引擎" value={executionModeLabel} />
+            {executionMode === 'script' && <InfoLine label="脚本文件" value={scriptFileName} />}
             <InfoLine label="目标账号" value={selectedAccountDisplay} />
+            {executionMode === 'ai_session' && accountId && (
+              <InfoLine label="人格提示词" value={usePersona ? (personaPrompt.trim() || '已启用，待填写') : '未附加'} />
+            )}
           </SidePanel>
 
           <SidePanel title="使用说明">
             <div className="space-y-2 text-sm text-[var(--color-text)] leading-7">
-              <p>选择一个 Python 脚本文件，系统会自动执行并捕获输出。</p>
-              <p>当前版本执行链路只按数据库中的脚本路径启动脚本，不消费任务参数。</p>
+              {executionMode === 'script' ? (
+                <>
+                  <p>选择一个 Python 脚本文件，系统会自动执行并捕获输出。</p>
+                  <p>当前版本执行链路只按数据库中的脚本路径启动脚本，不消费任务参数。</p>
+                </>
+              ) : (
+                <>
+                  <p>AI Session 模式会把任务名称、任务描述、参数与可选人格提示词交给 AI 执行。</p>
+                  <p>执行完成后，最终输出会写入任务记录，完整过程可在执行历史中查看。</p>
+                </>
+              )}
               <p>即时任务适合手动触发，定时任务适合周期性自动执行。</p>
             </div>
           </SidePanel>

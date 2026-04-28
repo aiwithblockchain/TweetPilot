@@ -696,7 +696,14 @@ async fn set_current_workspace_for_window_label(
 
     // Step 4: Start timers for new workspace
     log::info!("[set_current_workspace] Starting timers for new workspace");
-    new_ctx.start_timers().await?;
+    new_ctx.start_timers().await.map_err(|error| {
+        log::error!(
+            "[set_current_workspace] Failed while starting timers for workspace {}: {}",
+            path,
+            error
+        );
+        format!("启动工作目录定时器失败: {}", error)
+    })?;
 
     // Step 5: Save new workspace context
     {

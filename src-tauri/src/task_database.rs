@@ -207,7 +207,37 @@ impl TaskDatabase {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         let conn = Connection::open(db_path)?;
         Self::init_schema(&conn)?;
-        Ok(Self { conn })
+        let db = Self { conn };
+        db.validate_schema()?;
+        Ok(db)
+    }
+
+    fn validate_schema(&self) -> Result<()> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(tasks)")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        let required_columns = [
+            "execution_mode",
+            "use_persona",
+            "persona_prompt",
+        ];
+
+        let missing_columns = required_columns
+            .iter()
+            .copied()
+            .filter(|column| !columns.iter().any(|existing| existing == column))
+            .collect::<Vec<_>>();
+
+        if missing_columns.is_empty() {
+            return Ok(());
+        }
+
+        Err(rusqlite::Error::InvalidColumnName(format!(
+            "tasks schema is outdated, missing columns: {}. Delete workspace database and retry.",
+            missing_columns.join(", ")
+        )))
     }
 
     fn init_schema(conn: &Connection) -> Result<()> {
@@ -1625,5 +1655,68 @@ impl TaskDatabase {
         .collect::<Result<Vec<_>, _>>()?;
 
         Ok(accounts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskDatabase;
+    use rusqlite::Connection;
+    use std::fs;
+    use uuid::Uuid;
+
+    #[test]
+    fn rejects_outdated_workspace_database_schema() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "tweetpilot-task-db-tests-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&temp_root).expect("create temp dir");
+        let db_path = temp_root.join("tweetpilot.db");
+
+        let conn = Connection::open(&db_path).expect("open sqlite db");
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                script_path TEXT NOT NULL,
+                script_content TEXT,
+                script_hash TEXT,
+                schedule TEXT,
+                schedule_type TEXT DEFAULT 'cron',
+                interval_seconds INTEGER,
+                timeout INTEGER,
+                retry_count INTEGER DEFAULT 0,
+                retry_delay INTEGER DEFAULT 60,
+                account_id TEXT NOT NULL,
+                parameters TEXT,
+                tweet_id TEXT,
+                text TEXT,
+                last_execution_status TEXT,
+                last_execution_time TEXT,
+                next_execution_time TEXT,
+                total_executions INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
+                failure_count INTEGER DEFAULT 0,
+                average_duration REAL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                tags TEXT
+            );",
+        )
+        .expect("create legacy tasks table");
+        drop(conn);
+
+        let err = TaskDatabase::new(db_path).err().expect("legacy schema should be rejected");
+        let message = format!("{err:?}");
+
+        dbg!(&message);
+        assert!(message.contains("no such column: execution_mode"));
+
+        let _ = fs::remove_dir_all(&temp_root);
     }
 }

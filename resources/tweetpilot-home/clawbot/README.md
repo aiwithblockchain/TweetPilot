@@ -194,6 +194,7 @@ clawbot/
 │   ├── upload/            # 媒体上传
 │   └── workflows/         # 多步骤工作流
 ├── examples/              # 示例脚本（快速参考）
+├── ai_dom_probe.py        # AI 平台 DOM 提取最小探针
 └── openclaw.py            # AI 自动回复演示
 ```
 
@@ -313,14 +314,14 @@ status = client.ai.status.get_status()
 platforms = client.ai.status.logged_in_platforms()
 
 # 导航到 AI 平台
-client.ai.navigation.navigate("chatgpt")
+client.ai.navigation.navigate("grok")
 
 # 创建新对话
-result = client.ai.chat.new_conversation("chatgpt")
+result = client.ai.chat.new_conversation("grok")
 
 # 发送消息
 result = client.ai.chat.send_message(
-    platform="chatgpt",
+    platform="grok",
     prompt="Analyze this tweet"
 )
 print(result.content)
@@ -375,6 +376,8 @@ print(result.content)
 | `reply_with_media.py` | 带媒体回复推文 |
 | `workflow_example.py` | 多步骤工作流示例 |
 | `ai_workflow.py` | AI 平台交互示例 |
+| `ai_reply_pinned_tweet.py` | 读取置顶推文并调用 AI 自动回复 |
+| `ai_dom_probe.py` | 仅验证 AI 平台消息发送与 DOM 提取 |
 
 ---
 
@@ -432,6 +435,10 @@ ai_result = client.ai.chat.send_message(
 if ai_result.success:
     client.x.actions.reply(tweet.id, ai_result.content)
 ```
+
+如果需要单独排查 AI 平台消息发送或 DOM 提取问题，优先运行 `ai_dom_probe.py`。
+
+如果需要完整演示读取置顶推文并自动回复，运行 `openclaw.py`。
 
 ---
 

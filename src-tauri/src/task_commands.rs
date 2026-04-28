@@ -15,6 +15,14 @@ use crate::unified_timer::{
 
 use std::sync::Arc;
 
+const LOCALBRIDGE_SYNC_EXECUTOR: &str = "localbridge_sync";
+const LOCALBRIDGE_SYNC_TIMER_ID: &str = "system-localbridge-sync";
+const LOCALBRIDGE_SYNC_TIMER_NAME: &str = "System LocalBridge Sync";
+
+fn has_localbridge_sync_timer(timers: &[Timer]) -> bool {
+    timers.iter().any(|timer| timer.id == LOCALBRIDGE_SYNC_TIMER_ID)
+}
+
 // WorkspaceContext encapsulates all workspace-specific resources
 pub struct WorkspaceContext {
     pub db: Arc<Mutex<TaskDatabase>>,
@@ -35,7 +43,10 @@ impl WorkspaceContext {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
 
-        let db = TaskDatabase::new(db_path).map_err(|e| e.to_string())?;
+        let db = TaskDatabase::new(db_path).map_err(|e| {
+            log::error!("[WorkspaceContext] Failed to open task database: {}", e);
+            e.to_string()
+        })?;
 
         log::info!("[WorkspaceContext] Recalculating next execution times after database initialization...");
         db.recalculate_missed_executions().map_err(|e| {
@@ -62,25 +73,34 @@ impl WorkspaceContext {
 
         self.timer_manager.start().await;
 
-        log::info!("[WorkspaceContext] Registering LocalBridge sync executor");
-        self.timer_manager.register_executor(
-            "localbridge_sync".to_string(),
-            Arc::new(LocalBridgeSyncExecutor::new(self.db.clone(), Some(self.app_handle.clone()))),
-        ).await;
-
-        let localbridge_timer = Timer {
-            id: "system-localbridge-sync".to_string(),
-            name: "System LocalBridge Sync".to_string(),
-            timer_type: TimerType::Interval { seconds: 60 },
-            enabled: true,
-            priority: 100,
-            next_execution: Some(chrono::Utc::now()),
-            last_execution: None,
-            executor: "localbridge_sync".to_string(),
-            executor_config: serde_json::json!({}),
+        let localbridge_timer_registered = {
+            let registry = self.timer_manager.registry.lock().await;
+            has_localbridge_sync_timer(&registry.list_all())
         };
 
-        self.timer_manager.register_timer(localbridge_timer).await?;
+        if !localbridge_timer_registered {
+            log::info!("[WorkspaceContext] Registering LocalBridge sync executor");
+            self.timer_manager.register_executor(
+                LOCALBRIDGE_SYNC_EXECUTOR.to_string(),
+                Arc::new(LocalBridgeSyncExecutor::new(self.db.clone(), Some(self.app_handle.clone()))),
+            ).await;
+
+            let localbridge_timer = Timer {
+                id: LOCALBRIDGE_SYNC_TIMER_ID.to_string(),
+                name: LOCALBRIDGE_SYNC_TIMER_NAME.to_string(),
+                timer_type: TimerType::Interval { seconds: 60 },
+                enabled: true,
+                priority: 100,
+                next_execution: Some(chrono::Utc::now()),
+                last_execution: None,
+                executor: LOCALBRIDGE_SYNC_EXECUTOR.to_string(),
+                executor_config: serde_json::json!({}),
+            };
+
+            self.timer_manager.register_timer(localbridge_timer).await?;
+        } else {
+            log::info!("[WorkspaceContext] LocalBridge sync timer already registered, skipping duplicate registration");
+        }
 
         log::info!("[WorkspaceContext] Registering python_script executor");
         self.timer_manager.register_executor(
@@ -564,4 +584,57 @@ pub async fn get_timer_system_status(
 
     let status = ctx.timer_manager.get_status().await;
     serde_json::to_value(status).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{has_localbridge_sync_timer, LOCALBRIDGE_SYNC_TIMER_ID};
+    use crate::unified_timer::{Timer, TimerType};
+
+    #[test]
+    fn detects_existing_localbridge_sync_timer() {
+        let timers = vec![
+            Timer {
+                id: "task-1".to_string(),
+                name: "Task 1".to_string(),
+                timer_type: TimerType::Interval { seconds: 60 },
+                enabled: true,
+                priority: 50,
+                next_execution: Some(chrono::Utc::now()),
+                last_execution: None,
+                executor: "python_script".to_string(),
+                executor_config: serde_json::json!({}),
+            },
+            Timer {
+                id: LOCALBRIDGE_SYNC_TIMER_ID.to_string(),
+                name: "System LocalBridge Sync".to_string(),
+                timer_type: TimerType::Interval { seconds: 60 },
+                enabled: true,
+                priority: 100,
+                next_execution: Some(chrono::Utc::now()),
+                last_execution: None,
+                executor: "localbridge_sync".to_string(),
+                executor_config: serde_json::json!({}),
+            },
+        ];
+
+        assert!(has_localbridge_sync_timer(&timers));
+    }
+
+    #[test]
+    fn returns_false_when_localbridge_sync_timer_missing() {
+        let timers = vec![Timer {
+            id: "task-1".to_string(),
+            name: "Task 1".to_string(),
+            timer_type: TimerType::Interval { seconds: 60 },
+            enabled: true,
+            priority: 50,
+            next_execution: Some(chrono::Utc::now()),
+            last_execution: None,
+            executor: "python_script".to_string(),
+            executor_config: serde_json::json!({}),
+        }];
+
+        assert!(!has_localbridge_sync_timer(&timers));
+    }
 }
