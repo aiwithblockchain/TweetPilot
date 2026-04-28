@@ -100,6 +100,9 @@ interface TauriTaskExecutionRecord {
   finalOutput?: string | null
   errorMessage?: string | null
   metadata?: Record<string, any> | string | null
+  command?: string | null
+  workingDirectory?: string | null
+  scriptPath?: string | null
 }
 
 interface TauriExecutionDetail {
@@ -201,6 +204,9 @@ function mapExecution(item: TauriTaskExecutionRecord): ExecutionResult {
     finalOutput: item.finalOutput ?? undefined,
     errorMessage: item.errorMessage ?? undefined,
     metadata: normalizeMetadata(item.metadata),
+    command: item.command ?? normalizeMetadata(item.metadata)?.command,
+    workingDirectory: item.workingDirectory ?? normalizeMetadata(item.metadata)?.workingDirectory,
+    scriptPath: item.scriptPath ?? normalizeMetadata(item.metadata)?.scriptPath,
   }
 }
 

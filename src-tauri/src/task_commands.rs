@@ -15,6 +15,48 @@ use crate::unified_timer::{
 
 use std::sync::Arc;
 
+fn build_failed_execution(task: &Task, error_message: String) -> ExecutionResult {
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    let metadata = if task.execution_mode == "script" {
+        let script_path = task.script_path.clone();
+        let script_path_ref = std::path::Path::new(&script_path);
+        let working_directory = script_path_ref
+            .parent()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+        let command = format!("python3 \"{}\"", script_path);
+
+        Some(
+            serde_json::json!({
+                "scriptPath": script_path,
+                "workingDirectory": working_directory,
+                "command": command,
+            })
+            .to_string(),
+        )
+    } else {
+        None
+    };
+
+    ExecutionResult {
+        id: uuid::Uuid::new_v4().to_string(),
+        task_id: task.id.clone(),
+        run_no: None,
+        session_code: None,
+        task_session_id: None,
+        start_time: timestamp.clone(),
+        end_time: timestamp,
+        duration: 0.0,
+        status: "failure".to_string(),
+        exit_code: -1,
+        stdout: String::new(),
+        stderr: error_message.clone(),
+        final_output: None,
+        error_message: Some(error_message),
+        metadata,
+    }
+}
+
 const LOCALBRIDGE_SYNC_EXECUTOR: &str = "localbridge_sync";
 const LOCALBRIDGE_SYNC_TIMER_ID: &str = "system-localbridge-sync";
 const LOCALBRIDGE_SYNC_TIMER_NAME: &str = "System LocalBridge Sync";
@@ -248,6 +290,9 @@ pub async fn execute_task(
         Ok(exec_result) => {
             log::info!("[execute_task] Execution successful, saving to database");
             if task.execution_mode != "ai_session" {
+                // AI session tasks persist their execution records inside task_ai_executor
+                // via create_execution_stub + finalize_execution, so only script tasks
+                // should save here.
                 ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
             }
             log::info!("[execute_task] Updating task status to idle");
@@ -280,8 +325,16 @@ pub async fn execute_task(
         }
         Err(e) => {
             log::error!("[execute_task] Execution failed: {}", e);
-            ctx.db.lock().unwrap().update_task_status(&task_id, "failed").map_err(|e| e.to_string())?;
-            Err(e)
+            let exec_result = build_failed_execution(&task, e);
+            if task.execution_mode != "ai_session" {
+                // AI session tasks persist their execution records inside task_ai_executor
+                // via create_execution_stub + finalize_execution, so only script tasks
+                // should save failure results here.
+                ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|err| err.to_string())?;
+            }
+            ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
+            crate::app_events::publish_task_executed(&ctx.app_handle, task_id.clone(), exec_result.status.clone());
+            Ok(exec_result)
         }
     }
 }
@@ -330,6 +383,9 @@ pub async fn get_task_detail(
             "finalOutput": exec.final_output,
             "errorMessage": exec.error_message,
             "metadata": exec.metadata,
+            "command": exec.metadata.as_ref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()).and_then(|v| v.get("command").and_then(|s| s.as_str()).map(|s| s.to_string())),
+            "workingDirectory": exec.metadata.as_ref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()).and_then(|v| v.get("workingDirectory").and_then(|s| s.as_str()).map(|s| s.to_string())),
+            "scriptPath": exec.metadata.as_ref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()).and_then(|v| v.get("scriptPath").and_then(|s| s.as_str()).map(|s| s.to_string())),
         })
     });
 

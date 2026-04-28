@@ -4,6 +4,16 @@ use std::time::Instant;
 use uuid::Uuid;
 use crate::task_database::{ExecutionResult, Task};
 
+fn build_script_metadata(script_path: &str, working_directory: &str, command: &str) -> Option<String> {
+    serde_json::json!({
+        "scriptPath": script_path,
+        "workingDirectory": working_directory,
+        "command": command,
+    })
+    .to_string()
+    .into()
+}
+
 pub struct TaskExecutor {
     python_path: String,
 }
@@ -59,6 +69,19 @@ impl TaskExecutor {
         cmd.env("PYTHONPATH", python_path);
         log::info!("[TaskExecutor] Using ClawBot PYTHONPATH root: {}", clawbot_python_path);
 
+        let command_preview = format!(
+            "cd \"{}\" && PYTHONPATH=\"{}\" \"{}\" \"{}\"",
+            script_dir.display(),
+            clawbot_python_path,
+            self.python_path,
+            script_path,
+        );
+        let metadata = build_script_metadata(
+            &script_path,
+            &script_dir.display().to_string(),
+            &command_preview,
+        );
+
         // Set timeout
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -102,6 +125,11 @@ impl TaskExecutor {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let exit_code = output.status.code().unwrap_or(-1);
         let status = if output.status.success() { "success" } else { "failure" };
+        let error_message = if status == "failure" && !stderr.is_empty() {
+            Some(stderr.clone())
+        } else {
+            None
+        };
 
         log::info!("[TaskExecutor] Execution completed: status={}, exit_code={}, duration={:.2}s", status, exit_code, duration);
         log::info!("[TaskExecutor] stdout: {}", stdout);
@@ -121,8 +149,8 @@ impl TaskExecutor {
             stdout,
             stderr,
             final_output: None,
-            error_message: None,
-            metadata: None,
+            error_message,
+            metadata,
         })
     }
 }

@@ -5,6 +5,7 @@ import { TaskActionBar } from './TaskActionBar'
 import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
 import { TaskCreatePane } from './TaskCreatePane'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
+import ExecutionResultModal from './ExecutionResultModal'
 import type { LoadedSession, StoredMessage } from '@/services/ai/tauri'
 import type { Task, TaskDetail, ExecutionResult } from '@/services/task'
 import type { AssistantTimelineItem, ChatMessage, PersistedToolCall, ToolCall } from './ChatInterface/types'
@@ -42,6 +43,7 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
   const [sessionLoading, setSessionLoading] = useState(false)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<LoadedSession | null>(null)
+  const [selectedExecution, setSelectedExecution] = useState<ExecutionResult | null>(null)
 
   const loadDetail = async () => {
     try {
@@ -275,45 +277,64 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
             ) : (
               <>
                 <div className="space-y-2">
-                  {latestHistory.map((item, index) => (
-                    <div
-                      key={item.id || `${item.startTime}-${index}`}
-                      className="flex items-center justify-between gap-3 text-xs p-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)]"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={getExecutionTone(item.status)}>
-                          {getExecutionIcon(item.status)}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="text-[var(--color-text)]">
-                            {formatDateTime(item.startTime)}
+                  {latestHistory.map((item, index) => {
+                    const isScriptTask = task.executionMode === 'script'
+
+                    return (
+                      <div
+                        key={item.id || `${item.startTime}-${index}`}
+                        className={[
+                          'flex items-center justify-between gap-3 text-xs p-2 rounded-lg bg-[var(--color-input)] border',
+                          selectedExecution?.id === item.id
+                            ? 'border-[#6D5BF6]/60 ring-1 ring-[#6D5BF6]/35'
+                            : 'border-[var(--color-border)]',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-center justify-between gap-3 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={getExecutionTone(item.status)}>
+                              {getExecutionIcon(item.status)}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-[var(--color-text)]">
+                                {formatDateTime(item.startTime)}
+                              </div>
+                              <div className="text-[10px] text-[var(--color-text-secondary)] mt-0.5">
+                                {formatExecutionStatus(item.status)}
+                                {item.sessionCode ? ` · ${item.sessionCode}` : ''}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-[10px] text-[var(--color-text-secondary)] mt-0.5">
-                            {formatExecutionStatus(item.status)}
-                            {item.sessionCode ? ` · ${item.sessionCode}` : ''}
-                          </div>
+                          <span
+                            className={[
+                              'px-2 py-0.5 rounded shrink-0',
+                              getExecutionStatusBadge(item.status),
+                            ].join(' ')}
+                          >
+                            {item.duration.toFixed(1)}s
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isScriptTask && (
+                            <button
+                              onClick={() => setSelectedExecution(item)}
+                              className="px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-input)] transition-colors cursor-pointer"
+                            >
+                              执行详情
+                            </button>
+                          )}
+                          {item.taskSessionId && (
+                            <button
+                              onClick={() => void handleViewSession(item)}
+                              className="px-2.5 py-1 rounded border border-[#6D5BF6]/40 bg-[#6D5BF6]/10 text-[#CFC9FF] hover:bg-[#6D5BF6]/18 transition-colors cursor-pointer"
+                            >
+                              查看过程
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {item.taskSessionId && (
-                          <button
-                            onClick={() => void handleViewSession(item)}
-                            className="px-2.5 py-1 rounded border border-[#6D5BF6]/40 bg-[#6D5BF6]/10 text-[#CFC9FF] hover:bg-[#6D5BF6]/18 transition-colors cursor-pointer"
-                          >
-                            查看过程
-                          </button>
-                        )}
-                        <span
-                          className={[
-                            'px-2 py-0.5 rounded',
-                            getExecutionStatusBadge(item.status),
-                          ].join(' ')}
-                        >
-                          {item.duration.toFixed(1)}s
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 {detail.history.length > 5 && (
                   <button
@@ -419,6 +440,13 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
       </div>
       {selectedSession && (
         <TaskAiSessionModal session={selectedSession} onClose={handleCloseSession} />
+      )}
+
+      {selectedExecution && (
+        <ExecutionResultModal
+          result={selectedExecution}
+          onClose={() => setSelectedExecution(null)}
+        />
       )}
 
       {sessionLoading && (

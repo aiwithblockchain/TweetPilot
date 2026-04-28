@@ -33,6 +33,9 @@ export interface ExecutionResult {
   finalOutput?: string
   errorMessage?: string
   metadata?: Record<string, any>
+  command?: string
+  workingDirectory?: string
+  scriptPath?: string
 }
 
 export interface TaskStatistics {
