@@ -412,19 +412,52 @@ export function ChatInterface({ onOpenSettings }: ChatInterfaceProps = {}) {
   }, [messages])
 
   // Check if AI is configured
+  const checkConfig = useCallback(async () => {
+    try {
+      const settings = await aiService.getConfig()
+      const activeProvider = settings.providers.find(p => p.id === settings.active_provider)
+      setIsConfigured(!!activeProvider && !!activeProvider.api_key)
+    } catch (error) {
+      console.error('Failed to check AI config:', toSafeError(error))
+      toast.error('Failed to load AI configuration')
+    }
+  }, [toast])
+
   useEffect(() => {
-    const checkConfig = async () => {
+    checkConfig()
+  }, [checkConfig])
+
+  // Listen for AI config changes
+  useEffect(() => {
+    let disposed = false
+    let resolvedUnlisten: null | (() => void) = null
+
+    const setupConfigChangedListener = async () => {
       try {
-        const settings = await aiService.getConfig()
-        const activeProvider = settings.providers.find(p => p.id === settings.active_provider)
-        setIsConfigured(!!activeProvider && !!activeProvider.api_key)
+        const unlisten = await listen('ai-config-changed', () => {
+          if (!disposed) {
+            void checkConfig()
+          }
+        })
+
+        if (disposed) {
+          unlisten()
+          return
+        }
+
+        resolvedUnlisten = unlisten
       } catch (error) {
-        console.error('Failed to check AI config:', toSafeError(error))
-        toast.error('Failed to load AI configuration')
+        console.debug('[ChatInterface] ai-config-changed listener unavailable', toSafeError(error))
       }
     }
-    checkConfig()
-  }, [toast])
+
+    void setupConfigChangedListener()
+    return () => {
+      disposed = true
+      resolvedUnlisten?.()
+      resolvedUnlisten = null
+    }
+  }, [checkConfig])
 
   // Load sessions list
   const loadSessions = useCallback(async (preferredSessionId?: string | null) => {

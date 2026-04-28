@@ -412,6 +412,11 @@ function AiProvidersSection() {
     try {
       await aiService.saveConfig(newSettings)
       setSettings(newSettings)
+
+      // Notify other components that AI config has changed
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('ai-config-changed', {})
+
       toast.success('配置已保存')
     } catch (error) {
       console.error('Failed to save AI settings:', error)
