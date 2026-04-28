@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: #FFFFFF;
+    --color-surface: #F8F9FA;
+    --color-border: #D1D5DB;
+    --color-text: #1F2937;
+    --color-text-secondary: #6B7280;
+    --color-code-bg: #F3F4F6;
+    --color-hover-bg: #F3F4F6;
+  }
+
+  .dark {
+    --color-bg: #0F1117;
+    --color-surface: #1A1D29;
+    --color-border: #2A2D3A;
+    --color-text: #E8E9ED;
+    --color-text-secondary: #9CA3AF;
+    --color-code-bg: #0F1117;
+    --color-hover-bg: #252830;
+  }
+
+  * {
+    @apply border-[var(--color-border)];
+  }
+
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-text)] font-sans;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+}
+
+@layer utilities {
+  .text-secondary {
+    @apply text-[var(--color-text-secondary)];
+  }
+
+  /* Custom scrollbar styling - Elegant and minimal design */
+  * {
+    scrollbar-width: thin;
+  }
+
+  :root {
+    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+  }
+
+  .dark {
+    scrollbar-color: rgba(204, 204, 204, 0.2) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 2px;
+    border-radius: 3px;
+  }
+
+  :root *::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.3);
+    border-radius: 3px;
+    transition: all 0.2s ease;
+  }
+
+  :root *::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.5);
+  }
+
+  :root *::-webkit-scrollbar-thumb:active {
+    background: rgba(156, 163, 175, 0.7);
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background: rgba(204, 204, 204, 0.25);
+    border-radius: 3px;
+    transition: all 0.2s ease;
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background: rgba(204, 204, 204, 0.4);
+  }
+
+  .dark *::-webkit-scrollbar-thumb:active {
+    background: rgba(204, 204, 204, 0.55);
+  }
+
+  /* Hide scrollbar corner */
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Error output custom scrollbar */
+  .error-output::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .error-output::-webkit-scrollbar-track {
+    background: rgba(58, 31, 31, 0.5);
+    border-radius: 4px;
+  }
+
+  .error-output::-webkit-scrollbar-thumb {
+    background: rgba(244, 135, 113, 0.4);
+    border-radius: 4px;
+  }
+
+  .error-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(244, 135, 113, 0.6);
+  }
+
+  /* Smooth scrolling behavior */
+  * {
+    scroll-behavior: smooth;
+  }
+
+  /* Toast animations */
+  @keyframes slide-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+
+  /* Pulse border animation for active thinking/tool execution */
+  @keyframes pulse-border {
+    0%, 100% {
+      border-color: #569CD6;
+      opacity: 1;
+    }
+    50% {
+      border-color: #569CD6;
+      opacity: 0.6;
+    }
+  }
+
+  .animate-pulse-border {
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+
+  /* Slide-in animation for session panel */
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 200ms ease-out;
+  }
+}

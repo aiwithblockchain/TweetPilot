@@ -1,0 +1,224 @@
+import { useState } from 'react'
+import { taskService } from '@/services'
+import type { ExecutionResult, Task } from '@/services/task'
+import ExecutingModal from './ExecutingModal'
+import ExecutionResultModal from './ExecutionResultModal'
+
+interface TaskActionBarProps {
+  task: Task
+  onChanged?: () => void
+  onDeleted?: () => void
+  onEdit?: () => void
+  onHistoryCleared?: () => void
+}
+
+export function TaskActionBar({ task, onChanged, onDeleted, onEdit, onHistoryCleared }: TaskActionBarProps) {
+  const [executing, setExecuting] = useState(false)
+  const [result, setResult] = useState<ExecutionResult | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<'pause' | 'resume' | 'execute' | 'delete' | 'clear-history' | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false)
+
+  const handleExecute = async () => {
+    try {
+      setActionError(null)
+      setExecuting(true)
+      setActionLoading('execute')
+      const nextResult = await taskService.executeTask(task.id)
+      setExecuting(false)
+      setResult(nextResult)
+      onChanged?.()
+    } catch (error) {
+      console.error('Failed to execute task from detail view:', error)
+      setExecuting(false)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handlePause = async () => {
+    try {
+      setActionError(null)
+      setActionLoading('pause')
+      await taskService.pauseTask(task.id)
+      onChanged?.()
+    } catch (error) {
+      console.error('Failed to pause task from detail view:', error)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleResume = async () => {
+    try {
+      setActionError(null)
+      setActionLoading('resume')
+      await taskService.resumeTask(task.id)
+      onChanged?.()
+    } catch (error) {
+      console.error('Failed to resume task from detail view:', error)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDelete = async () => {
+    try {
+      setActionError(null)
+      setActionLoading('delete')
+      await taskService.deleteTask(task.id)
+      setShowDeleteConfirm(false)
+      onDeleted?.()
+    } catch (error) {
+      console.error('Failed to delete task:', error)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleClearHistory = async () => {
+    try {
+      setActionError(null)
+      setActionLoading('clear-history')
+      await taskService.clearTaskExecutionHistory(task.id)
+      setShowClearHistoryConfirm(false)
+      onHistoryCleared?.()
+    } catch (error) {
+      console.error('Failed to clear task execution history:', error)
+      setActionError((error as Error).message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  return (
+    <>
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+        <div className="text-sm font-semibold text-[var(--color-text)] mb-3">任务操作</div>
+
+        {!showDeleteConfirm && !showClearHistoryConfirm ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onEdit?.()}
+              disabled={task.status === 'running'}
+              className="h-9 px-4 rounded border border-[#6D5BF6]/50 bg-[#6D5BF6]/12 text-[#CFC9FF] text-sm hover:bg-[#6D5BF6]/20 hover:border-[#6D5BF6] transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              编辑任务
+            </button>
+            {task.type === 'immediate' ? (
+              <button
+                type="button"
+                onClick={handleExecute}
+                disabled={actionLoading === 'execute' || task.status === 'running'}
+                className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {actionLoading === 'execute' ? '执行中...' : '立即执行'}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleExecute}
+                  disabled={actionLoading === 'execute' || task.status === 'running'}
+                  className="h-9 px-4 rounded bg-[#6D5BF6] text-white text-sm hover:bg-[#5B4AD4] transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {actionLoading === 'execute' ? '测试中...' : '立即测试'}
+                </button>
+                {task.status === 'paused' ? (
+                  <button
+                    type="button"
+                    onClick={handleResume}
+                    disabled={actionLoading === 'resume'}
+                    className="h-9 px-4 rounded bg-[#007ACC] text-white text-sm hover:bg-[#1485D1] transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {actionLoading === 'resume' ? '恢复中...' : '恢复调度'}
+                  </button>
+                ) : task.status !== 'running' ? (
+                  <button
+                    type="button"
+                    onClick={handlePause}
+                    disabled={actionLoading === 'pause'}
+                    className="h-9 px-4 rounded bg-[#D7BA7D]/15 border border-[#D7BA7D]/40 text-sm text-[#D7BA7D] hover:bg-[#D7BA7D]/25 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {actionLoading === 'pause' ? '暂停中...' : '暂停调度'}
+                  </button>
+                ) : null}
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowClearHistoryConfirm(true)}
+              disabled={task.status === 'running' || task.statistics.totalExecutions === 0}
+              className="h-9 px-4 rounded border border-[#D7BA7D]/40 bg-[#D7BA7D]/12 text-[#E8D29C] text-sm hover:bg-[#D7BA7D]/20 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              清空历史
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={task.status === 'running'}
+              className="h-9 px-4 rounded bg-[#F48771]/15 border border-[#F48771]/40 text-sm text-[#F48771] hover:bg-[#F48771]/25 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              删除任务
+            </button>
+          </div>
+        ) : showDeleteConfirm ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[#F48771] font-medium">确认删除此任务？</span>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={actionLoading === 'delete'}
+              className="h-9 px-4 rounded bg-[#F48771] text-white text-sm hover:bg-[#E6705F] transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {actionLoading === 'delete' ? '删除中...' : '确认删除'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors cursor-pointer"
+            >
+              取消
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-[#D7BA7D] font-medium">确认清空该任务的全部执行历史？</span>
+            <button
+              type="button"
+              onClick={handleClearHistory}
+              disabled={actionLoading === 'clear-history'}
+              className="h-9 px-4 rounded bg-[#D7BA7D] text-[#1F1F1F] text-sm hover:bg-[#E6C98A] transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {actionLoading === 'clear-history' ? '清理中...' : '确认清空'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowClearHistoryConfirm(false)}
+              className="h-9 px-4 rounded bg-[var(--vscode-hover-bg)] text-[var(--color-text)] text-sm hover:bg-[var(--vscode-hover-bg)] transition-colors cursor-pointer"
+            >
+              取消
+            </button>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="mt-3 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-sm text-[#F48771]">
+            {actionError}
+          </div>
+        )}
+      </section>
+
+      {executing && <ExecutingModal taskName={task.name} />}
+      {result && <ExecutionResultModal result={result} onClose={() => setResult(null)} />}
+    </>
+  )
+}

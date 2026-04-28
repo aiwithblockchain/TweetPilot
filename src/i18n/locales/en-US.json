@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "TweetPilot"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "add": "Add",
+    "edit": "Edit",
+    "refresh": "Refresh",
+    "loading": "Loading..."
+  },
+  "settings": {
+    "title": "Settings",
+    "accounts": "Twitter Accounts",
+    "preferences": "System Preferences",
+    "language": "Language",
+    "theme": "Theme",
+    "startup": "Startup Behavior",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "Follow System",
+    "startupLastWorkspace": "Open Last Workspace",
+    "startupShowSelector": "Show Selector",
+    "saveSettings": "Save Settings"
+  }
+}

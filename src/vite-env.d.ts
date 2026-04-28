@@ -1,14 +1,24 @@
 /// <reference types="vite/client" />
 
-declare global {
-	interface Window {
-		tweetOps: {
-			appName: string;
-			runtime: {
-				platform: string;
-			};
-		};
-	}
+interface ImportMetaEnv {
+  readonly VITE_SERVICE_MODE?: 'mock' | 'tauri'
 }
 
-export {};
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
+declare module '*.css' {
+  const content: Record<string, string>
+  export default content
+}
+
+declare module '*.scss' {
+  const content: Record<string, string>
+  export default content
+}
+
+declare module '*.sass' {
+  const content: Record<string, string>
+  export default content
+}
