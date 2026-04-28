@@ -721,7 +721,8 @@ function TaskAiSessionErrorModal({ message, onClose }: { message: string; onClos
 }
 
 function formatMessageTime(timestamp: number) {
-  const date = new Date(timestamp)
+  const normalizedTimestamp = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp
+  const date = new Date(normalizedTimestamp)
   if (Number.isNaN(date.getTime())) return String(timestamp)
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
