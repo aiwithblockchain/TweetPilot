@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use crate::services::ai_storage::{LoadedSession, SessionMetadata, StoredMessage, StoredTimelineItem, StoredToolCall};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use uuid::Uuid;
 use cron::Schedule;
@@ -215,6 +216,19 @@ pub struct TaskAiAccountContext {
     pub description: Option<String>,
     pub is_verified: Option<bool>,
     pub latest_snapshot_at: Option<String>,
+}
+
+fn dedupe_tool_calls(tool_calls: &[StoredToolCall]) -> Vec<StoredToolCall> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::with_capacity(tool_calls.len());
+
+    for tool_call in tool_calls {
+        if seen.insert(tool_call.id.clone()) {
+            deduped.push(tool_call.clone());
+        }
+    }
+
+    deduped
 }
 
 pub struct TaskDatabase {
@@ -1002,7 +1016,7 @@ impl TaskDatabase {
 
     fn replace_task_ai_tool_calls(&self, message_id: &str, tool_calls: &[StoredToolCall]) -> Result<()> {
         self.conn.execute("DELETE FROM task_ai_tool_calls WHERE message_id = ?1", params![message_id])?;
-        for tool_call in tool_calls {
+        for tool_call in dedupe_tool_calls(tool_calls) {
             self.conn.execute(
                 "INSERT INTO task_ai_tool_calls (id, message_id, tool, action, input, output, status, duration, start_time, end_time)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",

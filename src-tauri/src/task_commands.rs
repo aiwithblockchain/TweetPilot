@@ -333,7 +333,7 @@ pub async fn execute_task(
                 ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|err| err.to_string())?;
                 ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
             } else {
-                ctx.db.lock().unwrap().mark_task_and_execution_failed(&task_id, &task.id, &e).ok();
+                ctx.db.lock().unwrap().mark_task_and_execution_failed(&task_id, &exec_result.id, &e).ok();
                 ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
             }
             crate::app_events::publish_task_executed(&ctx.app_handle, task_id.clone(), exec_result.status.clone());

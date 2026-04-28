@@ -77,6 +77,10 @@ fn next_timeline_sequence(timeline: &[StoredTimelineItem]) -> i64 {
     timeline.len() as i64
 }
 
+fn next_tool_call_id(assistant_message_id: &str, tool_name: &str, tool_index: usize) -> String {
+    format!("{}-tool-call-{}-{}", assistant_message_id, tool_name, tool_index)
+}
+
 fn is_non_empty_json_object(raw: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(raw)
         .ok()
@@ -409,6 +413,7 @@ pub async fn execute_task_ai_session(
     let tool_calls = Arc::new(tokio::sync::Mutex::new(Vec::<StoredToolCall>::new()));
     let timeline_items = Arc::new(tokio::sync::Mutex::new(Vec::<StoredTimelineItem>::new()));
     let status_text = Arc::new(tokio::sync::Mutex::new(None::<String>));
+    let tool_call_counter = Arc::new(tokio::sync::Mutex::new(0usize));
     let messages = vec![Message::user(prompt)];
     let cancel_token = CancellationToken::new();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -419,6 +424,7 @@ pub async fn execute_task_ai_session(
     let tool_calls_for_events = Arc::clone(&tool_calls);
     let timeline_items_for_events = Arc::clone(&timeline_items);
     let status_text_for_events = Arc::clone(&status_text);
+    let tool_call_counter_for_events = Arc::clone(&tool_call_counter);
 
     let event_task = tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
@@ -485,7 +491,12 @@ pub async fn execute_task_ai_session(
                         tool_name,
                     );
                     let timestamp_ms = chrono::Utc::now().timestamp_millis();
-                    let tool_call_id = format!("{}-{}", tool_name, timestamp_ms);
+                    let tool_call_id = {
+                        let mut counter = tool_call_counter_for_events.lock().await;
+                        let id = next_tool_call_id(&assistant_message_id_for_events, &tool_name, *counter);
+                        *counter += 1;
+                        id
+                    };
                     tool_calls_for_events.lock().await.push(StoredToolCall {
                         id: tool_call_id.clone(),
                         tool: tool_name.clone(),
