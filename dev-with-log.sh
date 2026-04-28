@@ -150,5 +150,10 @@ append_command_output "tweetpilot-config-legacy-note" bash -lc 'if [ -f "$1" ]; 
 
 log_both "[run] 开始执行 VITE_SERVICE_MODE=$SERVICE_MODE npm run tauri:dev"
 
+# 加载 Rust 环境
+if [ -f "$HOME/.cargo/env" ]; then
+  source "$HOME/.cargo/env"
+fi
+
 # 强制使用 Tauri 服务模式，避免误回退到 mock
 VITE_SERVICE_MODE="$SERVICE_MODE" npm run tauri:dev 2>&1 | tee -a "$LOG_FILE" | tee -a "$LATEST_LOG"
