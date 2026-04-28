@@ -6,7 +6,7 @@ import { ScriptExecutionMonitor } from './ScriptExecutionMonitor'
 import { TaskCreatePane } from './TaskCreatePane'
 import { AssistantMessage } from './ChatInterface/AssistantMessage'
 import type { LoadedSession, StoredMessage } from '@/services/ai/tauri'
-import type { Task, TaskDetail } from '@/services/task'
+import type { Task, TaskDetail, ExecutionResult } from '@/services/task'
 import type { AssistantTimelineItem, ChatMessage, PersistedToolCall, ToolCall } from './ChatInterface/types'
 import { convertCronToLocalTime } from '@/lib/cron-utils'
 
@@ -57,14 +57,19 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
     }
   }
 
-  const handleViewSession = async (sessionId: string) => {
+  const handleViewSession = async (execution: Pick<ExecutionResult, 'id'>) => {
     try {
       setSessionLoading(true)
       setSessionError(null)
-      const session = await taskService.getTaskAiSession(sessionId)
-      setSelectedSession(session)
+      const detail = await taskService.getExecutionDetail(execution.id)
+      if (!detail.session) {
+        setSelectedSession(null)
+        setSessionError('该执行记录没有关联的 AI 过程')
+        return
+      }
+      setSelectedSession(detail.session)
     } catch (err) {
-      console.error('Failed to load task AI session:', err)
+      console.error('Failed to load task execution detail:', err)
       setSessionError(err instanceof Error ? err.message : '读取任务执行过程失败')
       setSelectedSession(null)
     } finally {
@@ -292,7 +297,7 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
                       <div className="flex items-center gap-2 shrink-0">
                         {item.taskSessionId && (
                           <button
-                            onClick={() => void handleViewSession(item.taskSessionId!)}
+                            onClick={() => void handleViewSession(item)}
                             className="px-2.5 py-1 rounded border border-[#6D5BF6]/40 bg-[#6D5BF6]/10 text-[#CFC9FF] hover:bg-[#6D5BF6]/18 transition-colors cursor-pointer"
                           >
                             查看过程

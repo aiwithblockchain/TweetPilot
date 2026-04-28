@@ -241,6 +241,12 @@ export function useAppLayoutState() {
     tasks: null,
   })
   const [centerMode, setCenterMode] = useState<'empty' | 'detail' | 'create-task'>('empty')
+  const [centerModeByView, setCenterModeByView] = useState<Record<View, 'empty' | 'detail' | 'create-task'>>({
+    workspace: 'empty',
+    accounts: 'empty',
+    'data-blocks': 'empty',
+    tasks: 'empty',
+  })
   const [isCompactLayout, setIsCompactLayout] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
@@ -300,6 +306,14 @@ export function useAppLayoutState() {
   const [workspaceFolderSummary, setWorkspaceFolderSummary] = useState<WorkspaceFolderSummary | null>(null)
   const [workspaceDetailLoading, setWorkspaceDetailLoading] = useState(false)
   const [workspaceError, setWorkspaceError] = useState<string | null>(null)
+
+  const setCenterModeForView = useCallback((view: View, mode: 'empty' | 'detail' | 'create-task') => {
+    setCenterModeByView((prev) => ({
+      ...prev,
+      [view]: mode,
+    }))
+    setCenterMode(mode)
+  }, [])
 
   const currentSidebarItems = useMemo(() => {
     if (activeView === 'tasks') {
@@ -418,14 +432,8 @@ export function useAppLayoutState() {
       pending: false,
       error: null,
     })
-    setCenterMode((prev) => {
-      if (activeView !== 'workspace') {
-        return prev
-      }
-
-      return nextWorkspace ? 'detail' : 'empty'
-    })
-  }, [activeView])
+    setCenterModeForView('workspace', nextWorkspace ? 'detail' : 'empty')
+  }, [setCenterModeForView])
 
   const loadWorkspaceRoot = useCallback(async (nextWorkspaceOverride?: string | null) => {
     const currentWorkspace = nextWorkspaceOverride ?? await workspaceService.getCurrentWorkspace()
@@ -565,7 +573,7 @@ export function useAppLayoutState() {
       setWorkspaceRefreshError(null)
 
       if (nextSelectedPath) {
-        setCenterMode('detail')
+        setCenterModeForView('workspace', 'detail')
       }
 
       return nextTree
@@ -1156,17 +1164,19 @@ export function useAppLayoutState() {
   }, [])
 
   useEffect(() => {
-    if (centerMode === 'create-task') {
+    if (centerModeByView[activeView] === 'create-task') {
+      setCenterMode('create-task')
       return
     }
 
     if (activeView === 'workspace') {
       if (!workspaceRoot) {
-        setCenterMode('empty')
+        setCenterModeForView('workspace', 'empty')
         return
       }
 
       if (selectedItemsByView.workspace) {
+        setCenterMode(centerModeByView.workspace ?? 'detail')
         return
       }
 
@@ -1174,16 +1184,17 @@ export function useAppLayoutState() {
         ...prev,
         workspace: workspaceRoot,
       }))
-      setCenterMode('detail')
+      setCenterModeForView('workspace', 'detail')
       return
     }
 
     if (currentSidebarItems.length === 0) {
-      setCenterMode('empty')
+      setCenterModeForView(activeView, 'empty')
       return
     }
 
     if (selectedItemsByView[activeView]) {
+      setCenterMode(centerModeByView[activeView] ?? 'detail')
       return
     }
 
@@ -1192,10 +1203,8 @@ export function useAppLayoutState() {
       [activeView]: currentSidebarItems[0]?.id ?? null,
     }))
 
-    if (activeView !== 'tasks') {
-      setCenterMode('detail')
-    }
-  }, [activeView, centerMode, currentSidebarItems, selectedItemsByView, workspaceRoot])
+    setCenterModeForView(activeView, activeView === 'tasks' ? 'empty' : 'detail')
+  }, [activeView, centerModeByView, currentSidebarItems, selectedItemsByView, setCenterModeForView, workspaceRoot])
 
   useEffect(() => {
     let cancelled = false
@@ -1257,7 +1266,7 @@ export function useAppLayoutState() {
       accounts: null,
     }))
     if (activeView === 'accounts') {
-      setCenterMode('empty')
+      setCenterModeForView('accounts', 'empty')
     }
   }
 
@@ -1299,7 +1308,7 @@ export function useAppLayoutState() {
       setSelectedItemsByView((prev) => ({ ...prev, [view]: nextSelectedId }))
     }
 
-    setCenterMode(nextSelectedId ? 'detail' : 'empty')
+    setCenterModeForView(view, centerModeByView[view] ?? (nextSelectedId ? 'detail' : 'empty'))
   }
 
   const handleSelectSidebarItem = (itemId: string) => {
@@ -1307,7 +1316,7 @@ export function useAppLayoutState() {
       ...prev,
       [activeView]: itemId,
     }))
-    setCenterMode('detail')
+    setCenterModeForView(activeView, 'detail')
     setMobileSidebarOpen(false)
     openTab(activeView)
   }
@@ -1337,7 +1346,7 @@ export function useAppLayoutState() {
     if (actionId === 'create-task') {
       setActiveView('tasks')
       openTab('tasks')
-      setCenterMode('create-task')
+      setCenterModeForView('tasks', 'create-task')
       setMobileSidebarOpen(false)
       return
     }
@@ -1388,11 +1397,11 @@ export function useAppLayoutState() {
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '账号列表刷新失败')
       }
-      setCenterMode(selectedItemsByView[activeView] ? 'detail' : 'empty')
+      setCenterModeForView(activeView, selectedItemsByView[activeView] ? 'detail' : 'empty')
       return
     }
 
-    setCenterMode(activeView === 'tasks' ? 'create-task' : selectedItemsByView[activeView] ? 'detail' : 'empty')
+    setCenterModeForView(activeView, activeView === 'tasks' ? 'create-task' : selectedItemsByView[activeView] ? 'detail' : 'empty')
   }
 
   const closeDataBlockMenu = () => {
@@ -1412,7 +1421,7 @@ export function useAppLayoutState() {
     }))
     setActiveView('data-blocks')
     openTab('data-blocks')
-    setCenterMode('detail')
+    setCenterModeForView('data-blocks', 'detail')
     setDataBlockMenuOpen(false)
   }
 
@@ -1424,11 +1433,12 @@ export function useAppLayoutState() {
       const fallbackTab = nextTabs[nextTabs.length - 1]?.id ?? 'workspace'
 
       if (activeView === tabId) {
-        setActiveView(fallbackTab as View)
-        const fallbackSelectedId = fallbackTab === 'workspace'
+        const fallbackView = fallbackTab as View
+        setActiveView(fallbackView)
+        const fallbackSelectedId = fallbackView === 'workspace'
           ? selectedItemsByView.workspace ?? workspaceRoot
-          : selectedItemsByView[fallbackTab as View] ?? SIDEBAR_ITEMS[fallbackTab as View]?.[0]?.id ?? null
-        setCenterMode(fallbackSelectedId ? 'detail' : 'empty')
+          : selectedItemsByView[fallbackView] ?? SIDEBAR_ITEMS[fallbackView]?.[0]?.id ?? null
+        setCenterModeForView(fallbackView, centerModeByView[fallbackView] ?? (fallbackSelectedId ? 'detail' : 'empty'))
       }
 
       return nextTabs.length > 0 ? nextTabs : [prev[0]]
@@ -1436,14 +1446,15 @@ export function useAppLayoutState() {
   }
 
   const handleActivateTab = (tabId: TabId) => {
-    setActiveView(tabId as View)
-    const nextSelectedId = tabId === 'workspace'
+    const view = tabId as View
+    setActiveView(view)
+    const nextSelectedId = view === 'workspace'
       ? selectedItemsByView.workspace ?? workspaceRoot
-      : (selectedItemsByView[tabId as View] ?? (SIDEBAR_ITEMS[tabId as View] as SidebarItem[])[0]?.id ?? null)
-    if (nextSelectedId && !selectedItemsByView[tabId as View]) {
-      setSelectedItemsByView((prev) => ({ ...prev, [tabId]: nextSelectedId }))
+      : (selectedItemsByView[view] ?? (SIDEBAR_ITEMS[view] as SidebarItem[])[0]?.id ?? null)
+    if (nextSelectedId && !selectedItemsByView[view]) {
+      setSelectedItemsByView((prev) => ({ ...prev, [view]: nextSelectedId }))
     }
-    setCenterMode(nextSelectedId ? 'detail' : 'empty')
+    setCenterModeForView(view, centerModeByView[view] ?? (nextSelectedId ? 'detail' : 'empty'))
   }
 
   const handleTaskCreated = async (taskId?: string) => {
@@ -1455,7 +1466,7 @@ export function useAppLayoutState() {
         tasks: taskId,
       }))
       setActiveView('tasks')
-      setCenterMode('detail')
+      setCenterModeForView('tasks', 'detail')
       setOpenTabs((prev) => {
         if (prev.some((tab) => tab.id === 'tasks')) return prev
         return [...prev, { id: 'tasks', title: TAB_META.tasks.title, icon: TAB_META.tasks.icon }]
@@ -1464,7 +1475,7 @@ export function useAppLayoutState() {
     }
 
     setActiveView('tasks')
-    setCenterMode('detail')
+    setCenterModeForView('tasks', 'detail')
   }
 
   const handleTaskDeleted = async () => {
@@ -1473,7 +1484,7 @@ export function useAppLayoutState() {
       ...prev,
       tasks: null,
     }))
-    setCenterMode('empty')
+    setCenterModeForView('tasks', 'empty')
   }
 
   const openSettingsDialog = (section?: 'account' | 'preferences' | 'ai-providers') => {

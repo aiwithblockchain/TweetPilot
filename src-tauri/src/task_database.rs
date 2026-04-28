@@ -71,6 +71,13 @@ pub struct ExecutionResult {
     pub metadata: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionDetail {
+    pub execution: ExecutionResult,
+    pub session: Option<LoadedSession>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct TaskConfigInput {
     pub name: String,
@@ -664,6 +671,16 @@ impl TaskDatabase {
                 })
             },
         )
+    }
+
+    pub fn get_execution_detail(&self, execution_id: &str) -> Result<ExecutionDetail> {
+        let execution = self.get_execution_by_id(execution_id)?;
+        let session = match execution.task_session_id.as_deref() {
+            Some(session_id) => Some(self.load_task_ai_session(session_id)?),
+            None => None,
+        };
+
+        Ok(ExecutionDetail { execution, session })
     }
 
     pub fn update_execution_session_link(&self, execution_id: &str, task_session_id: &str, session_code: &str) -> Result<()> {

@@ -1,6 +1,7 @@
 import { tauriInvoke } from '@/lib/tauri-api'
 import type { LoadedSession } from '@/services/ai/tauri'
 import type {
+  ExecutionDetail,
   ExecutionResult,
   ScheduleType,
   Task,
@@ -101,6 +102,11 @@ interface TauriTaskExecutionRecord {
   metadata?: Record<string, any> | string | null
 }
 
+interface TauriExecutionDetail {
+  execution: TauriTaskExecutionRecord
+  session?: LoadedSession | null
+}
+
 function normalizeTaskParameters(parameters: unknown): Record<string, any> {
   if (!parameters) return {}
 
@@ -195,6 +201,13 @@ function mapExecution(item: TauriTaskExecutionRecord): ExecutionResult {
     finalOutput: item.finalOutput ?? undefined,
     errorMessage: item.errorMessage ?? undefined,
     metadata: normalizeMetadata(item.metadata),
+  }
+}
+
+function mapExecutionDetail(detail: TauriExecutionDetail): ExecutionDetail {
+  return {
+    execution: mapExecution(detail.execution),
+    session: detail.session ?? null,
   }
 }
 
@@ -317,6 +330,11 @@ export const taskTauriService: TaskService = {
       limit,
     })
     return result.map(mapExecution)
+  },
+
+  async getExecutionDetail(executionId) {
+    const result = await tauriInvoke<TauriExecutionDetail>('get_execution_detail', { executionId })
+    return mapExecutionDetail(result)
   },
 
   async getTaskAiSession(sessionId) {

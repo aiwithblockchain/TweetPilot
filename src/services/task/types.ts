@@ -1,5 +1,10 @@
 import type { LoadedSession } from '@/services/ai/tauri'
 
+export interface ExecutionDetail {
+  execution: ExecutionResult
+  session?: LoadedSession | null
+}
+
 export type TaskType = 'immediate' | 'scheduled'
 
 export type TaskStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed'
@@ -114,6 +119,7 @@ export interface TaskService {
   resumeTask(taskId: string): Promise<void>
   executeTask(taskId: string): Promise<ExecutionResult>
   getExecutionHistory(taskId: string, limit?: number): Promise<ExecutionResult[]>
+  getExecutionDetail(executionId: string): Promise<ExecutionDetail>
   getTaskAiSession(sessionId: string): Promise<LoadedSession>
   clearTaskExecutionHistory(taskId: string): Promise<void>
 }

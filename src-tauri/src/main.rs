@@ -164,6 +164,7 @@ fn main() {
             task_module::resume_task,
             task_module::execute_task,
             task_module::get_execution_history,
+            task_module::get_execution_detail,
             task_module::get_task_ai_session,
             task_module::clear_task_execution_history,
             task_module::get_timer_system_status,

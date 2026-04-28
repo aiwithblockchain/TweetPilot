@@ -86,6 +86,15 @@ function HookHarness() {
 
   return (
     <div>
+      <button type="button" onClick={() => state.handleViewChange('tasks')}>
+        切到任务
+      </button>
+      <button type="button" onClick={() => state.handleViewChange('accounts')}>
+        切到账号
+      </button>
+      <button type="button" onClick={() => void state.handleSidebarAction('create-task')}>
+        新建任务
+      </button>
       <button type="button" onClick={() => state.handleSelectSidebarItem('/workspace/src/index.ts')}>
         选择文件
       </button>
@@ -120,6 +129,8 @@ function HookHarness() {
         确认删除
       </button>
 
+      <div data-testid="center-mode">{state.centerMode}</div>
+      <div data-testid="active-view">{state.activeView}</div>
       <div data-testid="rename-active">{String(state.workspaceRenameState.active)}</div>
       <div data-testid="rename-path">{state.workspaceRenameState.path ?? ''}</div>
       <div data-testid="delete-open">{String(state.workspaceDeleteState.open)}</div>
@@ -151,6 +162,31 @@ afterEach(() => {
 })
 
 describe('useAppLayoutState workspace explorer flow', () => {
+  it('preserves create-task mode across top tab switches', async () => {
+    renderHarness()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tree-items').textContent).toContain('/workspace/src')
+    })
+
+    fireEvent.click(screen.getByText('新建任务'))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-view').textContent).toBe('tasks')
+      expect(screen.getByTestId('center-mode').textContent).toBe('create-task')
+    })
+
+    fireEvent.click(screen.getByText('切到账号'))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-view').textContent).toBe('accounts')
+    })
+
+    fireEvent.click(screen.getByText('切到任务'))
+    await waitFor(() => {
+      expect(screen.getByTestId('active-view').textContent).toBe('tasks')
+      expect(screen.getByTestId('center-mode').textContent).toBe('create-task')
+    })
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     workspaceFsChangedListeners.length = 0

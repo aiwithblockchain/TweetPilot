@@ -1,7 +1,7 @@
 use tauri::{AppHandle, State};
 use std::sync::Mutex;
 use crate::services::ai_storage::LoadedSession;
-use crate::task_database::{TaskDatabase, TaskConfigInput, ExecutionResult, Task};
+use crate::task_database::{TaskDatabase, TaskConfigInput, ExecutionDetail, ExecutionResult, Task};
 use crate::task_executor::TaskExecutor;
 use crate::task_ai_executor::execute_task_ai_session;
 use crate::unified_timer::{
@@ -321,8 +321,15 @@ pub async fn get_task_detail(
             "duration": exec.duration,
             "status": exec.status,
             "exitCode": exec.exit_code,
-            "output": exec.stdout,
-            "error": exec.stderr,
+            "output": exec.final_output.as_ref().filter(|value| !value.is_empty()).unwrap_or(&exec.stdout),
+            "error": exec.error_message.as_ref().filter(|value| !value.is_empty()).unwrap_or(&exec.stderr),
+            "taskSessionId": exec.task_session_id,
+            "sessionCode": exec.session_code,
+            "stdout": exec.stdout,
+            "stderr": exec.stderr,
+            "finalOutput": exec.final_output,
+            "errorMessage": exec.error_message,
+            "metadata": exec.metadata,
         })
     });
 
@@ -545,6 +552,19 @@ pub async fn get_execution_history(
 
     let result = ctx.db.lock().unwrap().get_execution_history(&task_id, limit).map_err(|e| e.to_string())?;
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_execution_detail(
+    execution_id: String,
+    state: State<'_, TaskState>,
+) -> Result<ExecutionDetail, String> {
+    let workspace_ctx = state.get_context().await;
+    let ctx = workspace_ctx.as_ref()
+        .ok_or("数据库未初始化，请先选择工作区")?;
+
+    let detail = ctx.db.lock().unwrap().get_execution_detail(&execution_id).map_err(|e| e.to_string())?;
+    Ok(detail)
 }
 
 #[tauri::command]
