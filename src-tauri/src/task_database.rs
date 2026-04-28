@@ -204,6 +204,17 @@ pub struct ManagedAccountForTask {
     pub screen_name: Option<String>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub personality_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskAiAccountContext {
+    pub twitter_id: String,
+    pub screen_name: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub is_verified: Option<bool>,
+    pub latest_snapshot_at: Option<String>,
 }
 
 pub struct TaskDatabase {
@@ -1646,7 +1657,8 @@ impl TaskDatabase {
                 a.twitter_id,
                 t.screen_name,
                 t.display_name,
-                t.avatar_url
+                t.avatar_url,
+                a.personality_prompt
              FROM x_accounts a
              LEFT JOIN (
                  SELECT twitter_id, screen_name, display_name, avatar_url
@@ -1667,11 +1679,43 @@ impl TaskDatabase {
                 screen_name: row.get(1)?,
                 display_name: row.get(2)?,
                 avatar_url: row.get(3)?,
+                personality_prompt: row.get(4)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
         Ok(accounts)
+    }
+
+    pub fn get_task_ai_account_context(&self, twitter_id: &str) -> Result<Option<TaskAiAccountContext>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                a.twitter_id,
+                t.screen_name,
+                t.display_name,
+                t.description,
+                t.is_verified,
+                t.created_at AS latest_snapshot_at
+             FROM x_accounts a
+             LEFT JOIN (
+                SELECT twitter_id, screen_name, display_name, description, is_verified, created_at,
+                       ROW_NUMBER() OVER (PARTITION BY twitter_id ORDER BY created_at DESC, id DESC) AS rn
+                FROM x_account_trend
+             ) t ON a.twitter_id = t.twitter_id AND t.rn = 1
+             WHERE a.twitter_id = ?1 AND a.is_managed = 1"
+        )?;
+
+        stmt.query_row(params![twitter_id], |row| {
+            Ok(TaskAiAccountContext {
+                twitter_id: row.get(0)?,
+                screen_name: row.get(1)?,
+                display_name: row.get(2)?,
+                description: row.get(3)?,
+                is_verified: row.get(4)?,
+                latest_snapshot_at: row.get(5)?,
+            })
+        })
+        .optional()
     }
 }
 

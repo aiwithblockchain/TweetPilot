@@ -65,4 +65,5 @@ export interface ManagedAccountForTask {
   screenName?: string
   displayName?: string
   avatarUrl?: string
+  personalityPrompt?: string
 }

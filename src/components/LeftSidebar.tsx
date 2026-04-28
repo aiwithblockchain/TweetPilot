@@ -10,6 +10,10 @@ export interface SidebarItem {
   description: string
   badge?: string
   badgeTone?: 'default' | 'success' | 'warning' | 'danger'
+  metaBadges?: Array<{
+    label: string
+    tone: 'default' | 'success' | 'warning' | 'danger'
+  }>
   group?: 'managed' | 'unmanaged'
 }
 
@@ -549,7 +553,22 @@ export function LeftSidebar({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm truncate">{item.label}</div>
-                      <div className={['text-[11px] truncate mt-0.5', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
+                      {item.metaBadges && item.metaBadges.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {item.metaBadges.map((badge) => (
+                            <span
+                              key={`${item.id}-${badge.label}`}
+                              className={[
+                                'text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap',
+                                BADGE_TONES[badge.tone],
+                              ].join(' ')}
+                            >
+                              {badge.label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className={['text-[11px] truncate mt-1', isSelected ? 'text-[#9CDCFE]' : 'text-[var(--color-text-secondary)]'].join(' ')}>
                         {item.description}
                       </div>
                     </div>

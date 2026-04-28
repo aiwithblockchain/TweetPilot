@@ -84,6 +84,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
   const [accountId, setAccountId] = useState('')
   const [accounts, setAccounts] = useState<ManagedAccountForTask[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
+  const [personaPromptTouched, setPersonaPromptTouched] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -117,6 +118,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     setCronFields(nextState.cronFields)
     setError(null)
     setSuccessMessage(null)
+    setPersonaPromptTouched(Boolean(nextState.personaPrompt?.trim()))
     setBaselineSnapshot(JSON.stringify(nextState))
   }, [initialTask])
 
@@ -195,6 +197,17 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     return selectedAccount.displayName || selectedAccount.screenName || selectedAccount.twitterId
   }, [selectedAccount])
 
+  useEffect(() => {
+    if (executionMode !== 'ai_session' || !accountId || !usePersona || personaPromptTouched || personaPrompt.trim()) {
+      return
+    }
+
+    const defaultPersona = selectedAccount?.personalityPrompt?.trim()
+    if (defaultPersona) {
+      setPersonaPrompt(defaultPersona)
+    }
+  }, [executionMode, accountId, usePersona, personaPromptTouched, personaPrompt, selectedAccount])
+
   const validateForm = () => {
     if (!name.trim()) return '请输入任务名称'
     if (executionMode === 'script' && !scriptPath.trim()) return '请选择 Python 脚本'
@@ -230,6 +243,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
     setIntervalUnit('hours')
     setCronFields({ second: '0', minute: '0', hour: '9', day: '*', month: '*', weekday: '*' })
     setAccountId('')
+    setPersonaPromptTouched(false)
   }
 
   const getCronFromTemplate = (): string => {
@@ -401,6 +415,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
                 if (!nextAccountId) {
                   setUsePersona(false)
                   setPersonaPrompt('')
+                  setPersonaPromptTouched(false)
                 }
               }}
               disabled={accountsLoading || accounts.length === 0}
@@ -431,6 +446,7 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
                     setUsePersona(checked)
                     if (!checked) {
                       setPersonaPrompt('')
+                      setPersonaPromptTouched(false)
                     }
                   }}
                   className="mt-1 h-4 w-4 rounded border-[var(--color-border)] bg-[var(--color-surface)] text-[#6D5BF6] focus:ring-[#6D5BF6]"
@@ -447,7 +463,10 @@ export function TaskCreatePane({ mode = 'create', initialTask, onCreated, onCanc
                 <Field label="人格提示词">
                   <textarea
                     value={personaPrompt}
-                    onChange={(e) => setPersonaPrompt(e.target.value)}
+                    onChange={(e) => {
+                      setPersonaPrompt(e.target.value)
+                      setPersonaPromptTouched(true)
+                    }}
                     placeholder="输入该账号的人格设定、语气偏好、内容边界等"
                     rows={4}
                     className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[#6D5BF6] resize-y"

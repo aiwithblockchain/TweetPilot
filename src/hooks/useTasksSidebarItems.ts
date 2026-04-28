@@ -5,7 +5,9 @@ import type { Task } from '@/services/task'
 import { convertCronToLocalTime } from '@/lib/cron-utils'
 import { formatForLog, toSafeError } from '@/lib/safe-logging'
 
-function getTaskBadge(task: Task): { badge?: string; badgeTone?: 'default' | 'success' | 'warning' | 'danger' } {
+type TaskBadgeTone = 'default' | 'success' | 'warning' | 'danger'
+
+function getTaskBadge(task: Task): { badge?: string; badgeTone?: TaskBadgeTone } {
   if (task.status === 'failed' || task.lastExecutionStatus === 'failure') {
     return { badge: '失败', badgeTone: 'danger' }
   }
@@ -14,11 +16,20 @@ function getTaskBadge(task: Task): { badge?: string; badgeTone?: 'default' | 'su
     return { badge: '运行中', badgeTone: 'success' }
   }
 
-  if (task.type === 'scheduled') {
-    return { badge: '定时', badgeTone: 'warning' }
-  }
+  return {}
+}
 
-  return { badge: '即时', badgeTone: 'default' }
+function getTaskMetaBadges(task: Task): Array<{ label: string; tone: TaskBadgeTone }> {
+  return [
+    {
+      label: task.executionMode === 'ai_session' ? 'AI' : 'Python',
+      tone: task.executionMode === 'ai_session' ? 'success' : 'default',
+    },
+    {
+      label: task.type === 'scheduled' ? '定时' : '即时',
+      tone: task.type === 'scheduled' ? 'warning' : 'default',
+    },
+  ]
 }
 
 export function useTasksSidebarItems() {
@@ -132,8 +143,9 @@ export function useTasksSidebarItems() {
           ? convertCronToLocalTime(task.schedule)
           : task.schedule || '定时任务'
         : task.lastExecutionStatus === 'failure'
-          ? '即时任务 / 最近失败'
-          : '即时任务',
+          ? '最近失败'
+          : '手动执行',
+    metaBadges: getTaskMetaBadges(task),
     ...getTaskBadge(task),
   }))
 
