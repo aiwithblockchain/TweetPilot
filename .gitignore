@@ -33,3 +33,10 @@ __pycache__/
 .tweetpilot/
 .claude/
 .tweetpilot.json
+
+# Build artifacts
+dist-electron/
+coverage/
+
+# Local secrets
+.webui_secret_key
