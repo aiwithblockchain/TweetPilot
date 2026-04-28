@@ -45,10 +45,10 @@ fn build_failed_execution(task: &Task, error_message: String) -> ExecutionResult
         session_code: None,
         task_session_id: None,
         start_time: timestamp.clone(),
-        end_time: timestamp,
-        duration: 0.0,
+        end_time: Some(timestamp),
+        duration: Some(0.0),
         status: "failure".to_string(),
-        exit_code: -1,
+        exit_code: Some(-1),
         stdout: String::new(),
         stderr: error_message.clone(),
         final_output: None,
@@ -294,9 +294,9 @@ pub async fn execute_task(
                 // via create_execution_stub + finalize_execution, so only script tasks
                 // should save here.
                 ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|e| e.to_string())?;
+                log::info!("[execute_task] Updating task status to idle");
+                ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
             }
-            log::info!("[execute_task] Updating task status to idle");
-            ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|e| e.to_string())?;
 
             if task.task_type == "scheduled" && exec_result.status == "success" {
                 log::info!("[execute_task] Task is scheduled, updating next execution time");
@@ -325,14 +325,17 @@ pub async fn execute_task(
         }
         Err(e) => {
             log::error!("[execute_task] Execution failed: {}", e);
-            let exec_result = build_failed_execution(&task, e);
+            let exec_result = build_failed_execution(&task, e.clone());
             if task.execution_mode != "ai_session" {
                 // AI session tasks persist their execution records inside task_ai_executor
                 // via create_execution_stub + finalize_execution, so only script tasks
                 // should save failure results here.
                 ctx.db.lock().unwrap().save_execution(&exec_result).map_err(|err| err.to_string())?;
+                ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
+            } else {
+                ctx.db.lock().unwrap().mark_task_and_execution_failed(&task_id, &task.id, &e).ok();
+                ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
             }
-            ctx.db.lock().unwrap().update_task_status(&task_id, "idle").map_err(|err| err.to_string())?;
             crate::app_events::publish_task_executed(&ctx.app_handle, task_id.clone(), exec_result.status.clone());
             Ok(exec_result)
         }

@@ -322,7 +322,7 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
                               getExecutionStatusBadge(item.status),
                             ].join(' ')}
                           >
-                            {item.duration.toFixed(1)}s
+                            {item.duration != null ? `${item.duration.toFixed(1)}s` : '-'}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -384,10 +384,20 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
                       'px-2 py-0.5 rounded',
                       task.lastExecution.status === 'success'
                         ? 'bg-[#4EC9B0]/12 text-[#4EC9B0]'
-                        : 'bg-[#F48771]/12 text-[#F48771]',
+                        : task.lastExecution.status === 'running'
+                          ? 'bg-[#569CD6]/12 text-[#569CD6]'
+                          : task.lastExecution.status === 'pending'
+                            ? 'bg-[#D7BA7D]/12 text-[#D7BA7D]'
+                            : 'bg-[#F48771]/12 text-[#F48771]',
                     ].join(' ')}
                   >
-                    {task.lastExecution.status === 'success' ? '成功' : '失败'}
+                    {task.lastExecution.status === 'success'
+                      ? '成功'
+                      : task.lastExecution.status === 'running'
+                        ? '运行中'
+                        : task.lastExecution.status === 'pending'
+                          ? '等待中'
+                          : '失败'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -396,11 +406,11 @@ export function TaskDetailContentPane({ taskId, onDeleted, onEditStateChange }: 
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-secondary)]">耗时</span>
-                  <span className="text-[var(--color-text)]">{task.lastExecution.duration.toFixed(2)}s</span>
+                  <span className="text-[var(--color-text)]">{task.lastExecution.duration != null ? `${task.lastExecution.duration.toFixed(2)}s` : '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-secondary)]">退出码</span>
-                  <span className="text-[var(--color-text)]">{task.lastExecution.exitCode}</span>
+                  <span className="text-[var(--color-text)]">{task.lastExecution.exitCode ?? '-'}</span>
                 </div>
                 {task.lastExecution.output && (
                   <div className="pt-2">

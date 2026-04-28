@@ -6,6 +6,13 @@ interface ExecutionResultModalProps {
 }
 
 export default function ExecutionResultModal({ result, onClose }: ExecutionResultModalProps) {
+  const statusLabel =
+    result.status === 'success' ? '成功' : result.status === 'running' ? '运行中' : result.status === 'pending' ? '等待中' : '失败'
+  const statusTone =
+    result.status === 'success' ? 'success' : result.status === 'running' || result.status === 'pending' ? 'default' : 'error'
+  const exitCodeLabel = result.exitCode != null ? String(result.exitCode) : '-'
+  const durationLabel = result.duration != null ? `${result.duration.toFixed(2)}s` : '-'
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-[var(--color-bg)] rounded-lg w-full max-w-3xl max-h-[85vh] flex flex-col mx-4 border border-[var(--color-border)] shadow-2xl">
@@ -24,13 +31,9 @@ export default function ExecutionResultModal({ result, onClose }: ExecutionResul
 
         <div className="flex-1 overflow-auto p-4 space-y-4">
           <section className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <DetailCard
-              label="执行状态"
-              value={result.status === 'success' ? '成功' : '失败'}
-              tone={result.status === 'success' ? 'success' : 'error'}
-            />
-            <DetailCard label="退出码" value={String(result.exitCode)} />
-            <DetailCard label="耗时" value={`${result.duration.toFixed(2)}s`} />
+            <DetailCard label="执行状态" value={statusLabel} tone={statusTone} />
+            <DetailCard label="退出码" value={exitCodeLabel} />
+            <DetailCard label="耗时" value={durationLabel} />
           </section>
 
           {result.error && (

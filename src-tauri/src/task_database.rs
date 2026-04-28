@@ -60,10 +60,10 @@ pub struct ExecutionResult {
     pub session_code: Option<String>,
     pub task_session_id: Option<String>,
     pub start_time: String,
-    pub end_time: String,
-    pub duration: f64,
+    pub end_time: Option<String>,
+    pub duration: Option<f64>,
     pub status: String,
-    pub exit_code: i32,
+    pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
     pub final_output: Option<String>,
@@ -640,9 +640,11 @@ impl TaskDatabase {
         let normalized_status = if result.status == "failed" { "failure" } else { result.status.as_str() };
         let success = if normalized_status == "success" { 1 } else { 0 };
         let failure = if normalized_status == "failure" { 1 } else { 0 };
+        let execution_time = result.end_time.as_ref().unwrap_or(&result.start_time);
 
         self.conn.execute(
             "UPDATE tasks SET
+                status = 'idle',
                 total_executions = total_executions + 1,
                 success_count = success_count + ?1,
                 failure_count = failure_count + ?2,
@@ -650,7 +652,38 @@ impl TaskDatabase {
                 last_execution_time = ?4,
                 updated_at = ?5
             WHERE id = ?6",
-            params![success, failure, normalized_status, result.end_time, result.end_time, result.task_id],
+            params![success, failure, normalized_status, execution_time, execution_time, result.task_id],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn mark_task_and_execution_failed(&self, task_id: &str, execution_id: &str, error_message: &str) -> Result<()> {
+        let timestamp = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            "UPDATE executions SET
+                end_time = COALESCE(end_time, ?3),
+                duration = COALESCE(duration, 0),
+                status = 'failure',
+                exit_code = COALESCE(exit_code, 1),
+                stderr = CASE
+                    WHEN stderr IS NULL OR stderr = '' THEN ?2
+                    ELSE stderr
+                END,
+                error_message = COALESCE(error_message, ?2)
+            WHERE id = ?1 AND status = 'running'",
+            params![execution_id, error_message, timestamp],
+        )?;
+
+        self.conn.execute(
+            "UPDATE tasks SET
+                status = 'idle',
+                last_execution_status = COALESCE(last_execution_status, 'failure'),
+                last_execution_time = COALESCE(last_execution_time, ?2),
+                updated_at = ?2
+            WHERE id = ?1",
+            params![task_id, timestamp],
         )?;
 
         Ok(())

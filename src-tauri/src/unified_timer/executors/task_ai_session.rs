@@ -37,15 +37,21 @@ impl TimerExecutor for TaskAiSessionExecutor {
         let start_time = chrono::DateTime::parse_from_rfc3339(&result.start_time)
             .map_err(|e| format!("Failed to parse execution start time: {}", e))?
             .with_timezone(&chrono::Utc);
-        let end_time = chrono::DateTime::parse_from_rfc3339(&result.end_time)
-            .map_err(|e| format!("Failed to parse execution end time: {}", e))?
+        let end_time = result
+            .end_time
+            .as_deref()
+            .ok_or_else(|| "Task AI session execution finished without end_time".to_string())
+            .and_then(|value| {
+                chrono::DateTime::parse_from_rfc3339(value)
+                    .map_err(|e| format!("Failed to parse execution end time: {}", e))
+            })?
             .with_timezone(&chrono::Utc);
 
         Ok(ExecutionResult {
             timer_id: context.timer_id,
             start_time,
             end_time,
-            duration: result.duration,
+            duration: result.duration.unwrap_or(0.0),
             success: result.status == "success",
             output: result.final_output.unwrap_or(result.stdout),
             error: result.error_message.or_else(|| {

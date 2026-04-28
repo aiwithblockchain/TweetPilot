@@ -22,10 +22,10 @@ export interface ExecutionResult {
   sessionCode?: string
   taskSessionId?: string
   startTime: string
-  endTime: string
-  duration: number
+  endTime?: string
+  duration?: number
   status: TaskExecutionStatus
-  exitCode: number
+  exitCode?: number
   output?: string
   error?: string
   stdout?: string

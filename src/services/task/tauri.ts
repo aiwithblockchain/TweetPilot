@@ -186,6 +186,8 @@ function normalizeExecutionStatus(status: string): TaskExecutionStatus {
 }
 
 function mapExecution(item: TauriTaskExecutionRecord): ExecutionResult {
+  const normalizedMetadata = normalizeMetadata(item.metadata)
+
   return {
     id: item.id,
     taskId: item.taskId,
@@ -193,20 +195,20 @@ function mapExecution(item: TauriTaskExecutionRecord): ExecutionResult {
     sessionCode: item.sessionCode ?? undefined,
     taskSessionId: item.taskSessionId ?? undefined,
     startTime: item.startTime,
-    endTime: item.endTime || '',
-    duration: item.duration || 0,
+    endTime: item.endTime ?? undefined,
+    duration: item.duration ?? undefined,
     status: normalizeExecutionStatus(item.status),
-    exitCode: item.exitCode || 0,
+    exitCode: item.exitCode ?? undefined,
     output: item.finalOutput || item.stdout,
     error: item.errorMessage || item.stderr,
     stdout: item.stdout,
     stderr: item.stderr,
     finalOutput: item.finalOutput ?? undefined,
     errorMessage: item.errorMessage ?? undefined,
-    metadata: normalizeMetadata(item.metadata),
-    command: item.command ?? normalizeMetadata(item.metadata)?.command,
-    workingDirectory: item.workingDirectory ?? normalizeMetadata(item.metadata)?.workingDirectory,
-    scriptPath: item.scriptPath ?? normalizeMetadata(item.metadata)?.scriptPath,
+    metadata: normalizedMetadata,
+    command: item.command ?? normalizedMetadata?.command,
+    workingDirectory: item.workingDirectory ?? normalizedMetadata?.workingDirectory,
+    scriptPath: item.scriptPath ?? normalizedMetadata?.scriptPath,
   }
 }
 
