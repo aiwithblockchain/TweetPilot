@@ -45,6 +45,51 @@ fn main() {
                 log::error!("Failed to install bundled TweetPilot home resources: {}", error);
             }
 
+            // Auto-adjust window size to fit screen on startup
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(monitor) = window.current_monitor() {
+                    if let Some(monitor) = monitor {
+                        let size = monitor.size();
+                        let scale_factor = monitor.scale_factor();
+                        let position = monitor.position();
+
+                        // Calculate logical size (physical pixels / scale factor)
+                        let logical_width = (size.width as f64 / scale_factor) as u32;
+                        let logical_height = (size.height as f64 / scale_factor) as u32;
+
+                        // Use 90% of screen size to leave some margin
+                        let target_width = (logical_width as f64 * 0.9) as u32;
+                        let target_height = (logical_height as f64 * 0.9) as u32;
+
+                        // Respect minimum size from config
+                        let final_width = target_width.max(1024);
+                        let final_height = target_height.max(680);
+
+                        // Calculate centered position
+                        let x = position.x + ((logical_width as i32 - final_width as i32) / 2);
+                        let y = position.y + ((logical_height as i32 - final_height as i32) / 2);
+
+                        // Set size and position together
+                        if let Err(e) = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+                            width: final_width as f64,
+                            height: final_height as f64,
+                        })) {
+                            log::warn!("Failed to auto-adjust window size: {}", e);
+                        }
+
+                        if let Err(e) = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
+                            x: x as f64,
+                            y: y as f64,
+                        })) {
+                            log::warn!("Failed to center window: {}", e);
+                        }
+
+                        log::info!("Window auto-adjusted to {}x{} at ({}, {}) (screen: {}x{} at ({}, {}))",
+                            final_width, final_height, x, y, logical_width, logical_height, position.x, position.y);
+                    }
+                }
+            }
+
             // Create native menu
             #[cfg(target_os = "macos")]
             {
